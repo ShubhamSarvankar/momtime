@@ -2,12 +2,33 @@ package com.momtime.shared.data
 
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
+import com.momtime.shared.domain.ScheduleTemplate
+import com.momtime.shared.engine.OccurrenceMaterialiser
 import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
 interface OccurrenceRepository {
-    /** Idempotent — INSERT OR IGNORE against the (template_id, local_date) UNIQUE index. */
+    /**
+     * A plain INSERT. A duplicate (template_id, local_date) or alarmSlot throws: the UNIQUE
+     * indexes are a guarantee that fails loudly, not something to absorb (ADR 0036). Production
+     * materialisation goes through [materialiseWindow], which cannot produce a duplicate.
+     */
     fun insert(occurrence: Occurrence)
+
+    /**
+     * Materialises one template over [windowStart, windowEnd) as a single atomic operation: read
+     * the dates already materialised, compute the missing ones, allocate their alarmSlots and
+     * insert them, all in one transaction (ADR 0036). Two overlapping runs therefore serialise,
+     * and the loser sees the rows of the winner and excludes them. If any insert throws, the
+     * whole batch, including its alarmSlot allocations, rolls back. Returns the occurrences
+     * created.
+     */
+    fun materialiseWindow(
+        template: ScheduleTemplate,
+        windowStart: Instant,
+        windowEnd: Instant,
+        generateId: () -> String,
+    ): List<Occurrence>
 
     fun findById(id: String): Occurrence?
 
@@ -50,6 +71,26 @@ class SqlDelightOccurrenceRepository(
             alarm_slot = occurrence.alarmSlot.toLong(),
         )
     }
+
+    override fun materialiseWindow(
+        template: ScheduleTemplate,
+        windowStart: Instant,
+        windowEnd: Instant,
+        generateId: () -> String,
+    ): List<Occurrence> =
+        database.transactionWithResult {
+            val created =
+                OccurrenceMaterialiser.materialise(
+                    template = template,
+                    windowStart = windowStart,
+                    windowEnd = windowEnd,
+                    alreadyMaterialisedDates = datesAlreadyMaterialisedForTemplate(template.id),
+                    generateId = generateId,
+                    allocateSlot = ::allocateNextAlarmSlot,
+                )
+            created.forEach(::insert)
+            created
+        }
 
     override fun findById(id: String): Occurrence? =
         database.occurrenceQueries
