@@ -15,6 +15,16 @@ Do not mark the alarm subsystem complete based on automated coverage alone. Repo
 | 5 | Timing drift under real thermal and battery conditions | A15 soak, canary telemetry (`scheduledInstant` vs `actualFiredAt`) | Not yet run |
 | 6 | Samsung's scheduled alarm count behaviour, if ever exceeded | Only relevant if the one-alarm-at-a-time design (ADR 0017) is ever violated; not expected to trigger | Not yet run |
 
+## Deferred tests
+
+Golden scenarios (`IMPLEMENTATION_PLAN.md`, Phase 1) that have no honest shared-layer test, because the mechanism under test does not exist in `shared`. Each is owned by a later phase, and that phase's exit criteria require it to be implemented. Nothing here is covered by a stand-in test in `shared`.
+
+| Scenario | Owning phase | Reason it is not tested in `shared` | Status |
+|---|---|---|---|
+| 7. Caregiver revocation arriving mid sweep | Phase 4 (server suite) | The sweep, `sweep_status` and caregiver links' server mirror exist only in the server. `shared` has no sweep to interleave with. | Not yet implemented |
+| 14. Device clock set backward while a ladder is armed: no re-fire of fired rungs, no negative delay on the next rung | Phase 2 (Robolectric suite) | `shared` computes only absolute instants and never a from-now delay, and does not handle `ACTION_TIME_CHANGED`. The risk is in the `AlarmManager` arming arithmetic in `android`. | Not yet implemented |
+| 17. `WorkManager` watchdog finds the correct alarm already armed: no-op pass, no spurious `WATCHDOG_REPAIR` event | Phase 2 (Robolectric suite) | `WorkManager` and the watchdog pass do not exist in `shared`. The resume logic the watchdog calls (`NextRungResolver`) is tested in `shared` under scenarios 2, 15 and 18, but not the no-op pass itself. | Not yet implemented |
+
 ## Honesty constraint on claims
 
 With one Samsung device (Galaxy A15) plus Firebase Test Lab's clean-state fleet, the defensible claim after Phase 7 is delivery measured on a specific device family under specific conditions — not validation across hostile OEM skins. No MIUI or ColorOS device will have been tested in its default aggressive configuration unless one is separately acquired. The A15 with One UI is moderately aggressive, not worst case.
