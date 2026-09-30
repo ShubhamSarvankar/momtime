@@ -23,3 +23,11 @@ Platform-specific implementations that would have lived in `shared/androidMain` 
 ## Consequences
 
 `shared`'s KMP shape is now `commonMain` + `jvmMain` in v1, with `android` and `ios` both added later as genuine future targets if and when they're needed — today, `android` doesn't need its own KMP target at all, since a plain project dependency on the `jvm` artifact already works. The import-ban CI check (Phase 0) scans the whole of `shared/` with no carve-out, matching the literal text of invariant 1 exactly.
+
+## Verification note — dex-time linkage (2026-09-29)
+
+The original spike proved dependency *resolution* (Gradle picked a compatible variant and the build reached `assembleDebug`), but `shared` had no code and no file in `android` referenced it, so it didn't prove a `commonMain` declaration is actually reachable from Android code at dex time — a real gap, since variant resolution and symbol linkage are different failure modes.
+
+Closed before any Phase 1 code, in the real repo rather than the scratch spike: added a throwaway `object LinkCheck { const val MARKER = ... }` to `shared/src/commonMain`, referenced it from a throwaway file in `android/src/main/kotlin`, and ran `:android:assembleDebug`. `compileDebugKotlin` executed (not `NO-SOURCE`) and succeeded, meaning the Kotlin compiler resolved the cross-module reference. Grepping the merged dex output confirmed both halves landed in the APK's class set: `LinkCheck` appears in `mergeLibDexDebug`'s `classes.dex` (the class from `shared`), and `LinkCheckUser`/`LinkCheckUserKt` appear in `mergeProjectDexDebug`'s `classes.dex` (the referencing code in `android`). Both throwaway files were deleted afterward; the repo rebuilds clean without them.
+
+This closes the gap: a `commonMain` declaration is confirmed reachable from Android code through to dex, not just resolvable as a Gradle dependency.

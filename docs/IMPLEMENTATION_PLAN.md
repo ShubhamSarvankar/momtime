@@ -28,7 +28,9 @@ Outstanding blockers that don't belong to any single code change, tracked here s
 |---|---|---|---|
 | GCP project id | Phase 4, first Terraform apply | User | Not yet provided. `infra/` stays `.gitkeep`-only until then; Terraform reads `TF_VAR_gcp_project_id` as a required variable with no default. Do not ask before Phase 4 actually needs it. |
 | Firebase project id | Phase 4, Auth/FCM wiring (Phase 2/3 work that touches Firebase at runtime must be structured to build without it, or stop and ask) | User | Not yet provided. `google-services.json` stays gitignored and absent. Terraform reads `TF_VAR_firebase_project_id` as a required variable with no default; docs and Terraform allow it to differ from the GCP project id even though one project is expected to serve both. |
-| Exact dependency versions (Kotlin, AGP, Gradle, SQLDelight, Koin, kotlinx-datetime, Detekt, ktlint, Ktor, Robolectric, Roborazzi) | Phase 0 scaffolding | Resolved live against Maven Central and the current AGP/Kotlin compatibility matrix, not guessed | In progress. A compatible current triple must be confirmed with evidence before pinning; if it can't be, stop and ask rather than pin a plausible-looking patch number. |
+| Exact dependency versions (Kotlin, AGP, Gradle, SQLDelight, Koin, kotlinx-datetime, Detekt, ktlint, Ktor, Robolectric, Roborazzi) | Phase 0 scaffolding | Resolved live against Maven Central and the current AGP/Kotlin compatibility matrix, not guessed | Done. Pinned in `gradle/libs.versions.toml`. Kotlin 2.4.20 / AGP 9.4.1 / Gradle 9.8.0 verified with a real build, not just metadata. |
+| Migration-test CI job | Phase 1, as an explicit exit criterion (not discovered later) — see Phase 1 below | Model | Deferred from Phase 0 because no schema existed yet to test against. Approved on condition it's wired as part of Phase 1, not left implicit. |
+| Green GitHub Actions run + bad-commit PR check on the real remote | Phase 0, before the phase is considered fully closed | Shubham (repo creation, push, and the PR-based bad-commit demonstration; a local Gradle run proves the task works, not that the workflow YAML is correct on the actual remote) | Not yet done. Phase 1 work may proceed in parallel — see `docs/adr` and this file's Phase 0 section for what's already verified locally. |
 
 ---
 
@@ -98,7 +100,7 @@ Seven additional scenarios, added during Phase 0 planning review because they su
 18. App force-stopped by the OS (not the user) mid-ladder — the next watchdog pass within the 15 minute floor repairs the alarm rather than the chain staying silently dead until next app open.
 19. Pregnancy phase transition (`PRENATAL` to `POSTPARTUM`) while occurrences are materialised against the old phase does not retroactively rescope or delete history scoped to the ending `pregnancyId`.
 
-**Exit criteria.** All nineteen golden scenarios pass. Migration test passes from v1 to v1 (trivially) and the harness is proven by adding and reverting a throwaway migration. No `android.*` anywhere in `shared`.
+**Exit criteria.** All nineteen golden scenarios pass. Migration test passes from v1 to v1 (trivially) and the harness is proven by adding and reverting a throwaway migration. The migration test is wired into the CI workflow as its own job during this phase — not deferred again, per the Open Items entry above. No `android.*` anywhere in `shared`.
 
 ---
 
