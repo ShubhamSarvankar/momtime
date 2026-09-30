@@ -30,7 +30,7 @@ Outstanding blockers that don't belong to any single code change, tracked here s
 | Firebase project id | Phase 4, Auth/FCM wiring (Phase 2/3 work that touches Firebase at runtime must be structured to build without it, or stop and ask) | User | Not yet provided. `google-services.json` stays gitignored and absent. Terraform reads `TF_VAR_firebase_project_id` as a required variable with no default; docs and Terraform allow it to differ from the GCP project id even though one project is expected to serve both. |
 | Exact dependency versions (Kotlin, AGP, Gradle, SQLDelight, Koin, kotlinx-datetime, Detekt, ktlint, Ktor, Robolectric, Roborazzi) | Phase 0 scaffolding | Resolved live against Maven Central and the current AGP/Kotlin compatibility matrix, not guessed | Done. Pinned in `gradle/libs.versions.toml`. Kotlin 2.4.20 / AGP 9.4.1 / Gradle 9.8.0 verified with a real build, not just metadata. |
 | Migration-test CI job | Phase 1, as an explicit exit criterion (not discovered later) — see Phase 1 below | Model | Done. Wired as its own named CI job (`migration-test`, `.github/workflows/ci.yml`) running `:shared:verifySqlDelightMigration`. Proven locally: passes at v1 with no migrations, fails on a deliberately mismatched migration with an exact column-level diff, passes again once corrected. |
-| Green GitHub Actions run + bad-commit PR check on the real remote | Phase 0, before the phase is considered fully closed | Shubham (repo creation, push, and the PR-based bad-commit demonstration; a local Gradle run proves the task works, not that the workflow YAML is correct on the actual remote) | Green run confirmed: CI run 36769065695 on 28c0864, all 8 jobs succeeded (read from the Actions API). The PR-based bad-commit demonstration is not yet done. Phase 1 work may proceed in parallel — see `docs/adr` and this file's Phase 0 section for what's already verified locally. |
+| Green GitHub Actions run + bad-commit PR check on the real remote | Phase 0, before the phase is considered fully closed | Shubham (repo creation, push, and the PR-based bad-commit demonstration; a local Gradle run proves the task works, not that the workflow YAML is correct on the actual remote) | Green run confirmed: CI run 36769065695 on 28c0864, all 8 jobs succeeded (read from the Actions API). Bad-commit demonstration done as PR #2 (closed unmerged, branch deleted): `verify-no-android-imports` failed naming file, line and invariant 1, and the PR's merge state was `blocked`. **Closed.** See `MANUAL_CHECKS.md`. |
 | `kotlinx-kover` dependency (coverage gate) | Phase 1 | Model, flagged rather than blocked on, per the explicit "no stopping again" instruction for this phase; invariant 7 still requires disclosure | Added. The only reasonable choice for Kotlin/KMP line coverage, official JetBrains plugin. Gate set at 90%, enforced via `koverVerify` as part of `:shared:check`. |
 
 ---
@@ -55,13 +55,15 @@ Nothing else begins until this is done.
 
 **Exit criteria.** CI green on an empty project. The import ban check demonstrably fails a deliberately bad commit.
 
+**Status: closed.** Criterion 1 is verified on the real remote: CI green on 28c0864 (run 36769065695), and a deliberate bad commit in PR #2 (closed unmerged, branch deleted) failed `verify-no-android-imports` with file, line and invariant 1 named, with the PR's merge state reported as `blocked`. Details and the limits of that evidence are in `MANUAL_CHECKS.md`.
+
 ---
 
 ## Phase 1: Shared domain and engine
 
 The correctness core. Entirely JVM verifiable. Expect this to be the largest test suite in the project.
 
-**Status: complete against the exit criteria below**, pending Shubham's confirmation of the C4 items in Open Items (those are about the real GitHub remote, not about this phase's code). All 12 golden scenarios and all 7 additional edge cases pass as named tests; the three required properties are genuine property tests; invariant 8 is mechanically enforced with its own CI check; the migration harness is proven (not just wired — see ADR 0035 for a real mistake caught and corrected while proving it); no `android.*` under `shared`; coverage gate green at 95.1%, not a bare pass. Three golden scenarios (7, 14, 17) have no meaningful shared-layer equivalent and are not tested in this phase; they are tracked, with owning phase and reason, under "Deferred tests" in `MANUAL_CHECKS.md` rather than covered by a decorative test.
+**Status: complete against the exit criteria below**, pending Shubham's confirmation of the C4 items in Open Items (those are about the real GitHub remote, not about this phase's code). All 12 golden scenarios and all 7 additional edge cases pass as named tests; the two required properties (adherence invariant to reconciliation timing; materialisation idempotent under repetition) are randomised property tests with fixed seeds; invariant 8 is mechanically enforced with its own CI check; the migration harness is proven (not just wired — see ADR 0035 for a real mistake caught and corrected while proving it); no `android.*` under `shared`; coverage gate green at 95.1%, not a bare pass. Three golden scenarios (7, 14, 17) have no meaningful shared-layer equivalent and are not tested in this phase; they are tracked, with owning phase and reason, under "Deferred tests" in `MANUAL_CHECKS.md` rather than covered by a decorative test.
 
 **Deliverables**
 
@@ -82,7 +84,7 @@ The correctness core. Entirely JVM verifiable. Expect this to be the largest tes
 
 1. Recurrence expansion across a template edit that changes `timeOfDay` after some occurrences are already terminal.
 2. Reboot part way through an escalation ladder, with the remaining rungs correctly derived.
-3. Exact alarm permission revoked mid schedule, with tier downgrade and ladder adjustment.
+3. Exact alarm permission revoked mid schedule, with tier downgrade and ladder adjustment. **Shared slice tested in Phase 1; the downgrade is deferred to Phase 2 — see "Deferred tests" in `MANUAL_CHECKS.md`.**
 4. A snooze that would collide with the next occurrence of the same template.
 5. A grace window expiring while the app is closed, producing `MISSED` without a ring, where `deviceTimestamp` reflects whenever `Reconcile` runs but `effectiveAt` reflects the true grace-expiry instant, and adherence figures come from `effectiveAt` — so a second case asserting adherence is identical whether reconciliation happens at the exact expiry instant, an hour later, or a day later is part of this scenario, not optional.
 6. A backfilled completion arriving after a confirmed miss.
