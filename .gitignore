@@ -1,0 +1,33 @@
+# Build outputs
+build/
+.gradle/
+*.iml
+.idea/
+local.properties
+captures/
+.cxx/
+
+# Keystores and signing
+*.jks
+*.keystore
+keystore.properties
+
+# Firebase / Google services — never committed, per CLAUDE.md invariant 12
+google-services.json
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

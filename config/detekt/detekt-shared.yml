@@ -1,0 +1,22 @@
+# Applied only to the `shared` module. This is defense-in-depth for CLAUDE.md invariant 1
+# (no android.*/androidx.* under shared/) alongside the primary mechanism, the
+# verifyNoAndroidImports Gradle task in shared/build.gradle.kts. ForbiddenImport only
+# inspects import statements, which is why it's a secondary check, not the primary one —
+# see docs/adr/0027-shared-has-no-android-target.md.
+
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+
+style:
+  ForbiddenComment:
+    active: false
+  ForbiddenImport:
+    active: true
+    imports:
+      - value: "android.*"
+        reason: "shared/ must compile and test on the JVM with no Android dependency (CLAUDE.md invariant 1)."
+      - value: "androidx.*"
+        reason: "shared/ must compile and test on the JVM with no Android dependency (CLAUDE.md invariant 1)."

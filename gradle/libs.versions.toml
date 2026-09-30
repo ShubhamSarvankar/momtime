@@ -1,0 +1,41 @@
+[versions]
+# Every version here was resolved against Maven Central / Google's Maven maven-metadata.xml
+# at Phase 0 execution time (2026-09-29), not guessed. The Kotlin/AGP/Gradle triple was
+# additionally verified with a real build (see docs/adr/0027-shared-has-no-android-target.md
+# for the spike this reused). Re-check before bumping any of these later — see
+# docs/IMPLEMENTATION_PLAN.md "Open items".
+kotlin = "2.4.20"
+androidGradlePlugin = "9.4.1"
+compileSdk = "36"
+targetSdk = "36"
+minSdk = "29"
+sqldelight = "2.4.0"
+koin = "4.2.2"
+kotlinxDatetime = "0.8.0"
+detekt = "1.23.8"
+ktlintGradle = "14.2.0"
+ktor = "3.6.0"
+robolectric = "4.17"
+roborazzi = "1.76.0"
+junit = "4.13.2"
+kotlinxCoroutines = "1.10.2"
+
+[libraries]
+sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
+sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+junit = { module = "junit:junit", version.ref = "junit" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
+sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
