@@ -31,6 +31,7 @@ Outstanding blockers that don't belong to any single code change, tracked here s
 | Exact dependency versions (Kotlin, AGP, Gradle, SQLDelight, Koin, kotlinx-datetime, Detekt, ktlint, Ktor, Robolectric, Roborazzi) | Phase 0 scaffolding | Resolved live against Maven Central and the current AGP/Kotlin compatibility matrix, not guessed | Done. Pinned in `gradle/libs.versions.toml`. Kotlin 2.4.20 / AGP 9.4.1 / Gradle 9.8.0 verified with a real build, not just metadata. |
 | Migration-test CI job | Phase 1, as an explicit exit criterion (not discovered later) — see Phase 1 below | Model | Done. Wired as its own named CI job (`migration-test`, `.github/workflows/ci.yml`) running `:shared:verifySqlDelightMigration`. Proven locally: passes at v1 with no migrations, fails on a deliberately mismatched migration with an exact column-level diff, passes again once corrected. |
 | Green GitHub Actions run + bad-commit PR check on the real remote | Phase 0, before the phase is considered fully closed | Shubham (repo creation, push, and the PR-based bad-commit demonstration; a local Gradle run proves the task works, not that the workflow YAML is correct on the actual remote) | Not yet done. Phase 1 work may proceed in parallel — see `docs/adr` and this file's Phase 0 section for what's already verified locally. |
+| `kotlinx-kover` dependency (coverage gate) | Phase 1 | Model, flagged rather than blocked on, per the explicit "no stopping again" instruction for this phase; invariant 7 still requires disclosure | Added. The only reasonable choice for Kotlin/KMP line coverage, official JetBrains plugin. Gate set at 90%, enforced via `koverVerify` as part of `:shared:check`. |
 
 ---
 
@@ -60,6 +61,8 @@ Nothing else begins until this is done.
 
 The correctness core. Entirely JVM verifiable. Expect this to be the largest test suite in the project.
 
+**Status: complete against the exit criteria below**, pending Shubham's confirmation of the C4 items in Open Items (those are about the real GitHub remote, not about this phase's code). All 12 golden scenarios and all 7 additional edge cases pass as named tests; the three required properties are genuine property tests; invariant 8 is mechanically enforced with its own CI check; the migration harness is proven (not just wired — see ADR 0035 for a real mistake caught and corrected while proving it); no `android.*` under `shared`; coverage gate green at 95.1%, not a bare pass. Three golden scenarios (7, 14, 17) are fundamentally server or Android-platform mechanisms with no meaningful shared-layer equivalent to test honestly — see their entries below rather than a decorative test standing in for device/server verification shared cannot provide.
+
 **Deliverables**
 
 - Domain models: `ScheduleTemplate`, `Occurrence`, event log types, `Recurrence`, `Criticality`, `TaskType`, `NutritionTag`, `MissionConfig`, `PregnancyPhase`, `DeliveryCapability`, `EscalationRung`, `Channel`.
@@ -83,7 +86,7 @@ The correctness core. Entirely JVM verifiable. Expect this to be the largest tes
 4. A snooze that would collide with the next occurrence of the same template.
 5. A grace window expiring while the app is closed, producing `MISSED` without a ring, where `deviceTimestamp` reflects whenever `Reconcile` runs but `effectiveAt` reflects the true grace-expiry instant, and adherence figures come from `effectiveAt` — so a second case asserting adherence is identical whether reconciliation happens at the exact expiry instant, an hour later, or a day later is part of this scenario, not optional.
 6. A backfilled completion arriving after a confirmed miss.
-7. A caregiver revocation arriving mid sweep.
+7. A caregiver revocation arriving mid sweep. **Server-side (Phase 4) — the sweep itself doesn't exist in `shared`; this scenario's real test lives in the server's test suite, not here.**
 8. Timezone travel where the local scheduled time has already passed.
 9. `EveryNDays` expansion across a month boundary and across a leap day.
 10. Interruption budget exhaustion downgrading `STANDARD` while leaving `CRITICAL` untouched.
@@ -93,10 +96,10 @@ The correctness core. Entirely JVM verifiable. Expect this to be the largest tes
 Seven additional scenarios, added during Phase 0 planning review because they surface edge cases the original twelve don't reach:
 
 13. Uninstall and reinstall re-materialises and re-arms from a fresh `alarmSlot` counter; no stale slot value or `PendingIntent` from the previous install remains to collide with, because uninstall and `MY_PACKAGE_REPLACED` both invalidate prior alarms (see `ARCHITECTURE.md` section 5.4, ADR 31 — this asserts the documented behaviour, it does not probe for a collision that can't occur).
-14. Device clock set backward by the user while a ladder is armed does not cause already-fired rungs to re-fire or the next rung to compute a negative delay.
+14. Device clock set backward by the user while a ladder is armed does not cause already-fired rungs to re-fire or the next rung to compute a negative delay. **Android-side (Phase 2) — `shared` never computes a from-now delay (only absolute instants, immune to clock changes by construction) and doesn't handle `ACTION_TIME_CHANGED`; the real risk lives in `AlarmManager` arming arithmetic, tested in Phase 2's Robolectric suite.**
 15. Two occurrences' ladders interleave — the one-alarm-at-a-time selection always arms the chronologically next rung across all occurrences, not just the next rung of whichever occurrence is currently being processed.
 16. Quiet hours starting partway through an armed `CRITICAL` ladder still rings; a `STANDARD` ladder armed the same way defers the in-window rung to a silent notification.
-17. `WorkManager` watchdog finds the correct alarm already armed — a no-op pass that emits no spurious `WATCHDOG_REPAIR` event.
+17. `WorkManager` watchdog finds the correct alarm already armed — a no-op pass that emits no spurious `WATCHDOG_REPAIR` event. **Android-side (Phase 2) — `WorkManager` itself doesn't exist in `shared`; the resume logic it would call (`NextRungResolver`) is tested here (see scenario 18), but the watchdog pass and its no-op behaviour belong to Phase 2's Robolectric suite.**
 18. App force-stopped by the OS (not the user) mid-ladder — the next watchdog pass within the 15 minute floor repairs the alarm rather than the chain staying silently dead until next app open.
 19. Pregnancy phase transition (`PRENATAL` to `POSTPARTUM`) while occurrences are materialised against the old phase does not retroactively rescope or delete history scoped to the ending `pregnancyId`.
 
