@@ -40,3 +40,5 @@ momtime/
 | Device verification | See [`docs/MANUAL_CHECKS.md`](docs/MANUAL_CHECKS.md) | Real hardware only, Phase 7 |
 
 `./gradlew check` runs the full local verification set (tests, Detekt, ktlint, the import ban and its self-test) in one command.
+
+`shared/src/commonMain/sqldelight/databases/1.db` is a **committed** schema snapshot, not a build artifact — it's what migration verification compares the current `.sq` files against (ADR 0035). Regenerating it (`./gradlew :shared:generateCommonMainMomTimeDatabaseSchema`) is a deliberate, reviewed step, never something CI or `check` does automatically; doing so routinely would make migration verification a tautology.

@@ -13,6 +13,7 @@ sqldelight = "2.4.0"
 koin = "4.2.2"
 kotlinxDatetime = "0.8.0"
 detekt = "1.23.8"
+kover = "0.9.11"
 ktlintGradle = "14.2.0"
 ktor = "3.6.0"
 robolectric = "4.17"
@@ -41,3 +42,4 @@ sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

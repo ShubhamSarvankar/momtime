@@ -23,6 +23,9 @@ INSERT INTO event(
     snooze_number, mission_result_type, water_ml, weight_grams, caregiver_link_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+selectEventById:
+SELECT * FROM event WHERE id = ?;
+
 deleteEventById:
 DELETE FROM event WHERE id = ?;
 
