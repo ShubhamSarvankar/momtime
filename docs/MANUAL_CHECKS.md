@@ -25,7 +25,8 @@ Not device checks. Recorded here because they verify the real GitHub remote rath
 - **Result, `verify-no-android-imports`:** failed, with `android.*/androidx.* reference found under shared/ (CLAUDE.md invariant 1)` and `src/commonMain/kotlin/com/momtime/shared/BadImportDemo.kt:3: import android.content.Context` (Actions run 36787423284).
 - **Other jobs on the same commit:** `android-assemble`, `server-test` and `shared-test` also failed. `android-assemble` and `server-test` failed with "Unresolved reference 'android'" at the same file and line; the `shared-test` failure reason was not read. `detekt`, `ktlint`, `migration-test` and `verify-no-clock-system` passed.
 - **Merge state:** the API reported `mergeable_state: blocked` for the PR, both while checks were still queued and after they had failed. Before the ruleset existed, the same branch showed "Able to merge".
-- **Limit of this evidence:** `blocked` is GitHub's rolled-up state and does not name the rule. It shows the merge was not allowed, not that the failing check was the specific cause. The PR was not merged, and no merge was attempted.
+- **Control:** under the same ruleset, PR #3 (docs only, all 8 checks green) reported `mergeable_state: clean`, while PR #4 reported `blocked` immediately after creation, with its checks still pending. So the state followed check results, not the PR's existence.
+- **Limit of this evidence:** `blocked` is GitHub's rolled-up state and does not name the rule. It shows the merge was not allowed, and the control makes required checks the likely cause, but the API does not say which rule blocked PR #2. The PR was not merged, and no merge was attempted.
 - **Cleanup:** PR closed unmerged, branch deleted.
 - **Status:** closed.
 
