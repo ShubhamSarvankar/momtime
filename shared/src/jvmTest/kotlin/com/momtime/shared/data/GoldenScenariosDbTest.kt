@@ -4,6 +4,7 @@ import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.DueDateRevision
 import com.momtime.shared.domain.MissionConfig
 import com.momtime.shared.domain.NutritionTag
+import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
 import com.momtime.shared.domain.Pregnancy
 import com.momtime.shared.domain.PregnancyPhase
@@ -11,6 +12,7 @@ import com.momtime.shared.domain.Recurrence
 import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.domain.TaskType
 import com.momtime.shared.engine.OccurrenceMaterialiser
+import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import kotlin.random.Random
@@ -106,7 +108,7 @@ class GoldenScenariosDbTest {
         template: ScheduleTemplate,
         windowStart: Instant,
         windowEnd: Instant,
-    ) {
+    ): List<Occurrence> {
         val alreadyMaterialised = occurrenceRepo.datesAlreadyMaterialisedForTemplate(template.id)
         val newOccurrences =
             OccurrenceMaterialiser.materialise(
@@ -118,41 +120,72 @@ class GoldenScenariosDbTest {
                 allocateSlot = { occurrenceRepo.allocateNextAlarmSlot() },
             )
         newOccurrences.forEach { occurrenceRepo.insert(it) }
+        return newOccurrences
     }
 
     // Golden scenario 12 + required property: materialisation is idempotent under arbitrary
-    // repetition, not just twice. Runs N times over the same window with interleaved template
-    // edits (criticality changes, which don't affect materialisation dates) and asserts
-    // convergence to a stable, non-duplicated set.
+    // repetition, not just twice. Each step is a randomly chosen real operation: materialise
+    // over a random, usually overlapping window, deactivate the template, or reactivate it
+    // (deactivation makes the materialiser skip the template, as the daily worker does for
+    // inactive templates). Across many seeds this asserts that at every step there are no
+    // duplicate dates or alarmSlots, that a row already materialised is never changed or
+    // re-issued under a new id or slot, and that a final full-window pass converges to exactly
+    // the expected set.
+    //
+    // The repository exposes no general template-edit operation yet, so `active` is the only
+    // template field that can change between passes here. Edits to timeOfDay and recurrence are
+    // covered by golden scenario 1, not by this property.
     @Test
-    fun `materialisation is idempotent under N repetitions with interleaved edits - property test`() {
-        val pregnancy = seedPregnancy(Instant.fromEpochMilliseconds(0))
-        val template = seedTemplate(pregnancy.id)
-        val windowStart = Instant.parse("2026-01-01T00:00:00Z")
-        val windowEnd = windowStart + 10.days
+    fun `materialisation is idempotent under random windows and activation toggles - property test`() {
+        val fullStart = Instant.parse("2026-01-01T00:00:00Z")
+        val fullDays = 20
+        val fullEnd = fullStart + fullDays.days
 
-        val random = Random(7)
-        repeat(30) { iteration ->
-            materialiseOnce(template, windowStart, windowEnd)
-            // Interleaved "edit": toggling active has no bearing on already-materialised dates,
-            // and re-activating must not create duplicates for dates already covered.
-            if (random.nextBoolean()) {
-                templateRepo.setActive(template.id, true)
+        for (seed in 1..20) {
+            setUp()
+            val random = Random(seed)
+            val pregnancy = seedPregnancy(Instant.fromEpochMilliseconds(0))
+            val template = seedTemplate(pregnancy.id)
+            val firstSeen = mutableMapOf<String, Triple<LocalDate, Instant, Int>>()
+
+            repeat(40) { step ->
+                val context = "seed=$seed step=$step"
+                when (random.nextInt(4)) {
+                    0 -> templateRepo.setActive(template.id, false)
+                    1 -> templateRepo.setActive(template.id, true)
+                    else -> {
+                        val start = fullStart + random.nextLong(0, fullDays * 24L).hours
+                        val end = minOf(start + random.nextLong(1, 10 * 24L).hours, fullEnd)
+                        val before = occurrenceRepo.datesAlreadyMaterialisedForTemplate(template.id)
+                        val created = materialiseOnce(checkNotNull(templateRepo.findById(template.id)), start, end)
+                        // The insert is INSERT OR IGNORE, so the database would silently hide an
+                        // engine that re-issued a date. Assert on the engine's own output.
+                        val reissued = created.filter { it.localDate in before }
+                        assertEquals(emptyList(), reissued, "engine re-issued already-materialised dates, $context")
+                    }
+                }
+
+                val occurrences = occurrenceRepo.findForTemplate(template.id)
+                val count = occurrences.size
+                val dates = occurrences.map { it.localDate }.toSet()
+                val slots = occurrences.map { it.alarmSlot }.toSet()
+                val ids = occurrences.map { it.id }.toSet()
+                assertEquals(count, dates.size, "duplicate date, $context")
+                assertEquals(count, slots.size, "duplicate alarmSlot, $context")
+                assertEquals(count, ids.size, "duplicate id, $context")
+
+                occurrences.forEach { occurrence ->
+                    val snapshot = Triple(occurrence.localDate, occurrence.scheduledInstant, occurrence.alarmSlot)
+                    val earlier = firstSeen.getOrPut(occurrence.id) { snapshot }
+                    assertEquals(earlier, snapshot, "${occurrence.id} changed after first materialisation, $context")
+                }
+                assertEquals(firstSeen.size, occurrences.size, "an occurrence vanished or was re-issued, $context")
             }
-            val occurrences = occurrenceRepo.findForTemplate(template.id)
-            val distinctDates = occurrences.map { it.localDate }.toSet()
-            assertEquals(
-                occurrences.size,
-                distinctDates.size,
-                "duplicate occurrences appeared after $iteration materialisation passes",
-            )
-            val distinctSlots = occurrences.map { it.alarmSlot }.toSet()
-            assertEquals(occurrences.size, distinctSlots.size, "duplicate alarmSlot after $iteration passes")
-        }
 
-        // Daily recurrence over a 10 day window materialises exactly 10 occurrences, regardless
-        // of how many times materialisation ran.
-        assertEquals(10, occurrenceRepo.findForTemplate(template.id).size)
+            templateRepo.setActive(template.id, true)
+            materialiseOnce(checkNotNull(templateRepo.findById(template.id)), fullStart, fullEnd)
+            assertEquals(fullDays, occurrenceRepo.findForTemplate(template.id).size, "did not converge, seed=$seed")
+        }
     }
 
     // Golden scenario 1: template edit after some occurrences are terminal leaves terminal

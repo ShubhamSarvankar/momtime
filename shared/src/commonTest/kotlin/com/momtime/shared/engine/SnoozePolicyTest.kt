@@ -9,8 +9,9 @@ import kotlin.time.Instant
 class SnoozePolicyTest {
     private val now = Instant.fromEpochMilliseconds(1_700_000_000_000)
 
-    // Golden scenario 4: snoozing past the next occurrence of the same template clamps rather
-    // than producing two simultaneous PENDING occurrences.
+    // Golden scenario 4: snoozing past the next occurrence of the same template is refused
+    // (null result, forcing a terminal outcome) rather than clamped, so two PENDING occurrences
+    // of the same template never overlap.
     @Test
     fun `snooze past the next occurrence of the same template is refused, not clamped into overlap`() {
         val nextOccurrence = now + 5.minutes
