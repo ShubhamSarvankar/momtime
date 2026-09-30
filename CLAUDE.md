@@ -27,7 +27,7 @@ These are mechanically checkable and CI enforces several of them. A pull request
 5. **Platform capability differences live only in delivery and presentation.** They never appear in the schema, the domain vocabulary, the event log, or the escalation engine. If a change adds a column or an event type to support one platform's UI, it is wrong.
 6. **The escalation engine emits a declarative list of rungs.** It does not schedule, does not take callbacks, and does not know what a platform will do with the list.
 7. **No new dependency without explicit approval.** Ask. Do not add a library to solve a problem that fifty lines of Kotlin solves.
-8. **No `Clock.System` call outside the DI module.** Every time dependent code takes an injected `Clock`. This is what makes the test suite deterministic.
+8. **No `Clock.System` call outside the DI module.** Every time dependent code takes an injected `Clock`. This is what makes the test suite deterministic. Mechanically enforced in CI the same way as invariant 1: a Gradle task (`verifyNoClockSystem` in `shared/build.gradle.kts`) scans `shared/` for `Clock.System` outside `com.momtime.shared.di`, wired into `check` with its own fixture-based self-test.
 9. **Never store a formatted local time.** Store epoch millis plus an IANA zone id. A wall clock intent and an instant are different things.
 10. **`PendingIntent` request codes derive from the `alarmSlot` monotonic column, never from a hash of ids.** A hash collision silently cancels an alarm and will not reproduce on a bench.
 11. **No PII in any log**, client or server. No medicine names, no notes, no doctor instructions, no weight, no identifiers.

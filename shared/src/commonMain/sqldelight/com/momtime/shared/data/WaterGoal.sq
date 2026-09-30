@@ -1,0 +1,15 @@
+CREATE TABLE water_goal (
+    pregnancy_id TEXT NOT NULL PRIMARY KEY REFERENCES pregnancy(id),
+    daily_goal_ml INTEGER NOT NULL,
+    nudge_times_per_day INTEGER NOT NULL DEFAULT 0
+);
+
+upsertWaterGoal:
+INSERT INTO water_goal(pregnancy_id, daily_goal_ml, nudge_times_per_day)
+VALUES (?, ?, ?)
+ON CONFLICT(pregnancy_id) DO UPDATE SET
+    daily_goal_ml = excluded.daily_goal_ml,
+    nudge_times_per_day = excluded.nudge_times_per_day;
+
+selectWaterGoal:
+SELECT * FROM water_goal WHERE pregnancy_id = ?;

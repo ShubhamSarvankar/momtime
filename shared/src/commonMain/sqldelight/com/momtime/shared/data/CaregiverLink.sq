@@ -1,0 +1,31 @@
+CREATE TABLE caregiver_link (
+    id TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    invited_at INTEGER NOT NULL,
+    scope_weight_visible INTEGER NOT NULL DEFAULT 0,
+    scope_notes_visible INTEGER NOT NULL DEFAULT 0,
+    scope_doctor_instructions_visible INTEGER NOT NULL DEFAULT 0,
+    notification_policy TEXT NOT NULL DEFAULT 'PER_EVENT_CRITICAL',
+    paused_until INTEGER
+);
+
+insertCaregiverLink:
+INSERT INTO caregiver_link(
+    id, display_name, invited_at, scope_weight_visible, scope_notes_visible,
+    scope_doctor_instructions_visible, notification_policy, paused_until
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteCaregiverLink:
+DELETE FROM caregiver_link WHERE id = ?;
+
+updateCaregiverLinkPause:
+UPDATE caregiver_link SET paused_until = ? WHERE id = ?;
+
+updateCaregiverLinkNotificationPolicy:
+UPDATE caregiver_link SET notification_policy = ? WHERE id = ?;
+
+selectAllCaregiverLinks:
+SELECT * FROM caregiver_link;
+
+countCaregiverLinks:
+SELECT COUNT(*) FROM caregiver_link;

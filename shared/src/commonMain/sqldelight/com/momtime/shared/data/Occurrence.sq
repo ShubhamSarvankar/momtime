@@ -1,0 +1,35 @@
+CREATE TABLE occurrence (
+    id TEXT NOT NULL PRIMARY KEY,
+    template_id TEXT NOT NULL REFERENCES schedule_template(id),
+    local_date TEXT NOT NULL,
+    scheduled_instant INTEGER NOT NULL,
+    time_zone_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    alarm_slot INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX occurrence_template_date_idx ON occurrence(template_id, local_date);
+CREATE UNIQUE INDEX occurrence_alarm_slot_idx ON occurrence(alarm_slot);
+CREATE INDEX occurrence_state_scheduled_idx ON occurrence(state, scheduled_instant);
+
+insertOccurrence:
+INSERT OR IGNORE INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, alarm_slot)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateOccurrenceState:
+UPDATE occurrence SET state = ? WHERE id = ?;
+
+selectOccurrenceById:
+SELECT * FROM occurrence WHERE id = ?;
+
+selectOccurrenceByTemplateAndDate:
+SELECT * FROM occurrence WHERE template_id = ? AND local_date = ?;
+
+selectPendingOccurrences:
+SELECT * FROM occurrence WHERE state = 'PENDING' ORDER BY scheduled_instant ASC;
+
+selectOccurrencesForTemplate:
+SELECT * FROM occurrence WHERE template_id = ? ORDER BY scheduled_instant ASC;
+
+selectOccurrencesInWindow:
+SELECT * FROM occurrence WHERE scheduled_instant >= :from AND scheduled_instant < :to;

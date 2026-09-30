@@ -1,0 +1,44 @@
+CREATE TABLE pregnancy (
+    id TEXT NOT NULL PRIMARY KEY,
+    phase TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    phase_changed_at INTEGER NOT NULL
+);
+
+CREATE TABLE due_date_revision (
+    id TEXT NOT NULL PRIMARY KEY,
+    pregnancy_id TEXT NOT NULL REFERENCES pregnancy(id),
+    due_date TEXT NOT NULL,
+    recorded_at INTEGER NOT NULL
+);
+
+CREATE INDEX due_date_revision_pregnancy_idx ON due_date_revision(pregnancy_id, recorded_at);
+
+insertPregnancy:
+INSERT INTO pregnancy(id, phase, created_at, phase_changed_at)
+VALUES (?, ?, ?, ?);
+
+updatePregnancyPhase:
+UPDATE pregnancy SET phase = ?, phase_changed_at = ? WHERE id = ?;
+
+selectPregnancyById:
+SELECT * FROM pregnancy WHERE id = ?;
+
+insertDueDateRevision:
+INSERT INTO due_date_revision(id, pregnancy_id, due_date, recorded_at)
+VALUES (?, ?, ?, ?);
+
+-- Latest revision — current-view due date. Never used for a historical/past-dated view.
+selectLatestDueDateRevision:
+SELECT * FROM due_date_revision
+WHERE pregnancy_id = ?
+ORDER BY recorded_at DESC
+LIMIT 1;
+
+-- Revision in effect at a specific instant — every historical/report view must use this,
+-- never selectLatestDueDateRevision, per ARCHITECTURE.md section 3.5.
+selectDueDateRevisionAsOf:
+SELECT * FROM due_date_revision
+WHERE pregnancy_id = ? AND recorded_at <= :asOf
+ORDER BY recorded_at DESC
+LIMIT 1;

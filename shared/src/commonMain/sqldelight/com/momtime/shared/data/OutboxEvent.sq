@@ -1,0 +1,26 @@
+CREATE TABLE outbox_event (
+    event_id TEXT NOT NULL PRIMARY KEY REFERENCES event(id),
+    enqueued_at INTEGER NOT NULL,
+    synced_at INTEGER
+);
+
+insertOutboxEvent:
+INSERT INTO outbox_event(event_id, enqueued_at, synced_at) VALUES (?, ?, NULL);
+
+markOutboxEventSynced:
+UPDATE outbox_event SET synced_at = ? WHERE event_id = ?;
+
+deleteOutboxEvent:
+DELETE FROM outbox_event WHERE event_id = ?;
+
+selectUnsyncedOutboxEvents:
+SELECT * FROM outbox_event WHERE synced_at IS NULL ORDER BY enqueued_at ASC;
+
+-- Purge target per ARCHITECTURE.md section 6.5: rows already synced, or whose parent
+-- event is past the retention boundary regardless of sync status (the server would
+-- discard a retry past its own watermark anyway).
+selectExpiredOutboxEvents:
+SELECT outbox_event.* FROM outbox_event
+JOIN event ON event.id = outbox_event.event_id
+WHERE outbox_event.synced_at IS NOT NULL
+   OR event.device_timestamp < :retentionBoundary;

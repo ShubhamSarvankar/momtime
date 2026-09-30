@@ -1,0 +1,70 @@
+CREATE TABLE schedule_template (
+    id TEXT NOT NULL PRIMARY KEY,
+    pregnancy_id TEXT NOT NULL REFERENCES pregnancy(id),
+    title TEXT NOT NULL,
+    notes TEXT,
+    task_type TEXT NOT NULL,
+    criticality TEXT NOT NULL,
+    time_of_day TEXT NOT NULL,
+    time_zone_id TEXT NOT NULL,
+    recurrence_type TEXT NOT NULL,
+    recurrence_days_of_week TEXT,
+    recurrence_n INTEGER,
+    recurrence_anchor_date TEXT,
+    mission_type TEXT NOT NULL DEFAULT 'NONE',
+    mission_barcode_payload TEXT,
+    mission_photo_reference_hash TEXT,
+    dosage TEXT,
+    doctor_instructions TEXT,
+    inventory_count INTEGER,
+    refill_threshold_days INTEGER,
+    active INTEGER NOT NULL DEFAULT 1,
+
+    CHECK (
+        (recurrence_type = 'DAILY'
+            AND recurrence_days_of_week IS NULL AND recurrence_n IS NULL AND recurrence_anchor_date IS NULL)
+        OR (recurrence_type = 'WEEKLY'
+            AND recurrence_days_of_week IS NOT NULL AND recurrence_n IS NULL AND recurrence_anchor_date IS NULL)
+        OR (recurrence_type = 'EVERY_N_DAYS'
+            AND recurrence_days_of_week IS NULL AND recurrence_n IS NOT NULL AND recurrence_anchor_date IS NOT NULL)
+    ),
+    CHECK (
+        (mission_type = 'NONE'
+            AND mission_barcode_payload IS NULL AND mission_photo_reference_hash IS NULL)
+        OR (mission_type = 'BARCODE'
+            AND mission_barcode_payload IS NOT NULL AND mission_photo_reference_hash IS NULL)
+        OR (mission_type = 'PHOTO_MATCH'
+            AND mission_barcode_payload IS NULL AND mission_photo_reference_hash IS NOT NULL)
+    )
+);
+
+CREATE INDEX schedule_template_pregnancy_idx ON schedule_template(pregnancy_id, active);
+
+CREATE TABLE schedule_template_nutrition_tag (
+    template_id TEXT NOT NULL REFERENCES schedule_template(id),
+    tag TEXT NOT NULL,
+    PRIMARY KEY (template_id, tag)
+);
+
+insertScheduleTemplate:
+INSERT INTO schedule_template(
+    id, pregnancy_id, title, notes, task_type, criticality, time_of_day, time_zone_id,
+    recurrence_type, recurrence_days_of_week, recurrence_n, recurrence_anchor_date,
+    mission_type, mission_barcode_payload, mission_photo_reference_hash,
+    dosage, doctor_instructions, inventory_count, refill_threshold_days, active
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateScheduleTemplateActive:
+UPDATE schedule_template SET active = ? WHERE id = ?;
+
+selectScheduleTemplateById:
+SELECT * FROM schedule_template WHERE id = ?;
+
+selectActiveScheduleTemplatesForPregnancy:
+SELECT * FROM schedule_template WHERE pregnancy_id = ? AND active = 1;
+
+insertScheduleTemplateNutritionTag:
+INSERT INTO schedule_template_nutrition_tag(template_id, tag) VALUES (?, ?);
+
+selectNutritionTagsForTemplate:
+SELECT tag FROM schedule_template_nutrition_tag WHERE template_id = ?;

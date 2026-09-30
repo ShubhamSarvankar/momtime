@@ -1,0 +1,14 @@
+CREATE TABLE sync_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    occurrences_synced_through INTEGER,
+    last_sync_at INTEGER
+);
+
+seedSyncState:
+INSERT OR IGNORE INTO sync_state(id, occurrences_synced_through, last_sync_at) VALUES (0, NULL, NULL);
+
+selectSyncState:
+SELECT * FROM sync_state WHERE id = 0;
+
+updateSyncState:
+UPDATE sync_state SET occurrences_synced_through = ?, last_sync_at = ? WHERE id = 0;

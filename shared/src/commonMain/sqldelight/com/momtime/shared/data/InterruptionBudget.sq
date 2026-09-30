@@ -1,0 +1,17 @@
+CREATE TABLE interruption_budget (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    budget_date TEXT NOT NULL,
+    ring_count INTEGER NOT NULL DEFAULT 0
+);
+
+seedInterruptionBudget:
+INSERT OR IGNORE INTO interruption_budget(id, budget_date, ring_count) VALUES (0, ?, 0);
+
+selectInterruptionBudget:
+SELECT * FROM interruption_budget WHERE id = 0;
+
+resetInterruptionBudget:
+UPDATE interruption_budget SET budget_date = ?, ring_count = 0 WHERE id = 0;
+
+incrementInterruptionBudget:
+UPDATE interruption_budget SET ring_count = ring_count + 1 WHERE id = 0;

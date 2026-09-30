@@ -1,0 +1,13 @@
+CREATE TABLE alarm_slot_counter (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    next_value INTEGER NOT NULL
+);
+
+seedAlarmSlotCounter:
+INSERT OR IGNORE INTO alarm_slot_counter(id, next_value) VALUES (0, 1);
+
+selectNextAlarmSlot:
+SELECT next_value FROM alarm_slot_counter WHERE id = 0;
+
+advanceAlarmSlotCounter:
+UPDATE alarm_slot_counter SET next_value = next_value + 1 WHERE id = 0;

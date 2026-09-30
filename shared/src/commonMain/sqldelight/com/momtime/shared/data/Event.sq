@@ -1,0 +1,50 @@
+CREATE TABLE event (
+    id TEXT NOT NULL PRIMARY KEY,
+    occurrence_id TEXT REFERENCES occurrence(id),
+    event_type TEXT NOT NULL,
+    device_timestamp INTEGER NOT NULL,
+    effective_at INTEGER,
+    source TEXT NOT NULL,
+    snooze_number INTEGER,
+    mission_result_type TEXT,
+    water_ml INTEGER,
+    weight_grams INTEGER,
+    caregiver_link_id TEXT,
+
+    CHECK (source IN ('USER', 'SYSTEM'))
+);
+
+CREATE INDEX event_occurrence_idx ON event(occurrence_id);
+CREATE INDEX event_type_timestamp_idx ON event(event_type, device_timestamp);
+
+insertEvent:
+INSERT INTO event(
+    id, occurrence_id, event_type, device_timestamp, effective_at, source,
+    snooze_number, mission_result_type, water_ml, weight_grams, caregiver_link_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteEventById:
+DELETE FROM event WHERE id = ?;
+
+selectEventsForOccurrence:
+SELECT * FROM event WHERE occurrence_id = ? ORDER BY device_timestamp ASC;
+
+selectEventsByType:
+SELECT * FROM event WHERE event_type = ?;
+
+selectEventsByOccurrenceAndType:
+SELECT * FROM event WHERE occurrence_id = ? AND event_type = ?;
+
+countEventsByOccurrenceAndType:
+SELECT COUNT(*) FROM event WHERE occurrence_id = ? AND event_type = ?;
+
+selectMissedEventsInRange:
+SELECT * FROM event
+WHERE event_type = 'MISSED' AND effective_at >= :from AND effective_at < :to;
+
+selectWeightEvents:
+SELECT * FROM event WHERE event_type = 'WEIGHT_LOGGED' ORDER BY device_timestamp DESC;
+
+selectWaterEventsInRange:
+SELECT * FROM event
+WHERE event_type = 'WATER_LOGGED' AND device_timestamp >= :from AND device_timestamp < :to;

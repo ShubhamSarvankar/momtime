@@ -19,3 +19,13 @@ Status: Accepted
 ## Consequences
 
 The watchdog's correctness-verification role (not just existence-verification) is the actual reason `alarmSlot` exists given single-alarm-at-a-time scheduling, and this ADR is where that reasoning is recorded so a future simplification pass doesn't remove it thinking it's redundant.
+
+## Narrowing note (2026-09-30)
+
+The Auto Backup file-exclusion mechanism described above and in the schema review that followed doesn't work as stated: Android excludes whole files from Auto Backup, not individual tables within one SQLite database file, so "alarm-state tables are excluded" was never mechanically achievable without a second database file this project doesn't otherwise need.
+
+Re-examined instead of worked around: the original collision concern (a restored/reset counter colliding with a `PendingIntent` the OS still holds) doesn't reproduce under closer scrutiny. `PendingIntent`s are OS-level state that Auto Backup never restores in the first place — only the SQLite rows describing what the app *believes* it armed come back. `Reconcile` (ADR 0030) treats a restored `alarm_slot` value as an identifier to verify against, not a claim about OS state, and repairs it exactly as it would repair any other missing alarm. No harmful scenario could be constructed.
+
+**Narrowed decision:** drop the file-exclusion mechanism for `occurrence` and `alarm_slot_counter`. They are backed up along with the rest of the database under ADR 0034's Auto Backup decision, with no special handling. The "Alternatives considered" entry above rejecting backup persistence on collision grounds is superseded by this note; the underlying `Int`, monotonic-per-install, watchdog-verification reasoning is unchanged.
+
+Separately: `ARCHITECTURE.md` §4.1's `EscalationRung` data class carries its own `slot: Int` field, which reads as *per-rung* slot allocation — inconsistent with this ADR's *per-occurrence* decision (one `alarmSlot` shared and re-armed across all rungs of that occurrence's ladder, since only one alarm is ever armed at a time regardless of which rung it represents). The per-occurrence reading is correct: reusing one request code per occurrence is what makes "re-arm the next rung" a natural replace-in-place rather than requiring explicit cancellation of a prior rung's distinct code. `EscalationRung.slot` is removed from the type; the engine reads `occurrence.alarmSlot` directly when arming. `ARCHITECTURE.md` §4.1 and §5.4 are corrected in the same commit as the Phase 1 schema.

@@ -132,13 +132,15 @@ The engine expands any of these into concrete instants. `EveryNDays` is supporte
 
 ### 3.5 Pregnancy and phase
 
-`PregnancyPhase` is `PRENATAL` or `POSTPARTUM`, present from the first schema version.
+`PregnancyPhase` is `PRENATAL` or `POSTPARTUM`, present from the first schema version, alongside a `phaseChangedAt` instant recording when the transition happened — a dated event she will want to see, not just a current-state flag.
 
 The pregnancy ends. Around week 40 the week counter runs out and the due date countdown goes negative. Postpartum medication and hydration reminders for a breastfeeding mother are plausibly a longer use window than the pregnancy itself, so this is a state transition, not an end of life.
 
 One user may have several pregnancy records over time. Adherence history, templates and occurrences are scoped by `pregnancyId`.
 
 Due date is the single source of truth for gestational week. Doctors revise due dates, so edits are appended with history rather than overwriting, otherwise the week number changing retroactively silently rewrites past dashboards.
+
+This means "the due date" is never a single value read without a point in time. The current view (today's gestational week, the countdown) reads the *latest* revision. A historical report or any past-dated view reads the revision *in effect at that date* — the latest revision recorded on or before the date being viewed, not the latest revision overall. The gestational-week function takes an explicit `asOf` instant; there is no overload that omits it, because omitting it is exactly the bug this table exists to prevent (a due date revised today silently rewriting the gestational week shown on last month's report).
 
 ### 3.6 Water
 
@@ -175,11 +177,13 @@ Derived, not stored. Reduce completed occurrences in a window, grouped by the `n
 The engine emits the full escalation ladder for an occurrence as an ordered list of instants and rung types. It does not schedule anything and does not take a callback.
 
 ```kotlin
-data class EscalationRung(val instant: Instant, val channel: Channel, val slot: Int)
+data class EscalationRung(val instant: Instant, val channel: Channel)
 enum class Channel { RING, RING_REPEAT, CAREGIVER_INFO, CAREGIVER_URGENT, PHONE_CALL }
 ```
 
 Android consumes only the head of the list, arming one alarm at a time. iOS will later pre schedule the whole list and cancel the tail on completion. Neither behaviour is encoded in the engine. `PHONE_CALL` exists in the enum from day one and is unimplemented in v1.
+
+`EscalationRung` carries no slot of its own — `alarmSlot` is per-occurrence (§5.4), not per-rung. One request code is shared and re-armed across every rung of a given occurrence's ladder; the platform reads `occurrence.alarmSlot` when it needs a request code, rather than the rung carrying one. See ADR 0031's narrowing note.
 
 ### 4.2 Policy
 
@@ -258,6 +262,8 @@ The watchdog is what converts a lost alarm into a late alarm instead of a silent
 ### 5.4 Request codes
 
 `PendingIntent` request codes derive from the `alarmSlot` monotonic integer column, never from a hash of ids. A hash collision here means one alarm silently cancels another, and it will not reproduce on a bench. This is explicitly covered by Robolectric tests.
+
+`alarmSlot` lives on `Occurrence`, one value per occurrence, not one per escalation rung. Every rung in that occurrence's ladder re-arms using the same request code as the ladder progresses, which is what makes "re-arm on each fire" (§5.3) a plain replace-in-place rather than requiring the platform to track and cancel a distinct code per rung.
 
 `alarmSlot` is `Int` (request codes are `Int`), monotonic per install from a counter row. There is no cross-install collision risk to design against: uninstall cancels the app's alarms outright, and `MY_PACKAGE_REPLACED` handling exists precisely to re-materialise and re-arm after an update, so a stale slot value never outlives the alarms it referred to. Alarm state tables and the slot counter are excluded from Android Auto Backup, so a restore onto a different device can't import slots that refer to nothing there. With only one alarm ever armed at a time (§5.3), a single fixed request code would technically be sufficient for correctness; the slot is kept anyway because it lets the watchdog verify the armed alarm is the *correct* one, not merely that *some* alarm exists. See ADR 31.
 

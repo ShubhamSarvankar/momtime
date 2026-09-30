@@ -1,0 +1,20 @@
+CREATE TABLE alarm_delivery_telemetry (
+    event_id TEXT NOT NULL PRIMARY KEY REFERENCES event(id),
+    alarm_slot INTEGER,
+    resolved_tier TEXT,
+    canary_scheduled_at INTEGER,
+    canary_actual_at INTEGER,
+    screen_on INTEGER,
+    audio_focus_obtained INTEGER,
+    battery_pct INTEGER,
+    doze_state TEXT
+);
+
+insertAlarmDeliveryTelemetry:
+INSERT INTO alarm_delivery_telemetry(
+    event_id, alarm_slot, resolved_tier, canary_scheduled_at, canary_actual_at,
+    screen_on, audio_focus_obtained, battery_pct, doze_state
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectTelemetryForEvent:
+SELECT * FROM alarm_delivery_telemetry WHERE event_id = ?;
