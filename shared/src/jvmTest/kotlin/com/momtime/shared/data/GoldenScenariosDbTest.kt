@@ -11,7 +11,6 @@ import com.momtime.shared.domain.PregnancyPhase
 import com.momtime.shared.domain.Recurrence
 import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.domain.TaskType
-import com.momtime.shared.engine.OccurrenceMaterialiser
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -108,20 +107,7 @@ class GoldenScenariosDbTest {
         template: ScheduleTemplate,
         windowStart: Instant,
         windowEnd: Instant,
-    ): List<Occurrence> {
-        val alreadyMaterialised = occurrenceRepo.datesAlreadyMaterialisedForTemplate(template.id)
-        val newOccurrences =
-            OccurrenceMaterialiser.materialise(
-                template = template,
-                windowStart = windowStart,
-                windowEnd = windowEnd,
-                alreadyMaterialisedDates = alreadyMaterialised,
-                generateId = { nextId("occ") },
-                allocateSlot = { occurrenceRepo.allocateNextAlarmSlot() },
-            )
-        newOccurrences.forEach { occurrenceRepo.insert(it) }
-        return newOccurrences
-    }
+    ): List<Occurrence> = occurrenceRepo.materialiseWindow(template, windowStart, windowEnd) { nextId("occ") }
 
     // Golden scenario 12 + required property: materialisation is idempotent under arbitrary
     // repetition, not just twice. Each step is a randomly chosen real operation: materialise
@@ -158,8 +144,8 @@ class GoldenScenariosDbTest {
                         val end = minOf(start + random.nextLong(1, 10 * 24L).hours, fullEnd)
                         val before = occurrenceRepo.datesAlreadyMaterialisedForTemplate(template.id)
                         val created = materialiseOnce(checkNotNull(templateRepo.findById(template.id)), start, end)
-                        // The insert is INSERT OR IGNORE, so the database would silently hide an
-                        // engine that re-issued a date. Assert on the engine's own output.
+                        // An engine that re-issued a date would also throw in the plain INSERT
+                        // (ADR 0036); asserting on its own output names the cause.
                         val reissued = created.filter { it.localDate in before }
                         assertEquals(emptyList(), reissued, "engine re-issued already-materialised dates, $context")
                     }

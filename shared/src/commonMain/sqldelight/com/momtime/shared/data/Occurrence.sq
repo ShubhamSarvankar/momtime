@@ -13,7 +13,7 @@ CREATE UNIQUE INDEX occurrence_alarm_slot_idx ON occurrence(alarm_slot);
 CREATE INDEX occurrence_state_scheduled_idx ON occurrence(state, scheduled_instant);
 
 insertOccurrence:
-INSERT OR IGNORE INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, alarm_slot)
+INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, alarm_slot)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 updateOccurrenceState:
