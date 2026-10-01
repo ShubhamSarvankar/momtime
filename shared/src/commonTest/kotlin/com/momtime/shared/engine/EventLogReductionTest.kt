@@ -69,4 +69,41 @@ class EventLogReductionTest {
         assertEquals(1, daysAllCompleted)
         assertEquals(0, daysOneMissed)
     }
+
+    // PENDING and SNOOZED are not final outcomes: neither is counted as completed, missed or
+    // skipped. A snoozed dose is still in progress.
+    @Test
+    fun `snoozed occurrences are excluded from all three adherence figures`() {
+        val figures =
+            EventLogReduction.adherenceFigures(
+                listOf(
+                    occ(OccurrenceState.SNOOZED),
+                    occ(OccurrenceState.SNOOZED),
+                    occ(OccurrenceState.COMPLETED),
+                    occ(OccurrenceState.MISSED),
+                    occ(OccurrenceState.SKIPPED),
+                ),
+            )
+        assertEquals(EventLogReduction.AdherenceFigures(completed = 1, missed = 1, skipped = 1), figures)
+        assertEquals(
+            EventLogReduction.AdherenceFigures(0, 0, 0),
+            EventLogReduction.adherenceFigures(listOf(occ(OccurrenceState.SNOOZED))),
+        )
+    }
+
+    // A date with no occurrences at all is absent from the map. It must neither throw nor count.
+    @Test
+    fun `a date with no occurrences does not count toward the 30-day metric`() {
+        val withData = LocalDate(2026, 1, 2)
+        val absent = LocalDate(2026, 1, 3)
+        val occurrencesByDate = mapOf(withData to listOf(occ(OccurrenceState.COMPLETED, withData)))
+        val days =
+            EventLogReduction.criticalCompletionDays(
+                occurrencesByDate = occurrencesByDate,
+                criticalityOf = { Criticality.CRITICAL },
+                windowDates = listOf(withData, absent),
+            )
+        assertEquals(1, days)
+        assertEquals(0, EventLogReduction.criticalCompletionDays(emptyMap(), { Criticality.CRITICAL }, listOf(absent)))
+    }
 }
