@@ -40,7 +40,11 @@ class SqlDelightAppSettingsRepository(
     }
 
     override fun updateQuietHours(quietHours: QuietHours?) {
-        database.appSettingsQueries.updateQuietHours(quietHours?.start?.toString(), quietHours?.end?.toString())
+        if (quietHours == null) {
+            database.appSettingsQueries.updateQuietHours(null, null)
+        } else {
+            database.appSettingsQueries.updateQuietHours(quietHours.start.toString(), quietHours.end.toString())
+        }
     }
 
     override fun updateRingGradeDailyBudget(budget: Int) {

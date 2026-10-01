@@ -127,4 +127,46 @@ class ReconcileTest {
             assertEquals(now, result.deviceTimestamp, "deviceTimestamp should track now, not effectiveAt")
         }
     }
+
+    private fun evaluate(
+        criticality: Criticality,
+        now: Instant,
+        state: OccurrenceState = OccurrenceState.PENDING,
+    ) = Reconcile.evaluate(
+        occurrence = occurrence(state),
+        criticality = criticality,
+        now = now,
+        hasTerminalEvent = false,
+        generateId = { "evt-1" },
+    )
+
+    // Every criticality has its own grace arm. Nothing one minute before expiry, MISSED exactly at
+    // expiry, with effectiveAt the expiry instant. scheduledInstant is 2023-11-15T03:43:20 IST, so
+    // the GENTLE expiry (the end of that local day) is 2023-11-16T00:00 IST = 2023-11-15T18:30Z.
+    @Test
+    fun `every criticality grace arm - nothing a minute before expiry, MISSED exactly at expiry`() {
+        val expiries =
+            mapOf(
+                Criticality.CRITICAL to scheduledInstant + 2.hours,
+                Criticality.STANDARD to scheduledInstant + 4.hours,
+                Criticality.GENTLE to Instant.parse("2023-11-15T18:30:00Z"),
+            )
+        for ((criticality, expiry) in expiries) {
+            assertNull(evaluate(criticality, expiry - 1.minutes), "$criticality one minute before expiry")
+            val event = checkNotNull(evaluate(criticality, expiry)) { "$criticality exactly at expiry" }
+            assertEquals(EventType.MISSED, event.eventType)
+            assertEquals(expiry, event.effectiveAt, "$criticality effectiveAt")
+        }
+    }
+
+    // A snoozed occurrence that outlives its grace window must still become MISSED. If SNOOZED were
+    // treated like a terminal state, a snoozed dose would never be marked missed.
+    @Test
+    fun `a SNOOZED occurrence past grace becomes MISSED, and is untouched before it`() {
+        val expiry = scheduledInstant + 2.hours
+        assertNull(evaluate(Criticality.CRITICAL, expiry - 1.minutes, OccurrenceState.SNOOZED))
+        val event = checkNotNull(evaluate(Criticality.CRITICAL, expiry + 5.minutes, OccurrenceState.SNOOZED))
+        assertEquals(EventType.MISSED, event.eventType)
+        assertEquals(expiry, event.effectiveAt)
+    }
 }

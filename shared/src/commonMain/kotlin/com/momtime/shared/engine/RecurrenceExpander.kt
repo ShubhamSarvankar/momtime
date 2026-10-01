@@ -17,7 +17,7 @@ object RecurrenceExpander {
         from: LocalDate,
         to: LocalDate,
     ): List<LocalDate> {
-        if (from >= to) return emptyList()
+        require(from <= to) { "recurrence window start must not be after its end" }
         val dates = mutableListOf<LocalDate>()
         var date = from
         while (date < to) {
