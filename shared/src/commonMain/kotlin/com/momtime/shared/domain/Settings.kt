@@ -10,9 +10,24 @@ data class WaterGoal(
     val nudgeTimesPerDay: Int,
 )
 
+/**
+ * A quiet-hours window, evaluated against the wall clock in the current zone (ADR 0032). Start and
+ * end must differ: equal times would be ambiguous between a full day and no window, and
+ * rejecting them at construction is the only reading that never guesses intent (ADR 0037). The
+ * window wraps midnight when start is later than end. "No quiet hours" is a null QuietHours,
+ * which also makes a half-set window unrepresentable.
+ */
+data class QuietHours(
+    val start: LocalTime,
+    val end: LocalTime,
+) {
+    init {
+        require(start != end) { "quiet hours start and end must differ" }
+    }
+}
+
 data class AppSettings(
-    val quietHoursStart: LocalTime?,
-    val quietHoursEnd: LocalTime?,
+    val quietHours: QuietHours?,
     val ringGradeDailyBudget: Int,
     val snoozeDurationMinutes: Int,
     val localeOverride: String?,
