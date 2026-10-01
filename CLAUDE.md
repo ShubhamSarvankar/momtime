@@ -123,6 +123,8 @@ You cannot verify without a device: real Doze cadence over hours, One UI Sleepin
 
 **Write the hard scenarios, not the easy ones.** The twelve golden scenarios in `IMPLEMENTATION_PLAN.md` Phase 1 are mandatory and named. Test the edges: terminal occurrence immutability under template edits, permission revocation mid schedule, snooze collisions, grace expiry while closed, backfill after confirmed miss, double materialisation, alarm slot collisions.
 
+**Every test that asserts an invariant must be mutation-checked.** Before relying on such a test, deliberately break the code it guards and confirm the test fails, then restore the code. A green test that cannot fail verifies nothing, and coverage numbers will not reveal it. This has already happened three times in this project, each caught only by asking whether the test could fail: the migration check that was a tautology because it regenerated its own baseline (ADR 0035); the scenario 12 property test whose interleaved edit was `setActive(true)`, a no-op; and the same test again, which stayed green with the engine's `filterNot` removed because `INSERT OR IGNORE` silently absorbed the duplicate. State in the PR which mutation was tried. This applies with most force to the alarm adapter: a mocked `AlarmManager` will let a test pass against a scheduler that never schedules, so each Robolectric test must fail when the scheduling call it claims to cover is removed.
+
 Coverage targets: `shared` above 90% line coverage. Server above 85%. The alarm adapter is measured by scenario coverage against the Robolectric list, not by percentage.
 
 ---
