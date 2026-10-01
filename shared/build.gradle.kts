@@ -1,5 +1,6 @@
 import org.gradle.api.GradleException
 import java.io.File
+import java.util.Locale
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -62,6 +63,35 @@ detekt {
 // snapshot is a deliberate, manual, reviewed step for when a schema version is intentionally
 // finalised — see docs/adr/0035 — never an automatic build side effect.
 
+// Classes excluded from coverage. Each pattern must match at least one compiled class: the gate
+// (verifyBranchCoverage) fails if one matches nothing, so a misspelt or renamed exclusion cannot
+// pass silently. See ADR 0038 and ADR 0039.
+val coverageExcludedClasses =
+    listOf(
+        "com.momtime.shared.data.MomTimeDatabase",
+        // SQLDelight puts its generated implementation in the sub-package data.shared
+        // (Schema.create / Schema.migrate and the query wiring). Nothing hand-written
+        // lives there. An earlier exclusion named it under the wrong package and never
+        // matched. See ADR 0038.
+        "com.momtime.shared.data.shared.*",
+        "com.momtime.shared.data.Pregnancy",
+        "com.momtime.shared.data.Due_date_revision",
+        "com.momtime.shared.data.Schedule_template",
+        "com.momtime.shared.data.Schedule_template_nutrition_tag",
+        "com.momtime.shared.data.Alarm_slot_counter",
+        "com.momtime.shared.data.Occurrence",
+        "com.momtime.shared.data.Event",
+        "com.momtime.shared.data.Alarm_delivery_telemetry",
+        "com.momtime.shared.data.Water_goal",
+        "com.momtime.shared.data.Caregiver_link",
+        "com.momtime.shared.data.App_settings",
+        "com.momtime.shared.data.Interruption_budget",
+        "com.momtime.shared.data.Outbox_event",
+        "com.momtime.shared.data.Sync_state",
+        "com.momtime.shared.data.Content",
+        "com.momtime.shared.data.*Queries*",
+    )
+
 kover {
     reports {
         filters {
@@ -70,30 +100,7 @@ kover {
                 // measuring them would misrepresent what invariant coverage actually verifies.
                 // Named precisely (not by wildcard on the whole package) so a hand-written class
                 // added to com.momtime.shared.data later isn't silently excluded by accident.
-                classes(
-                    "com.momtime.shared.data.MomTimeDatabase",
-                    // SQLDelight puts its generated implementation in the sub-package data.shared
-                    // (Schema.create / Schema.migrate and the query wiring). Nothing hand-written
-                    // lives there. An earlier exclusion named it under the wrong package and never
-                    // matched. See ADR 0038.
-                    "com.momtime.shared.data.shared.*",
-                    "com.momtime.shared.data.Pregnancy",
-                    "com.momtime.shared.data.Due_date_revision",
-                    "com.momtime.shared.data.Schedule_template",
-                    "com.momtime.shared.data.Schedule_template_nutrition_tag",
-                    "com.momtime.shared.data.Alarm_slot_counter",
-                    "com.momtime.shared.data.Occurrence",
-                    "com.momtime.shared.data.Event",
-                    "com.momtime.shared.data.Alarm_delivery_telemetry",
-                    "com.momtime.shared.data.Water_goal",
-                    "com.momtime.shared.data.Caregiver_link",
-                    "com.momtime.shared.data.App_settings",
-                    "com.momtime.shared.data.Interruption_budget",
-                    "com.momtime.shared.data.Outbox_event",
-                    "com.momtime.shared.data.Sync_state",
-                    "com.momtime.shared.data.Content",
-                    "com.momtime.shared.data.*Queries*",
-                )
+                classes(*coverageExcludedClasses.toTypedArray())
             }
         }
         verify {
@@ -259,10 +266,15 @@ val selfTestVerifyNoClockSystem =
         }
     }
 
-// --- Branch coverage gate (ADR 0038). ---
+// --- Branch coverage gate (ADR 0038, made fail-closed by ADR 0039). ---
 // Kover 0.9 cannot attach a filter to a verification rule, so per-package branch thresholds are
 // checked from Kover's own XML report by this task. Coverage is the floor, not the evidence: the
 // mutation checks recorded in each PR are the evidence.
+//
+// A check that is configured but silently applies to nothing is the failure to design against (the
+// generated-code exclusion once named the wrong package and matched nothing for all of Phase 1). So
+// the gate fails closed: it fails if the report is missing, if a gated package is absent from the
+// report or has no branches, and if any exclusion pattern matches no compiled class.
 val branchCoverageThresholds =
     mapOf(
         "com/momtime/shared/engine" to 95,
@@ -270,52 +282,119 @@ val branchCoverageThresholds =
         "com/momtime/shared/data" to 85,
     )
 
-fun branchCoverageShortfalls(
-    report: File,
-    thresholds: Map<String, Int>,
-): List<String> {
+data class BranchFigure(
+    val covered: Int,
+    val missed: Int,
+) {
+    val total get() = covered + missed
+    val percent get() = if (total == 0) 0.0 else 100.0 * covered / total
+
+    fun meets(threshold: Int) = total > 0 && covered * 100 >= threshold * total
+
+    override fun toString() = "$covered/$total (" + "%.1f".format(Locale.ROOT, percent) + "%)"
+}
+
+/** The package-level BRANCH counter of every package in a JaCoCo-style XML report. */
+fun branchFigures(report: File): Map<String, BranchFigure> {
     val factory =
         javax.xml.parsers.DocumentBuilderFactory
             .newInstance()
-    // The JaCoCo-style report names an external DTD; do not try to fetch it.
+    // The report names an external DTD; do not try to fetch it.
     factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
     val doc = factory.newDocumentBuilder().parse(report)
-    val shortfalls = mutableListOf<String>()
+    val figures = mutableMapOf<String, BranchFigure>()
     val packages = doc.getElementsByTagName("package")
-    val found = mutableSetOf<String>()
     for (i in 0 until packages.length) {
         val pkg = packages.item(i) as org.w3c.dom.Element
-        val name = pkg.getAttribute("name")
-        val threshold = thresholds[name] ?: continue
-        found += name
-        val counters = pkg.childNodes
-        for (j in 0 until counters.length) {
-            val node = counters.item(j)
+        // Only the package's own counters. Its classes and source files carry counters of their own.
+        val children = pkg.childNodes
+        for (j in 0 until children.length) {
+            val node = children.item(j)
             if (node is org.w3c.dom.Element && node.tagName == "counter" && node.getAttribute("type") == "BRANCH") {
-                val covered = node.getAttribute("covered").toInt()
-                val total = covered + node.getAttribute("missed").toInt()
-                val percent = if (total == 0) 100.0 else 100.0 * covered / total
-                if (percent < threshold) {
-                    shortfalls +=
-                        "$name: branch coverage $covered/$total (%.1f%%) is below %d%%".format(percent, threshold)
-                }
+                figures[pkg.getAttribute("name")] =
+                    BranchFigure(node.getAttribute("covered").toInt(), node.getAttribute("missed").toInt())
             }
         }
     }
-    (thresholds.keys - found).forEach { shortfalls += "$it: package not found in the coverage report" }
-    return shortfalls
+    return figures
 }
+
+fun branchCoverageProblems(
+    report: File,
+    thresholds: Map<String, Int>,
+): List<String> {
+    if (!report.isFile) return listOf("coverage report is missing: ${report.path}")
+    val figures = branchFigures(report)
+    val problems = mutableListOf<String>()
+    for ((pkg, threshold) in thresholds) {
+        val figure = figures[pkg]
+        when {
+            figure == null -> problems += "$pkg: gated package is absent from the coverage report"
+            figure.total == 0 -> problems += "$pkg: gated package has no branches in the coverage report"
+            !figure.meets(threshold) -> problems += "$pkg: branch coverage $figure is below $threshold%"
+        }
+    }
+    return problems
+}
+
+/** Kover class patterns: `*` matches any characters, `?` one character, otherwise an exact name. */
+fun patternToRegex(pattern: String) =
+    Regex(
+        pattern
+            .map { c ->
+                if (c ==
+                    '*'
+                ) {
+                    ".*"
+                } else if (c == '?') {
+                    "."
+                } else {
+                    Regex.escape(c.toString())
+                }
+            }.joinToString(""),
+    )
+
+fun exclusionsMatchingNothing(
+    patterns: List<String>,
+    classNames: Collection<String>,
+): List<String> = patterns.filter { pattern -> classNames.none { patternToRegex(pattern).matches(it) } }
+
+fun compiledClassNames(classesDir: File): List<String> =
+    classesDir
+        .walkTopDown()
+        .filter { it.isFile && it.extension == "class" }
+        .map {
+            it
+                .relativeTo(classesDir)
+                .path
+                .removeSuffix(".class")
+                .replace(File.separatorChar, '.')
+        }.toList()
 
 val verifyBranchCoverage =
     tasks.register("verifyBranchCoverage") {
         group = "verification"
-        description = "Fails the build if per-package branch coverage is below its threshold (ADR 0038)"
-        dependsOn("koverXmlReport")
+        description = "Fails the build if branch coverage is below threshold, or the gate cannot be trusted (ADR 0039)"
+        dependsOn("koverXmlReport", "compileKotlinJvm")
         val report = layout.buildDirectory.file("reports/kover/report.xml")
+        val classesDir = layout.buildDirectory.dir("classes/kotlin/jvm/main")
         doLast {
-            val shortfalls = branchCoverageShortfalls(report.get().asFile, branchCoverageThresholds)
-            if (shortfalls.isNotEmpty()) {
-                throw GradleException("Branch coverage gate failed (ADR 0038):\n" + shortfalls.joinToString("\n"))
+            val problems = mutableListOf<String>()
+            problems += branchCoverageProblems(report.get().asFile, branchCoverageThresholds)
+            val dir = classesDir.get().asFile
+            if (!dir.isDirectory) {
+                problems += "compiled classes directory is missing, so exclusions cannot be checked: ${dir.path}"
+            } else {
+                exclusionsMatchingNothing(coverageExcludedClasses, compiledClassNames(dir)).forEach {
+                    problems += "coverage exclusion matches no compiled class: $it"
+                }
+            }
+            if (problems.isEmpty()) {
+                branchFigures(report.get().asFile).filterKeys { it in branchCoverageThresholds }.forEach { (pkg, fig) ->
+                    logger.lifecycle("branch coverage $pkg: $fig (gate ${branchCoverageThresholds.getValue(pkg)}%)")
+                }
+            } else {
+                throw GradleException("Branch coverage gate failed (ADR 0039):\n" + problems.joinToString("\n"))
             }
         }
     }
@@ -323,7 +402,7 @@ val verifyBranchCoverage =
 val selfTestVerifyBranchCoverage =
     tasks.register("selfTestVerifyBranchCoverage") {
         group = "verification"
-        description = "Proves the branch coverage gate fails a package below its threshold and passes one above it"
+        description = "Proves the gate computes the right figures from known counters and fails closed"
         doLast {
             val dir =
                 layout.buildDirectory
@@ -332,25 +411,87 @@ val selfTestVerifyBranchCoverage =
                     .asFile
             dir.deleteRecursively()
             dir.mkdirs()
+            // Package p: 47/50 branches, with LINE counters and nested class and source-file counters
+            // that must NOT be read as the package's figure. Package z has no branches at all.
+            val report =
+                File(dir, "report.xml").also {
+                    it.writeText(
+                        "<report name=\"x\">" +
+                            "<package name=\"p\">" +
+                            "<class name=\"p/A\"><counter type=\"BRANCH\" missed=\"1\" covered=\"1\"/></class>" +
+                            "<sourcefile name=\"A.kt\">" +
+                            "<counter type=\"BRANCH\" missed=\"2\" covered=\"2\"/></sourcefile>" +
+                            "<counter type=\"LINE\" missed=\"10\" covered=\"90\"/>" +
+                            "<counter type=\"BRANCH\" missed=\"3\" covered=\"47\"/>" +
+                            "</package>" +
+                            "<package name=\"z\"><counter type=\"BRANCH\" missed=\"0\" covered=\"0\"/></package>" +
+                            "<package name=\"q\">" +
+                            "<counter type=\"BRANCH\" missed=\"1\" covered=\"9\"/>" +
+                            "<class name=\"q/B\"><counter type=\"BRANCH\" missed=\"5\" covered=\"0\"/></class>" +
+                            "</package>" +
+                            "</report>",
+                    )
+                }
+            val failures = mutableListOf<String>()
 
-            fun fixture(
-                covered: Int,
-                missed: Int,
-            ) = File(dir, "report-$covered-$missed.xml").also {
-                it.writeText(
-                    "<report name=\"x\"><package name=\"p\">" +
-                        "<counter type=\"BRANCH\" missed=\"$missed\" covered=\"$covered\"/>" +
-                        "</package></report>",
-                )
+            fun expect(
+                what: String,
+                actual: Any?,
+                expected: Any?,
+            ) {
+                if (actual != expected) failures += "$what: expected <$expected> but was <$actual>"
             }
-            val below = branchCoverageShortfalls(fixture(94, 6), mapOf("p" to 95))
-            val atThreshold = branchCoverageShortfalls(fixture(95, 5), mapOf("p" to 95))
-            val missing = branchCoverageShortfalls(fixture(1, 0), mapOf("absent" to 95))
+
+            // 1. The computed figures, not just a pass or fail.
+            val figures = branchFigures(report)
+            expect("package p figure", figures["p"], BranchFigure(covered = 47, missed = 3))
+            expect("package p total", figures.getValue("p").total, 50)
+            expect("package p percent", "%.1f".format(Locale.ROOT, figures.getValue("p").percent), "94.0")
+            expect("package p rendering", figures.getValue("p").toString(), "47/50 (94.0%)")
+            expect("package z figure", figures["z"], BranchFigure(0, 0))
+            // Package q lists its own counter BEFORE a nested class counter: the package figure is 9/10
+            // whichever order the counters appear in.
+            expect("package q figure", figures["q"], BranchFigure(covered = 9, missed = 1))
+
+            // 2. Thresholds, including exactly at the threshold.
+            expect("94 is met by 47/50", branchCoverageProblems(report, mapOf("p" to 94)), emptyList<String>())
+            expect(
+                "95 is not met by 47/50",
+                branchCoverageProblems(report, mapOf("p" to 95)),
+                listOf("p: branch coverage 47/50 (94.0%) is below 95%"),
+            )
+
+            // 3. Fail closed.
+            expect(
+                "missing report",
+                branchCoverageProblems(File(dir, "nope.xml"), mapOf("p" to 85)),
+                listOf("coverage report is missing: ${File(dir, "nope.xml").path}"),
+            )
+            expect(
+                "absent package",
+                branchCoverageProblems(report, mapOf("renamed" to 85)),
+                listOf("renamed: gated package is absent from the coverage report"),
+            )
+            expect(
+                "package with no branches",
+                branchCoverageProblems(report, mapOf("z" to 85)),
+                listOf("z: gated package has no branches in the coverage report"),
+            )
+
+            // 4. Exclusion patterns that match nothing.
+            val classes = listOf("a.b.Foo", "a.b.FooQueries", "a.b.Bar", "a.b.Outer\$Inner")
+            expect(
+                "unmatched exclusions",
+                exclusionsMatchingNothing(
+                    listOf("a.b.Foo", "a.b.*Queries*", "a.b.Outer\$*", "x.y.Gone", "a.b.Fo"),
+                    classes,
+                ),
+                listOf("x.y.Gone", "a.b.Fo"),
+            )
+
             dir.deleteRecursively()
-            if (below.size != 1 || atThreshold.isNotEmpty() || missing.size != 1) {
-                throw GradleException(
-                    "verifyBranchCoverage self-test failed: below=$below atThreshold=$atThreshold missing=$missing",
-                )
+            if (failures.isNotEmpty()) {
+                throw GradleException("verifyBranchCoverage self-test failed:\n" + failures.joinToString("\n"))
             }
             logger.lifecycle("verifyBranchCoverage self-test passed.")
         }

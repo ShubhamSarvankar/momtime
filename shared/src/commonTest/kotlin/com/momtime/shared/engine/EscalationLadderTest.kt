@@ -4,6 +4,8 @@ import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.Criticality
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -39,14 +41,29 @@ class EscalationLadderTest {
         assertEquals(listOf(Channel.RING to t0), ladder.map { it.channel to it.instant })
     }
 
-    // Golden scenario 3 (shared-testable slice): DeliveryCapability is a platform concept that
-    // must never leak into the domain ladder (invariant 5). A tier downgrade mid-schedule
-    // changes which platform mechanism realises a rung; it must never change the ladder itself.
+    // Golden scenario 3's shared slice (no DeliveryCapability anywhere in the engine) is
+    // CapabilityBoundaryTest in jvmTest.
+
+    // Golden scenario 14, the part whose subject is shared code. The ladder is a pure function of
+    // (scheduledInstant, criticality) that emits absolute instants, so a device clock moved backward
+    // cannot change an already-computed ladder, and no rung can come out before the one it follows
+    // (a negative delay). The AlarmManager arming arithmetic is Android and is a Phase 2 exit
+    // criterion. Translation invariance is what shows there is no hidden clock input: shifting the
+    // scheduled instant shifts every rung by exactly the same amount.
     @Test
-    fun `ladder generation takes no DeliveryCapability parameter at all`() {
-        // There is no tier argument to pass — this test exists to make that architectural fact
-        // explicit and regression-proof, not just to assert output equality.
-        val ladder = EscalationLadder.forOccurrence(t0, Criticality.CRITICAL)
-        assertEquals(4, ladder.size)
+    fun `rungs are ordered, never before the scheduled instant, and shift exactly with it`() {
+        val shift = 7.days
+        for (criticality in Criticality.entries) {
+            val ladder = EscalationLadder.forOccurrence(t0, criticality)
+            assertEquals(t0, ladder.first().instant, "$criticality first rung")
+            ladder.zipWithNext().forEach { (earlier, later) ->
+                assertTrue(later.instant >= earlier.instant, "$criticality rung order")
+            }
+            assertTrue(ladder.all { it.instant >= t0 }, "$criticality rung before the scheduled instant")
+
+            val shifted = EscalationLadder.forOccurrence(t0 + shift, criticality)
+            assertEquals(ladder.map { it.channel }, shifted.map { it.channel }, "$criticality channels")
+            assertEquals(ladder.map { it.instant + shift }, shifted.map { it.instant }, "$criticality shift")
+        }
     }
 }

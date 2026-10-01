@@ -64,7 +64,7 @@ Nothing else begins until this is done.
 
 The correctness core. Entirely JVM verifiable. Expect this to be the largest test suite in the project.
 
-**Status: all Phase 1 deliverables are done. The exit criterion "all nineteen golden scenarios pass" is met for 16 of 19; the other three (7, 14, 17) are deferred, with owner and reason, under "Deferred tests" in `MANUAL_CHECKS.md`, and scenario 3 is only partly tested here.** Everything else in the exit criteria is met, and the phase is not described as complete past that. The 16 scenarios tested here are named tests; the two required properties (adherence invariant to reconciliation timing; materialisation idempotent under repetition) are randomised property tests with fixed seeds. The `Clock.System` ban (invariant 8) is a mechanical Gradle check, not a property test. The migration harness is proven (ADR 0035), now with a real v1 to v2 migration and a forward migration test (ADR 0037). No `android.*` under `shared`. Coverage: line coverage 97.5% (616/632) and branch coverage 97.6% (166/170) over `shared`, with per-package branch gates in CI at engine 95% (72/72), domain 85% (8/8) and data 85% (86/90), checked by `verifyBranchCoverage` (ADR 0038). An earlier line figure of 95.1% was measured with SQLDelight generated code wrongly included, because its exclusion named the wrong package. Coverage is the floor; the mutation checks recorded in the Phase 1 hardening PRs (#6, #7 and the coverage PR) are the evidence.
+**Status: all Phase 1 deliverables are done. The exit criterion "all nineteen golden scenarios pass" is met for 16 of 19; the other three (7, 14, 17) are deferred, with owner and reason, under "Deferred tests" in `MANUAL_CHECKS.md`, and scenario 3 is only partly tested here.** Everything else in the exit criteria is met, and the phase is not described as complete past that. The 16 scenarios tested here are named tests; the two required properties (adherence invariant to reconciliation timing; materialisation idempotent under repetition) are randomised property tests with fixed seeds. The `Clock.System` ban (invariant 8) is a mechanical Gradle check, not a property test. The migration harness is proven (ADR 0035), now with a real v1 to v2 migration and a forward migration test (ADR 0037). No `android.*` under `shared`. Coverage: line coverage 97.5% (616/632) and branch coverage 98.2% (167/170) over `shared` (measured at `ec02826`), with per-package branch gates in CI at engine 95% (72/72), domain 85% (8/8) and data 85% (87/90), checked by `verifyBranchCoverage`, which fails closed (ADR 0038, ADR 0039). The three uncovered data branches are the unreachable state of exactly one quiet-hours bound set. An earlier line figure of 95.1% was measured with SQLDelight generated code wrongly included, because its exclusion named the wrong package. Coverage is the floor; the mutation checks recorded in the Phase 1 hardening PRs (#6, #7 and the coverage PR) are the evidence.
 
 **Deliverables**
 
@@ -108,6 +108,8 @@ Seven additional scenarios, added during Phase 0 planning review because they su
 
 **Exit criteria.** All nineteen golden scenarios pass. Migration test passes from v1 to v1 (trivially) and the harness is proven by adding and reverting a throwaway migration. The migration test is wired into the CI workflow as its own job during this phase — not deferred again, per the Open Items entry above. No `android.*` anywhere in `shared`.
 
+**Outcome.** 16 of 19 golden scenarios are tested in `shared`. The other three, 7, 14 and 17, and the Android half of scenario 3, need a component outside `shared`. Each is a named exit criterion of the phase that owns it: scenarios 3, 14 and 17 in Phase 2, scenario 7 in Phase 4, so none can disappear from a table. The part of each whose subject is shared code is tested now; the table in `MANUAL_CHECKS.md` names the component each one needs and the tests for its shared part. The migration criterion is met with a real v1 to v2 migration (ADR 0037) and a forward migration test, the `migration-test` CI job is green, and there is no `android.*` under `shared`.
+
 ---
 
 ## Phase 2: Android alarm subsystem
@@ -148,7 +150,7 @@ The critical path. Built and verified on the JVM via Robolectric. Device verific
 - Tier resolution for each permission combination.
 - Acknowledge, snooze and skip from the ring screen each write the correct event and nothing else.
 
-**Exit criteria.** Full Robolectric suite green. Every deferred test assigned to this phase in `MANUAL_CHECKS.md` is implemented. `MANUAL_CHECKS.md` updated with what remains unverifiable and why. **Claude Code does not mark this phase complete in any human facing sense; it is complete when Phase 7 device checks pass.**
+**Exit criteria.** Full Robolectric suite green. Every deferred test assigned to this phase in `MANUAL_CHECKS.md` is implemented, and these are named so none can be dropped quietly: golden scenario 3 (exact alarm permission revoked mid schedule: tier downgrade and ladder adjustment); golden scenario 14 (device clock set backward while a ladder is armed: no already-fired rung re-fires and the next rung never gets a negative delay); golden scenario 17 (the watchdog finds the correct alarm already armed: a no-op pass that emits no `WATCHDOG_REPAIR`); and the materialisation race scenario of `MaterialiseAtomicityTest` run against `AndroidSqliteDriver` under Robolectric, showing the contending run waits for the lock rather than being refused (ADR 0036; until this passes nothing may claim the race is verified to serialise). `MANUAL_CHECKS.md` updated with what remains unverifiable and why. **Claude Code does not mark this phase complete in any human facing sense; it is complete when Phase 7 device checks pass.**
 
 ---
 
@@ -208,7 +210,7 @@ Fully JVM verifiable.
 - Device clock skew in both directions.
 - Retention job boundary behaviour at exactly 90 days.
 
-**Exit criteria.** Full server suite green. Every deferred test assigned to this phase in `MANUAL_CHECKS.md` is implemented. `terraform apply` from a bare GCP project produces a working environment. Deploy pipeline runs keylessly.
+**Exit criteria.** Full server suite green. Every deferred test assigned to this phase in `MANUAL_CHECKS.md` is implemented, including golden scenario 7 by name (a caregiver revocation arriving mid sweep). `terraform apply` from a bare GCP project produces a working environment. Deploy pipeline runs keylessly.
 
 ---
 

@@ -68,6 +68,32 @@ class RemainingRepositoriesTest {
         assertEquals(0L, repo.count())
     }
 
+    // Golden scenario 7, the part whose subject is shared code: revoking one link removes exactly
+    // that link and nothing else. The sweep it races with is server-side (Phase 4 exit criterion).
+    @Test
+    fun `revoking one caregiver link deletes only that link`() {
+        val repo = SqlDelightCaregiverLinkRepository(database)
+
+        fun link(id: String) =
+            CaregiverLink(
+                id = id,
+                displayName = id,
+                invitedAt = Instant.fromEpochMilliseconds(0),
+                scopeWeightVisible = false,
+                scopeNotesVisible = false,
+                scopeDoctorInstructionsVisible = false,
+                notificationPolicy = NotificationPolicy.PER_EVENT_CRITICAL,
+                pausedUntil = null,
+            )
+        repo.insert(link("link-1"))
+        repo.insert(link("link-2"))
+
+        repo.deleteById("link-1")
+
+        assertEquals(listOf("link-2"), repo.findAll().map { it.id })
+        assertEquals(1L, repo.count())
+    }
+
     @Test
     fun `water goal upserts rather than duplicating`() {
         val pregnancyRepo = SqlDelightPregnancyRepository(database)

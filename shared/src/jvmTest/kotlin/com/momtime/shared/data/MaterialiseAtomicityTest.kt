@@ -109,18 +109,29 @@ class MaterialiseAtomicityTest {
 
     // Golden scenario 12's real-world form: the daily worker and an edit-triggered run overlap.
     //
-    // Worker A reads the existing dates, then is paused (inside generateId, which the engine
-    // calls after the read and before the insert). While A is paused, worker B, on its own
-    // connection, tries to materialise the same window. A is then released. The interleaving is
-    // forced by latches, not by timing.
+    // WHAT THIS PROVES, AND WHAT IT DOES NOT. On this driver (the JDBC file driver, which begins
+    // DEFERRED transactions) the transaction does NOT make the second writer wait: it is refused
+    // with SQLITE_BUSY. So this test proves clean failure under contention: the run that holds the
+    // lock completes with all of its dates, the contending run either fails with SQLITE_BUSY or
+    // succeeds, and the table never ends with a duplicate date, a duplicate alarmSlot or a partial
+    // batch. It does NOT prove that the race resolves by serialisation. Nothing may claim that until
+    // the same scenario is run against AndroidSqliteDriver, which is a Phase 2 exit criterion
+    // (ADR 0036, IMPLEMENTATION_PLAN.md).
     //
-    // With the read and the inserts in one transaction, A holds its read lock across the pause, so
-    // B cannot commit underneath it: B fails with SQLITE_BUSY (this JDBC driver begins DEFERRED
-    // transactions, so it fails B rather than blocking it) and A completes. Without the
-    // transaction, B commits all ten dates while A is paused, and A then inserts the same dates
-    // and throws a UNIQUE violation, losing its batch.
+    // How the interleaving is forced: worker A reads the existing dates, then pauses inside the
+    // generateId callback. That callback is a parameter of materialiseWindow that already exists (the
+    // engine calls it after the read and before the insert, and production uses it to mint ids); the
+    // pause is test code, and no hook was added to production code. While A is paused, worker B, on
+    // its own connection, tries to materialise the same window. A is then released. Latches force the
+    // order, and the busy timeout is zero, so the outcome does not depend on timing.
+    //
+    // Asserted on unmutated code: A's run succeeds; B's run either succeeds or fails with a message
+    // containing BUSY (and nothing else); the table ends with exactly ten rows, ten distinct dates
+    // and ten distinct alarmSlots. Observed here: B fails with SQLITE_BUSY every run. Mutation:
+    // removing the transaction fails this test every run (B commits all ten dates while A is paused,
+    // then A inserts the same dates and throws a UNIQUE violation).
     @Test
-    fun `overlapping materialisation runs never duplicate and the paused run completes`() {
+    fun `a contending run fails cleanly under a deferred JDBC driver and the lock holder completes`() {
         val paused = CountDownLatch(1)
         val resume = CountDownLatch(1)
         val aResult = AtomicReference<Result<List<Occurrence>>>()
