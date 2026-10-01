@@ -11,6 +11,7 @@ import com.momtime.shared.domain.InterruptionBudget
 import com.momtime.shared.domain.NotificationPolicy
 import com.momtime.shared.domain.Pregnancy
 import com.momtime.shared.domain.PregnancyPhase
+import com.momtime.shared.domain.QuietHours
 import com.momtime.shared.domain.SyncState
 import com.momtime.shared.domain.WaterGoal
 import kotlinx.datetime.LocalDate
@@ -93,18 +94,17 @@ class RemainingRepositoriesTest {
         val defaults = repo.current()
         assertEquals(12, defaults.ringGradeDailyBudget)
         assertEquals(10, defaults.snoozeDurationMinutes)
-        assertNull(defaults.quietHoursStart)
+        assertNull(defaults.quietHours)
         assertEquals(false, defaults.telemetryOptIn)
 
-        repo.updateQuietHours(LocalTime(22, 0), LocalTime(6, 0))
+        repo.updateQuietHours(QuietHours(LocalTime(22, 0), LocalTime(6, 0)))
         repo.updateRingGradeDailyBudget(8)
         repo.updateSnoozeDurationMinutes(15)
         repo.updateLocaleOverride("hi")
         repo.updateTelemetryOptIn(true)
 
         val updated = repo.current()
-        assertEquals(LocalTime(22, 0), updated.quietHoursStart)
-        assertEquals(LocalTime(6, 0), updated.quietHoursEnd)
+        assertEquals(QuietHours(LocalTime(22, 0), LocalTime(6, 0)), updated.quietHours)
         assertEquals(8, updated.ringGradeDailyBudget)
         assertEquals(15, updated.snoozeDurationMinutes)
         assertEquals("hi", updated.localeOverride)

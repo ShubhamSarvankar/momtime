@@ -72,7 +72,11 @@ kover {
                 // added to com.momtime.shared.data later isn't silently excluded by accident.
                 classes(
                     "com.momtime.shared.data.MomTimeDatabase",
-                    "com.momtime.shared.data.MomTimeDatabaseImpl",
+                    // SQLDelight puts its generated implementation in the sub-package data.shared
+                    // (Schema.create / Schema.migrate and the query wiring). Nothing hand-written
+                    // lives there. An earlier exclusion named it under the wrong package and never
+                    // matched. See ADR 0038.
+                    "com.momtime.shared.data.shared.*",
                     "com.momtime.shared.data.Pregnancy",
                     "com.momtime.shared.data.Due_date_revision",
                     "com.momtime.shared.data.Schedule_template",
@@ -255,6 +259,103 @@ val selfTestVerifyNoClockSystem =
         }
     }
 
+// --- Branch coverage gate (ADR 0038). ---
+// Kover 0.9 cannot attach a filter to a verification rule, so per-package branch thresholds are
+// checked from Kover's own XML report by this task. Coverage is the floor, not the evidence: the
+// mutation checks recorded in each PR are the evidence.
+val branchCoverageThresholds =
+    mapOf(
+        "com/momtime/shared/engine" to 95,
+        "com/momtime/shared/domain" to 85,
+        "com/momtime/shared/data" to 85,
+    )
+
+fun branchCoverageShortfalls(
+    report: File,
+    thresholds: Map<String, Int>,
+): List<String> {
+    val factory =
+        javax.xml.parsers.DocumentBuilderFactory
+            .newInstance()
+    // The JaCoCo-style report names an external DTD; do not try to fetch it.
+    factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+    val doc = factory.newDocumentBuilder().parse(report)
+    val shortfalls = mutableListOf<String>()
+    val packages = doc.getElementsByTagName("package")
+    val found = mutableSetOf<String>()
+    for (i in 0 until packages.length) {
+        val pkg = packages.item(i) as org.w3c.dom.Element
+        val name = pkg.getAttribute("name")
+        val threshold = thresholds[name] ?: continue
+        found += name
+        val counters = pkg.childNodes
+        for (j in 0 until counters.length) {
+            val node = counters.item(j)
+            if (node is org.w3c.dom.Element && node.tagName == "counter" && node.getAttribute("type") == "BRANCH") {
+                val covered = node.getAttribute("covered").toInt()
+                val total = covered + node.getAttribute("missed").toInt()
+                val percent = if (total == 0) 100.0 else 100.0 * covered / total
+                if (percent < threshold) {
+                    shortfalls +=
+                        "$name: branch coverage $covered/$total (%.1f%%) is below %d%%".format(percent, threshold)
+                }
+            }
+        }
+    }
+    (thresholds.keys - found).forEach { shortfalls += "$it: package not found in the coverage report" }
+    return shortfalls
+}
+
+val verifyBranchCoverage =
+    tasks.register("verifyBranchCoverage") {
+        group = "verification"
+        description = "Fails the build if per-package branch coverage is below its threshold (ADR 0038)"
+        dependsOn("koverXmlReport")
+        val report = layout.buildDirectory.file("reports/kover/report.xml")
+        doLast {
+            val shortfalls = branchCoverageShortfalls(report.get().asFile, branchCoverageThresholds)
+            if (shortfalls.isNotEmpty()) {
+                throw GradleException("Branch coverage gate failed (ADR 0038):\n" + shortfalls.joinToString("\n"))
+            }
+        }
+    }
+
+val selfTestVerifyBranchCoverage =
+    tasks.register("selfTestVerifyBranchCoverage") {
+        group = "verification"
+        description = "Proves the branch coverage gate fails a package below its threshold and passes one above it"
+        doLast {
+            val dir =
+                layout.buildDirectory
+                    .dir("branch-coverage-gate-fixture")
+                    .get()
+                    .asFile
+            dir.deleteRecursively()
+            dir.mkdirs()
+
+            fun fixture(
+                covered: Int,
+                missed: Int,
+            ) = File(dir, "report-$covered-$missed.xml").also {
+                it.writeText(
+                    "<report name=\"x\"><package name=\"p\">" +
+                        "<counter type=\"BRANCH\" missed=\"$missed\" covered=\"$covered\"/>" +
+                        "</package></report>",
+                )
+            }
+            val below = branchCoverageShortfalls(fixture(94, 6), mapOf("p" to 95))
+            val atThreshold = branchCoverageShortfalls(fixture(95, 5), mapOf("p" to 95))
+            val missing = branchCoverageShortfalls(fixture(1, 0), mapOf("absent" to 95))
+            dir.deleteRecursively()
+            if (below.size != 1 || atThreshold.isNotEmpty() || missing.size != 1) {
+                throw GradleException(
+                    "verifyBranchCoverage self-test failed: below=$below atThreshold=$atThreshold missing=$missing",
+                )
+            }
+            logger.lifecycle("verifyBranchCoverage self-test passed.")
+        }
+    }
+
 tasks.named("check") {
     dependsOn(
         verifyNoAndroidImports,
@@ -262,5 +363,7 @@ tasks.named("check") {
         verifyNoClockSystem,
         selfTestVerifyNoClockSystem,
         "koverVerify",
+        verifyBranchCoverage,
+        selfTestVerifyBranchCoverage,
     )
 }

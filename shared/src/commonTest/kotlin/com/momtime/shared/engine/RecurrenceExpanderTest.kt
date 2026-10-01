@@ -5,6 +5,7 @@ import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class RecurrenceExpanderTest {
     @Test
@@ -64,5 +65,19 @@ class RecurrenceExpanderTest {
         val recurrence = Recurrence.EveryNDays(n = 3, anchorDate = LocalDate(2026, 6, 1))
         val dates = RecurrenceExpander.expand(recurrence, LocalDate(2026, 5, 1), LocalDate(2026, 6, 1))
         assertEquals(emptyList(), dates)
+    }
+
+    @Test
+    fun `an empty window returns empty`() {
+        val day = LocalDate(2026, 1, 5)
+        assertEquals(emptyList(), RecurrenceExpander.expand(Recurrence.Daily, day, day))
+    }
+
+    // An inverted window is a caller bug. Returning nothing is how a bug becomes a missing alarm.
+    @Test
+    fun `an inverted window is rejected, not silently empty`() {
+        assertFailsWith<IllegalArgumentException> {
+            RecurrenceExpander.expand(Recurrence.Daily, LocalDate(2026, 1, 5), LocalDate(2026, 1, 4))
+        }
     }
 }

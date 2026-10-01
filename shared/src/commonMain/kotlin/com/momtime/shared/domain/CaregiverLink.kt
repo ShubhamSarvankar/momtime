@@ -16,6 +16,4 @@ data class CaregiverLink(
     val scopeDoctorInstructionsVisible: Boolean,
     val notificationPolicy: NotificationPolicy,
     val pausedUntil: Instant?,
-) {
-    fun isPausedAt(now: Instant): Boolean = pausedUntil != null && now < pausedUntil
-}
+)

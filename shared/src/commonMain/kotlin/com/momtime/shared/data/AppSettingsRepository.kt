@@ -1,6 +1,7 @@
 package com.momtime.shared.data
 
 import com.momtime.shared.domain.AppSettings
+import com.momtime.shared.domain.QuietHours
 import kotlinx.datetime.LocalTime
 
 interface AppSettingsRepository {
@@ -8,10 +9,7 @@ interface AppSettingsRepository {
 
     fun current(): AppSettings
 
-    fun updateQuietHours(
-        start: LocalTime?,
-        end: LocalTime?,
-    )
+    fun updateQuietHours(quietHours: QuietHours?)
 
     fun updateRingGradeDailyBudget(budget: Int)
 
@@ -33,8 +31,7 @@ class SqlDelightAppSettingsRepository(
         ensureSeeded()
         val row = database.appSettingsQueries.selectAppSettings().executeAsOne()
         return AppSettings(
-            quietHoursStart = row.quiet_hours_start?.let { LocalTime.parse(it) },
-            quietHoursEnd = row.quiet_hours_end?.let { LocalTime.parse(it) },
+            quietHours = row.toQuietHours(),
             ringGradeDailyBudget = row.ring_grade_daily_budget.toInt(),
             snoozeDurationMinutes = row.snooze_duration_minutes.toInt(),
             localeOverride = row.locale_override,
@@ -42,11 +39,12 @@ class SqlDelightAppSettingsRepository(
         )
     }
 
-    override fun updateQuietHours(
-        start: LocalTime?,
-        end: LocalTime?,
-    ) {
-        database.appSettingsQueries.updateQuietHours(start?.toString(), end?.toString())
+    override fun updateQuietHours(quietHours: QuietHours?) {
+        if (quietHours == null) {
+            database.appSettingsQueries.updateQuietHours(null, null)
+        } else {
+            database.appSettingsQueries.updateQuietHours(quietHours.start.toString(), quietHours.end.toString())
+        }
     }
 
     override fun updateRingGradeDailyBudget(budget: Int) {
@@ -63,5 +61,17 @@ class SqlDelightAppSettingsRepository(
 
     override fun updateTelemetryOptIn(optIn: Boolean) {
         database.appSettingsQueries.updateTelemetryOptIn(optIn.toDb())
+    }
+
+    // The quiet_hours_valid CHECK guarantees both set and different, or both null (ADR 0037), so a
+    // half-set row cannot reach here; if it somehow did, failing loudly beats guessing.
+    private fun com.momtime.shared.data.App_settings.toQuietHours(): QuietHours? {
+        val start = quiet_hours_start
+        val end = quiet_hours_end
+        return when {
+            start == null && end == null -> null
+            start != null && end != null -> QuietHours(LocalTime.parse(start), LocalTime.parse(end))
+            else -> error("app_settings has exactly one quiet hours bound set")
+        }
     }
 }

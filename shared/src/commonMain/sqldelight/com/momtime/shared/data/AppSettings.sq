@@ -5,7 +5,13 @@ CREATE TABLE app_settings (
     ring_grade_daily_budget INTEGER NOT NULL DEFAULT 12,
     snooze_duration_minutes INTEGER NOT NULL DEFAULT 10,
     locale_override TEXT,
-    telemetry_opt_in INTEGER NOT NULL DEFAULT 0
+    telemetry_opt_in INTEGER NOT NULL DEFAULT 0,
+    -- Both null (no quiet hours), or both set and different. Equal times are invalid, not a
+    -- full day and not no window (ADR 0037).
+    CONSTRAINT quiet_hours_valid CHECK (
+        (quiet_hours_start IS NULL AND quiet_hours_end IS NULL)
+        OR (quiet_hours_start IS NOT NULL AND quiet_hours_end IS NOT NULL AND quiet_hours_start <> quiet_hours_end)
+    )
 );
 
 seedAppSettings:

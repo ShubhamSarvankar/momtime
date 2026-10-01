@@ -6,7 +6,6 @@ import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.Occurrence
-import com.momtime.shared.domain.OccurrenceState
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -35,7 +34,9 @@ object Reconcile {
         generateId: () -> String,
     ): Event? {
         if (hasTerminalEvent) return null
-        if (occurrence.state != OccurrenceState.PENDING && occurrence.state != OccurrenceState.SNOOZED) return null
+        // A terminal state with no terminal event is a divergent row. Do nothing: Reconcile never
+        // rewrites a terminal occurrence, and never appends a second terminal event for it.
+        if (occurrence.isTerminal) return null
 
         val graceExpiry = graceExpiryInstant(occurrence, criticality)
         if (now < graceExpiry) return null

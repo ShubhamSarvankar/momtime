@@ -1,5 +1,6 @@
 package com.momtime.shared.data
 
+import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
 import com.momtime.shared.domain.ScheduleTemplate
@@ -48,9 +49,16 @@ interface OccurrenceRepository {
         to: Instant,
     ): List<Occurrence>
 
-    fun updateState(
-        id: String,
-        state: OccurrenceState,
+    /**
+     * The only way an occurrence changes state: append [event] and set the new state in one
+     * transaction, so the two can never diverge (ADR 0037). A bare state update is not exposed.
+     * If the schema rejects the change (terminal states are immutable, enforced by trigger), the
+     * event is rolled back with it.
+     */
+    fun transition(
+        occurrenceId: String,
+        to: OccurrenceState,
+        event: Event,
     )
 
     /** Allocates the next monotonic alarmSlot, transactionally (ADR 0018/0031). */
@@ -59,6 +67,7 @@ interface OccurrenceRepository {
 
 class SqlDelightOccurrenceRepository(
     private val database: MomTimeDatabase,
+    private val events: EventRepository = SqlDelightEventRepository(database),
 ) : OccurrenceRepository {
     override fun insert(occurrence: Occurrence) {
         database.occurrenceQueries.insertOccurrence(
@@ -134,11 +143,16 @@ class SqlDelightOccurrenceRepository(
             it.toDomain()
         }
 
-    override fun updateState(
-        id: String,
-        state: OccurrenceState,
+    override fun transition(
+        occurrenceId: String,
+        to: OccurrenceState,
+        event: Event,
     ) {
-        database.occurrenceQueries.updateOccurrenceState(state.name, id)
+        require(event.occurrenceId == occurrenceId) { "event belongs to a different occurrence" }
+        database.transaction {
+            events.insert(event)
+            database.occurrenceQueries.updateOccurrenceState(to.name, occurrenceId)
+        }
     }
 
     override fun allocateNextAlarmSlot(): Int =

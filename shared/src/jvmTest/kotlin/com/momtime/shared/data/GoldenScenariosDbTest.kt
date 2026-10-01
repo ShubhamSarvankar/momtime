@@ -187,7 +187,17 @@ class GoldenScenariosDbTest {
         val occurrences = occurrenceRepo.findForTemplate(template.id)
         val first = occurrences.minByOrNull { it.scheduledInstant }!!
 
-        occurrenceRepo.updateState(first.id, OccurrenceState.COMPLETED)
+        val completedEvent =
+            com.momtime.shared.domain.Event(
+                id = nextId("evt"),
+                occurrenceId = first.id,
+                eventType = com.momtime.shared.domain.EventType.COMPLETED,
+                deviceTimestamp = first.scheduledInstant,
+                effectiveAt = null,
+                source = com.momtime.shared.domain.EventSource.USER,
+                payload = com.momtime.shared.domain.EventPayload.None,
+            )
+        occurrenceRepo.transition(first.id, OccurrenceState.COMPLETED, completedEvent)
         val completedBefore = occurrenceRepo.findById(first.id)!!
 
         // "Edit" the template (criticality change) and re-materialise the same window.
@@ -255,7 +265,6 @@ class GoldenScenariosDbTest {
         materialiseOnce(template, windowStart, windowStart + 1.days)
         val occurrence = occurrenceRepo.findForTemplate(template.id).single()
 
-        occurrenceRepo.updateState(occurrence.id, OccurrenceState.MISSED)
         val missedEvent =
             com.momtime.shared.domain.Event(
                 id = nextId("evt"),
@@ -266,7 +275,7 @@ class GoldenScenariosDbTest {
                 source = com.momtime.shared.domain.EventSource.SYSTEM,
                 payload = com.momtime.shared.domain.EventPayload.None,
             )
-        eventRepo.insert(missedEvent)
+        occurrenceRepo.transition(occurrence.id, OccurrenceState.MISSED, missedEvent)
 
         val backfilled =
             com.momtime.shared.domain.Event(
