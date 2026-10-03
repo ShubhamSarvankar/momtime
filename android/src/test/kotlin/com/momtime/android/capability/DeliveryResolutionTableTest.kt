@@ -14,41 +14,6 @@ import org.junit.Test
  * `CapabilityInputs` cannot go unhandled silently.
  */
 class DeliveryResolutionTableTest {
-    private data class Row(
-        val inputs: CapabilityInputs,
-        val expected: DeliveryResolution,
-        val line: String,
-    )
-
-    private fun String.flag() = this == "1"
-
-    private fun loadTable(): List<Row> {
-        val text =
-            checkNotNull(javaClass.classLoader?.getResourceAsStream("delivery-resolution-table.csv")) {
-                "delivery-resolution-table.csv is not on the test classpath"
-            }.bufferedReader().readText()
-        val lines = text.lines().filter { it.isNotBlank() && !it.startsWith("#") }
-        check(lines.first().startsWith("exact,")) { "the table header is missing" }
-        return lines.drop(1).map { line ->
-            val c = line.split(",")
-            check(c.size == 13) { "a row must have 13 columns: $line" }
-            Row(
-                inputs = CapabilityInputs(c[0].flag(), c[1].flag(), c[2].flag(), c[3].flag(), c[4].flag(), c[5].flag()),
-                expected =
-                    DeliveryResolution(
-                        tier = ResolvedTier.valueOf(c[6]),
-                        mechanism = DeliveryMechanism.valueOf(c[7]),
-                        fullScreenIntent = c[8].flag(),
-                        headsUp = c[9].flag(),
-                        overlayAvailable = c[10].flag(),
-                        audioOnly = c[11].flag(),
-                        undeliverable = c[12].flag(),
-                    ),
-                line = line,
-            )
-        }
-    }
-
     private val every: List<CapabilityInputs> =
         listOf(false, true).flatMap { exact ->
             listOf(false, true).flatMap { fsi ->
@@ -72,7 +37,7 @@ class DeliveryResolutionTableTest {
 
     @Test
     fun `the table covers every combination exactly once and nothing else`() {
-        val rows = loadTable()
+        val rows = DeliveryTable.rows()
         val byInputs = rows.groupBy { it.inputs }
 
         val missing = every.filter { it !in byInputs }
@@ -87,7 +52,7 @@ class DeliveryResolutionTableTest {
     @Test
     fun `every combination resolves to what the table says`() {
         val wrong =
-            loadTable().mapNotNull { row ->
+            DeliveryTable.rows().mapNotNull { row ->
                 val actual = resolveDelivery(row.inputs)
                 if (actual == row.expected) null else "${row.line}\n    resolved to $actual"
             }
@@ -99,9 +64,9 @@ class DeliveryResolutionTableTest {
 
     @Test
     fun `the table is not vacuous`() {
-        val tiers = loadTable().map { it.expected.tier }.toSet()
+        val tiers = DeliveryTable.rows().map { it.expected.tier }.toSet()
         assertEquals("the table must exercise every tier", ResolvedTier.entries.toSet(), tiers)
-        val rows = loadTable()
+        val rows = DeliveryTable.rows()
         assertTrue(rows.any { it.expected.undeliverable })
         assertTrue(rows.any { it.expected.audioOnly })
         assertTrue(rows.any { it.expected.overlayAvailable })

@@ -177,4 +177,93 @@ class PlatformCapabilityReaderTest {
         assertTrue("exact alarms need no permission below API 31", reader.exactAlarm())
         assertEquals(DeliveryMechanism.SET_ALARM_CLOCK, resolveDelivery(reader.read()).mechanism)
     }
+
+    private data class PlatformState(
+        val exact: Boolean,
+        val fullScreenIntent: Boolean,
+        val notifications: Boolean,
+        val battery: Boolean,
+        val overlay: Boolean,
+    )
+
+    /** Every state of the platform that can be set at this SDK. Exact capability can be set only from API 31. */
+    private val settableStates: List<PlatformState> =
+        (0 until 32)
+            .map { bits ->
+                PlatformState(
+                    exact = bits and 16 != 0,
+                    fullScreenIntent = bits and 8 != 0,
+                    notifications = bits and 4 != 0,
+                    battery = bits and 2 != 0,
+                    overlay = bits and 1 != 0,
+                )
+            }.filter { it.exact || sdk >= Build.VERSION_CODES.S }
+
+    private fun apply(state: PlatformState) {
+        ShadowAlarmManager.setCanScheduleExactAlarms(state.exact)
+        shadowOf(notificationManager).setNotificationsEnabled(state.notifications)
+        shadowOf(powerManager).setIgnoringBatteryOptimizations(context.packageName, state.battery)
+        ShadowSettings.setCanDrawOverlays(state.overlay)
+    }
+
+    // Tier resolution for every combination of the platform state that can be set at this SDK, read through
+    // the adapter and resolved, against the table (ADR 0050). Below API 31 exact capability cannot be set (it
+    // is always true), so those combinations are not there; below API 34 full screen intent is the declared
+    // permission, set by editing the package's requested permissions, and from API 34 it is the seam.
+    @Test
+    fun `every combination the platform can be set to at this SDK resolves to its table row`() {
+        val table = DeliveryTable.rows().associateBy { it.inputs }
+        val info = shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName)
+        val declared = info.requestedPermissions.orEmpty().toList()
+        require(declared.any { it.endsWith("USE_FULL_SCREEN_INTENT") }) { "the manifest must declare it" }
+        val atCake = sdk >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        for (state in settableStates) {
+            apply(state)
+            info.requestedPermissions =
+                declared
+                    .filter {
+                        atCake ||
+                            state.fullScreenIntent ||
+                            !it.endsWith(
+                                "USE_FULL_SCREEN_INTENT",
+                            )
+                    }.toTypedArray()
+            val source =
+                if (atCake) {
+                    PlatformCapabilityReader(
+                        context,
+                        fullScreenIntentApi = { state.fullScreenIntent },
+                    )
+                } else {
+                    reader
+                }
+            val inputs = source.read()
+            val expected =
+                CapabilityInputs(
+                    state.exact,
+                    state.fullScreenIntent,
+                    state.notifications,
+                    state.battery,
+                    state.overlay,
+                    true,
+                )
+            assertEquals("inputs at SDK $sdk", expected, inputs)
+            assertEquals(
+                "resolution at SDK $sdk for $expected",
+                table.getValue(expected).expected,
+                resolveDelivery(inputs),
+            )
+        }
+        assertEquals(
+            "the states that can be set at SDK $sdk",
+            if (sdk >=
+                Build.VERSION_CODES.S
+            ) {
+                32
+            } else {
+                16
+            },
+            settableStates.size,
+        )
+    }
 }
