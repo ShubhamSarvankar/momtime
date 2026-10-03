@@ -25,6 +25,11 @@ momtime/
 └── docs/       This directory.
 ```
 
+## Requirements
+
+- **JDK 21.** `shared` pins its Gradle toolchain to 21 (`jvmToolchain(21)`) and CI runs Temurin 21. Gradle 9.8 itself needs JDK 17 or newer to start. Gradle toolchain auto-provisioning is not configured, so a JDK 21 must already be installed, and the simplest setup is to run Gradle on it by pointing `JAVA_HOME` at it. Android Studio's bundled JBR is a JDK 21 and works.
+- Two failures to recognise: Gradle refusing to start with "requires JVM 17 or later" means `JAVA_HOME` points at an older JDK (JDK 11 was found this way); "Cannot find a Java installation ... languageVersion=21 ... Toolchain download repositories have not been configured" means Gradle started on another JDK (JDK 25 was found this way) and no JDK 21 is installed or registered with Gradle.
+
 ## Running the test suites
 
 | Suite | Command | Runs on |

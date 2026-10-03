@@ -32,15 +32,14 @@ Not device checks. Recorded here because they verify the real GitHub remote rath
 
 ## Deferred tests
 
-Golden scenarios (`IMPLEMENTATION_PLAN.md`, Phase 1) that have no honest shared-layer test, because the mechanism under test does not exist in `shared`. Each is owned by a later phase, and that phase's exit criteria require it to be implemented. Nothing here is covered by a stand-in test in `shared`.
+Golden scenarios (`IMPLEMENTATION_PLAN.md`, Phase 1) with a part that needs a component outside `shared`. Each is also a named exit criterion of the owning phase, so it cannot disappear from this table alone. The part whose subject is shared code is tested in `shared` now. The race test against `AndroidSqliteDriver` is a Phase 2 exit criterion and is not tracked here.
 
-| Scenario | Owning phase | Reason it is not tested in `shared` | Status |
-|---|---|---|---|
-| 3. Exact alarm permission revoked mid schedule: tier downgrade and ladder adjustment. **Partly deferred.** The shared slice (ladder generation takes no `DeliveryCapability`) is tested in `shared`; the downgrade itself is not. | Phase 2 (Robolectric suite) | Capability resolution and tier downgrade live in `android`, not `shared`. | Not yet implemented |
-| Materialisation race (`MaterialiseAtomicityTest`) re-run against `AndroidSqliteDriver` | Phase 2 (Robolectric suite) | The JVM test uses the JDBC file driver, which begins deferred transactions and refuses the second writer with `SQLITE_BUSY`. The Android driver is expected to serialise via `BEGIN IMMEDIATE` (ADR 0036, from source), but `AndroidSqliteDriver` is not in the repo yet and that has not been run. | Not yet implemented |
-| 7. Caregiver revocation arriving mid sweep | Phase 4 (server suite) | The sweep, `sweep_status` and caregiver links' server mirror exist only in the server. `shared` has no sweep to interleave with. | Not yet implemented |
-| 14. Device clock set backward while a ladder is armed: no re-fire of fired rungs, no negative delay on the next rung | Phase 2 (Robolectric suite) | `shared` computes only absolute instants and never a from-now delay, and does not handle `ACTION_TIME_CHANGED`. The risk is in the `AlarmManager` arming arithmetic in `android`. | Not yet implemented |
-| 17. `WorkManager` watchdog finds the correct alarm already armed: no-op pass, no spurious `WATCHDOG_REPAIR` event | Phase 2 (Robolectric suite) | `WorkManager` and the watchdog pass do not exist in `shared`. The resume logic the watchdog calls (`NextRungResolver`) is tested in `shared` under scenarios 2, 15 and 18, but not the no-op pass itself. | Not yet implemented |
+| Scenario | Owning phase | Non-shared component it needs | Shared part, and its tests | Status |
+|---|---|---|---|---|
+| 3. Exact alarm permission revoked mid schedule: tier downgrade and ladder adjustment | Phase 2 (Robolectric) | Android: capability resolution and the tier downgrade in `android` | `DeliveryCapability` appears nowhere in the escalation engine or the rung types, by structural scan with a positive control (`CapabilityBoundaryTest`); remaining rungs after a restart are the tail of the ladder (`NextRungResolverTest`) | Android part not yet implemented |
+| 7. Caregiver revocation arriving mid sweep | Phase 4 (server suite) | Backend: the sweep, `sweep_status` and the server mirror | Revocation hard deletes the link and only that link (`RemainingRepositoriesTest`: `caregiver link round trips and revocation hard deletes it`, `revoking one caregiver link deletes only that link`) | Server part not yet implemented |
+| 14. Device clock set backward while a ladder is armed | Phase 2 (Robolectric) | Android: `AlarmManager` arming arithmetic and `ACTION_TIME_CHANGED` | A ladder is a pure function of the scheduled instant: absolute instants, never before the one it follows, shifted exactly with the scheduled instant (`EscalationLadderTest`: `rungs are ordered, never before the scheduled instant, and shift exactly with it`); resuming takes no clock input (`NextRungResolverTest`) | Android part not yet implemented |
+| 17. The watchdog finds the correct alarm already armed: a no-op pass | Phase 2 (Robolectric) | Android: `WorkManager` and the watchdog pass | Reconciling an unchanged state emits nothing: before grace, a terminal event present, a snoozed occurrence before expiry (`ReconcileTest`); the resolver is a pure function of the ladders it is given (`NextRungResolverTest`) | Android part not yet implemented |
 
 ## Honesty constraint on claims
 

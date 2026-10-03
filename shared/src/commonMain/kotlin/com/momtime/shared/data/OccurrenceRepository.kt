@@ -19,10 +19,12 @@ interface OccurrenceRepository {
     /**
      * Materialises one template over [windowStart, windowEnd) as a single atomic operation: read
      * the dates already materialised, compute the missing ones, allocate their alarmSlots and
-     * insert them, all in one transaction (ADR 0036). Two overlapping runs therefore serialise,
-     * and the loser sees the rows of the winner and excludes them. If any insert throws, the
-     * whole batch, including its alarmSlot allocations, rolls back. Returns the occurrences
-     * created.
+     * insert them, all in one transaction (ADR 0036). If any insert throws, the whole batch,
+     * including its alarmSlot allocations, rolls back. Under a driver whose transactions begin
+     * IMMEDIATE, overlapping runs queue and the loser sees the rows of the winner and excludes
+     * them; under a deferred driver the contending run is refused instead. Which driver does what
+     * is recorded in ADR 0036; the AndroidSqliteDriver behaviour is expected, not yet verified.
+     * Returns the occurrences created.
      */
     fun materialiseWindow(
         template: ScheduleTemplate,
