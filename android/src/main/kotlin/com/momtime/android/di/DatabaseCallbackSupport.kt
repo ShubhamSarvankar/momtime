@@ -29,21 +29,37 @@ internal fun SupportSQLiteDatabase.useRollbackJournal() {
 
 /**
  * What happens when the framework reports a corrupt database, on open and in the middle of a query
- * (ADR 0044). The database is closed first, then the file is moved aside as `<name>.corrupt` (only the
- * most recent is kept), then a marker is written. The framework opens a fresh database in its place.
- * If the file cannot be preserved it is deleted: reminders must keep working.
+ * (ADR 0044, ADR 0049, ADR 0051). The database is closed first, then the file is moved aside as
+ * `<name>.corrupt` (only the most recent is kept), then a durable marker is written. If the file cannot
+ * be preserved it is deleted: reminders must keep working.
+ *
+ * What happens next depends on when the corruption was found, and on which database:
+ * - **On open**, the framework opens a fresh database in place of the file just moved aside, so nothing
+ *   holds a closed database and nothing more is done.
+ * - **In the middle of a query**, the database that was open is now closed and the process still holds
+ *   it. [onClosedByCorruption] tells the owner of a database that can be reopened (the android store).
+ *   [processEnd] ends the process for the database that cannot (the shared database), after the
+ *   marker is durable. Either is null where it does not apply.
  */
 internal class CorruptionHandler(
     private val markerFile: File,
     private val clock: Clock,
+    private val processEnd: ProcessEnd? = null,
+    private val onClosedByCorruption: (() -> Unit)? = null,
 ) {
     fun handle(db: SupportSQLiteDatabase) {
+        // A database that was open when corruption was found was in use. One still being opened is not.
+        val midUse = db.isOpen
         val path = db.path
         runCatching { db.close() }
         // An in-memory database has no file to keep, and nothing to replace.
         if (path == null) return
         val preserved = quarantine(File(path))
         CorruptionMarker.write(markerFile, CorruptionMarker(clock.now(), preserved))
+        if (midUse) {
+            onClosedByCorruption?.invoke()
+            processEnd?.end()
+        }
     }
 
     private fun quarantine(database: File): Boolean {

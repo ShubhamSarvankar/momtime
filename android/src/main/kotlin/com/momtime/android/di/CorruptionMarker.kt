@@ -1,6 +1,7 @@
 package com.momtime.android.di
 
 import java.io.File
+import java.io.FileOutputStream
 import kotlin.time.Instant
 
 /**
@@ -10,6 +11,9 @@ import kotlin.time.Instant
  *
  * [preserved] is whether the corrupt file was kept as a `.corrupt` copy. If keeping it failed, the
  * database was deleted instead, because reminders must keep working.
+ *
+ * The write is durable: the bytes are synced to storage before the file is renamed into place, so a
+ * process that ends straight afterwards (ADR 0051) leaves the marker behind.
  */
 data class CorruptionMarker(
     val corruptedAt: Instant,
@@ -22,11 +26,15 @@ data class CorruptionMarker(
         ) {
             file.parentFile?.mkdirs()
             val temp = File(file.parentFile, file.name + ".tmp")
-            temp.writeText(
-                "corruptedAtMillis=${marker.corruptedAt.toEpochMilliseconds()}\npreserved=${marker.preserved}\n",
-            )
+            val bytes =
+                "corruptedAtMillis=${marker.corruptedAt.toEpochMilliseconds()}\npreserved=${marker.preserved}\n"
+                    .toByteArray()
+            FileOutputStream(temp).use { out ->
+                out.write(bytes)
+                out.fd.sync()
+            }
             if (!temp.renameTo(file)) {
-                file.writeText(temp.readText())
+                file.writeBytes(bytes)
                 temp.delete()
             }
         }
