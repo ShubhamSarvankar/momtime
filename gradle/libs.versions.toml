@@ -25,7 +25,7 @@ kotlinxCoroutines = "1.10.2"
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
-sqldelight-dialect-sqlite338 = { module = "app.cash.sqldelight:sqlite-3-38-dialect", version.ref = "sqldelight" }
+sqldelight-dialect-sqlite318 = { module = "app.cash.sqldelight:sqlite-3-18-dialect", version.ref = "sqldelight" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

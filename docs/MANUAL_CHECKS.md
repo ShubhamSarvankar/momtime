@@ -15,6 +15,18 @@ Do not mark the alarm subsystem complete based on automated coverage alone. Repo
 | 5 | Timing drift under real thermal and battery conditions | A15 soak, canary telemetry (`scheduledInstant` vs `actualFiredAt`) | Not yet run |
 | 6 | Samsung's scheduled alarm count behaviour, if ever exceeded | Only relevant if the one-alarm-at-a-time design (ADR 0017) is ever violated; not expected to trigger | Not yet run |
 
+## Phase 2 device checks outstanding
+
+Added in Phase 2 as the unverifiable remainders of automated work come up, so that none is lost between phases. Status is "Not yet run" until a row records a device, a date and a result. More rows are added as Phase 2 proceeds.
+
+| # | Item | Why no automated test can settle it | Procedure | Status |
+|---|---|---|---|---|
+| P2-1 | Force-stop clears the app's alarms and WorkManager jobs | The platform behaviour is read from AOSP source (`JobSchedulerService` cancels and removes the app's jobs on `ACTION_PACKAGE_RESTARTED`, android-13 to android-16), not run. Robolectric does not model it. | On the Galaxy A15: arm a reminder, `adb shell am force-stop com.momtime.android`, `adb shell dumpsys alarm` and `dumpsys jobscheduler` for the package, then confirm nothing fires until the app is launched, and that launching restores the alarm. | Not yet run |
+| P2-2 | Whether an OEM "clean" or "optimise" action is a force-stop or a plain kill | OEM behaviour is not in AOSP. A plain kill leaves alarms and jobs, so the watchdog recovers; a force-stop does not. | On the A15 with One UI: run the Device care clean-up and "Put unused apps to sleep" paths, then check `dumpsys alarm` and `dumpsys jobscheduler` for the package, and whether the process exit reason is `REASON_USER_REQUESTED`. | Not yet run |
+| P2-3 | Direct boot: a phone that restarts and stays locked across a reminder | Alarms do not survive a reboot, `BOOT_COMPLETED` arrives only after first unlock, and WorkManager is not direct-boot aware, so the reminder cannot ring until unlock. Whether this is a real exposure depends on how often the device restarts overnight and stays locked. Not built in Phase 2 (`IMPLEMENTATION_PLAN.md` Open Items). | Phase 7 soak on the A15 reads the boot count the android store records with each fire and canary, and reports reboots-while-locked across a scheduled reminder. The decision to build direct boot follows from that count. | Not yet run |
+| P2-4 | Every statement runs on SQLite 3.22 (API 29) | Robolectric's SQLite is not the device's (ADR 0042), and the JVM tests run on 3.53.4. The SQLDelight 3.18 dialect gate and `verifySqliteFloor` reject known newer constructs at build time, but only a real API 29 image shows the app's statements run there. | The Phase 7 emulator suite on an API 29 managed device runs the data layer, including the v1 to current migration. | Not yet run |
+| P2-5 | Exact alarm revocation on a real device | With `USE_EXACT_ALARM` held, which cannot be revoked, revocation is reachable only on API 31 and 32 or in a build without that permission. | Phase 7 needs a debug variant without `USE_EXACT_ALARM` to revoke "Alarms and reminders" on the A15. The variant is not built in Phase 2. | Not yet run |
+
 ## Remote CI checks
 
 Not device checks. Recorded here because they verify the real GitHub remote rather than a local Gradle run.
