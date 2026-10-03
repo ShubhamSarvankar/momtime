@@ -109,6 +109,15 @@ class SqlDelightEventRepository(
         }
 
     private fun com.momtime.shared.data.Event.toDomain(): Event {
+        val type = EventType.valueOf(event_type)
+        // The payload columns are sparse: a row's payload is whichever column is set, and the table does
+        // not tie a column to an event type. The canary columns are only ever written for CANARY_RESULT
+        // (ADR 0048), so a row that breaks that is a mapping bug, and it fails loudly here rather than
+        // decoding as a payload nobody wrote. An old CANARY_RESULT with no instants decodes as no payload.
+        if (canary_scheduled_at != null || canary_actual_at != null) {
+            check(type == EventType.CANARY_RESULT) { "canary columns are set on a $type event ($id)" }
+            check(canary_scheduled_at != null) { "a CANARY_RESULT has an actual instant but no scheduled one ($id)" }
+        }
         val payload: EventPayload =
             when {
                 snooze_number != null -> EventPayload.Snooze(snooze_number.toInt())
@@ -124,7 +133,7 @@ class SqlDelightEventRepository(
         return Event(
             id = id,
             occurrenceId = occurrence_id,
-            eventType = EventType.valueOf(event_type),
+            eventType = type,
             deviceTimestamp = device_timestamp.toInstant(),
             effectiveAt = effective_at.toInstantOrNull(),
             source = EventSource.valueOf(source),

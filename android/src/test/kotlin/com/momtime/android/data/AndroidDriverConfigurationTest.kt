@@ -62,7 +62,7 @@ class AndroidDriverConfigurationTest {
 
     @Test
     fun `the android store has foreign keys on and a TRUNCATE rollback journal`() {
-        val driver = graph.storeFactory.createDriver()
+        val driver = graph.storeFactory.createDriver {}
 
         assertEquals("1", driver.pragma("foreign_keys"))
         assertEquals("truncate", driver.pragma("journal_mode").lowercase())

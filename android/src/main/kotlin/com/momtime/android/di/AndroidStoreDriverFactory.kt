@@ -7,9 +7,13 @@ import com.momtime.android.store.db.AndroidStoreDatabase
 import java.io.File
 import kotlin.time.Clock
 
-/** Builds the driver for the android store. One per process, like the shared database's (ADR 0045). */
+/**
+ * Builds the driver for the android store. One live driver at a time (ADR 0045, ADR 0051).
+ * [onClosedByCorruption] is called when corruption found in the middle of a query has closed the
+ * driver this call returned, so the caller can replace it.
+ */
 interface StoreDriverFactory {
-    fun createDriver(): SqlDriver
+    fun createDriver(onClosedByCorruption: () -> Unit): SqlDriver
 }
 
 class AndroidStoreDriverFactory(
@@ -17,7 +21,7 @@ class AndroidStoreDriverFactory(
     private val name: String = DatabaseFiles.STORE_NAME,
     private val clock: Clock = Clock.System,
 ) : StoreDriverFactory {
-    override fun createDriver(): SqlDriver =
+    override fun createDriver(onClosedByCorruption: () -> Unit): SqlDriver =
         AndroidSqliteDriver(
             schema = AndroidStoreDatabase.Schema,
             context = context,
@@ -27,6 +31,7 @@ class AndroidStoreDriverFactory(
                     schema = AndroidStoreDatabase.Schema,
                     markerFile = File(context.noBackupFilesDir, DatabaseFiles.STORE_CORRUPTION_MARKER_NAME),
                     clock = clock,
+                    onClosedByCorruption = onClosedByCorruption,
                 ),
         )
 }

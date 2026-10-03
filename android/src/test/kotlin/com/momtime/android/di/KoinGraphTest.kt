@@ -75,7 +75,8 @@ class KoinGraphTest {
         private val delegate: StoreDriverFactory,
         private val sink: MutableList<SqlDriver>,
     ) : StoreDriverFactory {
-        override fun createDriver(): SqlDriver = delegate.createDriver().also { sink.add(it) }
+        override fun createDriver(onClosedByCorruption: () -> Unit): SqlDriver =
+            delegate.createDriver(onClosedByCorruption).also { sink.add(it) }
     }
 
     private fun start(): KoinApplication {
@@ -131,6 +132,12 @@ class KoinGraphTest {
     fun `each database gets exactly one driver`() {
         val koin = start().koin
         for (type in sharedRepositories + storeRepositories) koin.get<Any>(type)
+        // The store's repositories read the database through the holder on each call (ADR 0051), so the
+        // store opens on first use, once, and not when a repository is resolved.
+        assertEquals("the store opened before it was used", 0, storeDrivers.size)
+        koin.get<ArmedAlarmRepository>().current()
+        koin.get<FireTelemetryRepository>().count()
+        koin.get<ArmedAlarmRepository>().current()
 
         assertEquals("a second shared driver was created", 1, sharedDrivers.size)
         assertEquals("a second store driver was created", 1, storeDrivers.size)

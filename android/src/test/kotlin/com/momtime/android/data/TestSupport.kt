@@ -5,6 +5,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import com.momtime.android.di.AndroidDatabaseDriverFactory
 import com.momtime.android.di.AndroidStoreDriverFactory
+import com.momtime.android.di.ProcessEnd
 import com.momtime.android.di.StoreDriverFactory
 import com.momtime.android.di.momTimeModules
 import com.momtime.shared.data.DatabaseDriverFactory
@@ -53,29 +54,65 @@ internal class TrackingFactory(
     fun closeAll() = synchronized(drivers) { drivers.forEach { runCatching { it.close() } } }
 }
 
-/** The same for the android store's driver factory. */
+/** A driver that records that it was closed, so a test can count the drivers that are still live. */
+internal class ClosableDriver(
+    private val delegate: SqlDriver,
+) : SqlDriver by delegate {
+    @Volatile
+    var closed = false
+        private set
+
+    override fun close() {
+        closed = true
+        delegate.close()
+    }
+}
+
+/**
+ * The same for the android store's driver factory, and it counts live drivers: the store may be
+ * reopened, but there must be exactly one live driver at any time (ADR 0051).
+ */
 internal class TrackingStoreFactory(
     private val delegate: StoreDriverFactory,
 ) : StoreDriverFactory {
-    private val drivers = mutableListOf<SqlDriver>()
+    private val drivers = mutableListOf<ClosableDriver>()
 
     val created: Int get() = synchronized(drivers) { drivers.size }
+    val live: Int get() = synchronized(drivers) { drivers.count { !it.closed } }
 
-    override fun createDriver(): SqlDriver =
-        delegate.createDriver().also { driver -> synchronized(drivers) { drivers.add(driver) } }
+    override fun createDriver(onClosedByCorruption: () -> Unit): SqlDriver =
+        ClosableDriver(delegate.createDriver(onClosedByCorruption)).also { synchronized(drivers) { drivers.add(it) } }
 
     fun closeAll() = synchronized(drivers) { drivers.forEach { runCatching { it.close() } } }
 }
 
 /**
+ * Stands in for ending the process. It records each call and runs [onEnd] at the instant of the call, so
+ * a test can look at what is true then (ADR 0051).
+ */
+internal class RecordingProcessEnd(
+    private val onEnd: () -> Unit = {},
+) : ProcessEnd {
+    @Volatile
+    var calls = 0
+        private set
+
+    override fun end() {
+        calls++
+        onEnd()
+    }
+}
+
+/**
  * A Koin application of the production modules over a shared database file named [name] and an
- * android store file named [storeName].
+ * android store file named [storeName]. Ending the process is replaced by [processEnd].
  */
 internal class TestGraph(
     context: Context,
     val name: String = "t-${UUID.randomUUID().toString().take(8)}.db",
     clock: Clock = testClock,
     val storeName: String = "s-${UUID.randomUUID().toString().take(8)}.db",
+    val processEnd: RecordingProcessEnd = RecordingProcessEnd(),
 ) {
     // Robolectric does not always create the databases directory the way a device does when the
     // framework asks for a database path, so the test makes it.
@@ -83,7 +120,7 @@ internal class TestGraph(
         context.getDatabasePath(name).parentFile?.mkdirs()
     }
 
-    val factory = TrackingFactory(AndroidDatabaseDriverFactory(context, name, clock))
+    val factory = TrackingFactory(AndroidDatabaseDriverFactory(context, name, clock, processEnd))
     val storeFactory = TrackingStoreFactory(AndroidStoreDriverFactory(context, storeName, clock))
     private val application: KoinApplication =
         koinApplication { modules(momTimeModules(context, factory, storeFactory)) }

@@ -54,18 +54,24 @@ class EventPayloadRoundTripTest {
     @Test
     fun `canary payload round trips with and without an actual instant`() {
         val scheduled = Instant.fromEpochMilliseconds(1_000)
-        assertRoundTrip(EventPayload.Canary(scheduledAt = scheduled, actualAt = Instant.fromEpochMilliseconds(1_250)))
+        assertRoundTrip(
+            EventPayload.Canary(scheduledAt = scheduled, actualAt = Instant.fromEpochMilliseconds(1_250)),
+            EventType.CANARY_RESULT,
+        )
         // A canary never seen to fire: the actual instant is absent, not zero.
-        assertRoundTrip(EventPayload.Canary(scheduledAt = scheduled, actualAt = null))
+        assertRoundTrip(EventPayload.Canary(scheduledAt = scheduled, actualAt = null), EventType.CANARY_RESULT)
     }
 
-    private fun assertRoundTrip(payload: EventPayload) {
+    private fun assertRoundTrip(
+        payload: EventPayload,
+        type: EventType = EventType.WATER_LOGGED,
+    ) {
         val id = "evt-${payload::class.simpleName}-${payload.hashCode()}"
         val event =
             Event(
                 id = id,
                 occurrenceId = null,
-                eventType = EventType.WATER_LOGGED,
+                eventType = type,
                 deviceTimestamp = Instant.fromEpochMilliseconds(0),
                 effectiveAt = null,
                 source = EventSource.USER,
