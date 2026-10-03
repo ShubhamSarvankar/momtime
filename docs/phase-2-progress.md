@@ -12,6 +12,12 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 - Every Robolectric test that claims a scheduling call must fail when that call is removed. Every boot test must fail if boot is changed to start the ringer.
 - Strings: every user facing string in `values/strings.xml`, English only; no Hindi or Marathi resources in Phase 2.
 - Never describe the alarm subsystem as complete: it passes all automated layers with device checks outstanding until Phase 7.
+- **No conversation or session link goes anywhere in the public repo** (Shubham's instruction): not in commit messages or trailers, PR titles, PR bodies, comments, code comments or docs. Decisions are attributed as "by Claude (technical review)" with no link. Before every push check each new commit message, and before opening or editing a PR check its body, for any claude.ai or claude.com URL; state in each handover that this was done. Commits already on `main` stay as they are (rewriting them needs a force push to `main`, which branch protection blocks, and would break every cited SHA).
+- Follow ups accepted from the review of PR A, still to do:
+  - **PR 1:** extend the function probe beyond `iif`. The dialect rejects syntax but does not check every function name, so the gap is functions generally. Probe at least `unixepoch`, `concat`, `concat_ws`, `string_agg`, `format`, `octet_length`, the 3.35 math functions and the JSON functions; for JSON, establish whether they are available on API 29 devices rather than assume it. Add every function the dialect accepts to `verifySqliteFloor`'s list and mutation check one name. If this changes what ADR 0042 says, write a new ADR; if it only extends the list under the mechanism ADR 0042 describes, record it here.
+  - **PR 1:** add two precedents to CLAUDE.md's testing section: the 8 declared foreign keys were never enforced (ADR 0043), and the 3.38 dialect sat above the 3.22 device floor and accepted syntax the device rejects while a comment asserted the opposite. The telemetry finding joins in PR B.
+  - **PR 4:** when `work-runtime` arrives, read WorkManager's manifest (the `directBootAware` settings of `SystemJobService` and the receivers) from the 2.12.0 AAR in the Gradle cache, the artifact we ship. The direct boot evidence so far is from `androidx-main`, which is not what ships.
+  - **When the Android half of ADR 0043 lands** (PR 1): do not edit the ADR. Record the completion here, in the traceability file, and in `ARCHITECTURE.md` wherever it describes the driver.
 - Local build: Gradle needs JDK 17 or later as launcher. On the author's machine set `JAVA_HOME` to the Gradle-provisioned Temurin 21 (`~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2`) because the default `java` is 11. `./gradlew :shared:check ktlintCheck detekt :android:assembleDebug :server:test` is the local equivalent of CI.
 
 ## PR order (approved by Claude (technical review))
@@ -75,7 +81,7 @@ Robolectric 4.17's default `SQLiteMode` and the race behaviour on the Android dr
 
 Scope (approved): SQLDelight dialect to 3.18 (ADR 0042), `upsertWaterGoal` rewrite, foreign key enforcement in the JVM driver factory with the six fixtures repaired and foreign key checks in migration tests (ADR 0043), the false build comment corrected, `verifySqliteFloor` for the one function the dialect was shown to accept, and the documentation corrections that depend on no Phase 2 code (`ARCHITECTURE.md` sections 5.2, 5.3 and 5.4, scenario 17 and 18 notes, the Phase 7 API 29 note, Open Items rows, `MANUAL_CHECKS.md` rows P2-1 to P2-5). The Android foreign key `Callback` is not in this PR; it lands with the Android driver factory in PR 1. The tier ADR is not in this PR; it lands in PR 2.
 
-Numbers, measured at code commit `0ebd616` (the PR head differs from it only in docs): 107 `shared` tests (99 before), line coverage 648/664 (97.6%), branch coverage 194/198 (98.0%), with per package gates data 89/92 (96.7%), domain 8/8, engine 97/98 (99.0%).
+Numbers, measured at code commit `90755bc` (the PR head differs from it only in docs): 107 `shared` tests (99 before), line coverage 648/664 (97.6%), branch coverage 194/198 (98.0%), with per package gates data 89/92 (96.7%), domain 8/8, engine 97/98 (99.0%).
 
 ## Next
 
