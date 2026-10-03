@@ -36,13 +36,13 @@ momtime/
 | Suite | Command | Runs on |
 |---|---|---|
 | `shared` JVM tests + the `android.*` import ban | `./gradlew :shared:jvmTest :shared:check` | CI, no device |
-| Migration tests | `./gradlew :shared:verifySqlDelightMigration` (added in Phase 1, once a schema exists) | CI, no device |
+| Migration tests | `./gradlew :shared:verifySqlDelightMigration :android:verifyDebugAndroidStoreDatabaseMigration` (the android store has its own committed baseline, ADR 0048) | CI, no device |
 | Server tests | `./gradlew :server:test` | CI, no device |
 | Android assemble + lint | `./gradlew :android:assembleDebug :android:lint` | CI, no device |
 | Detekt | `./gradlew detekt` | CI, no device |
 | ktlint | `./gradlew ktlintCheck` | CI, no device |
 | Robolectric, native SQLite (Android data layer now; alarm subsystem as it lands) | `./gradlew :android:testDebugUnitTest` | CI, no device |
-| Android structural checks (no generated query type in android sources; no wall clock outside the DI package) | `./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifyNoClockSystem :android:selfTestVerifyNoClockSystem` | CI, no device |
+| Android structural checks (no generated query type in android sources; no wall clock outside the DI package; no component in another process; the SQLite floor for the android store) | `./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifyNoClockSystem :android:selfTestVerifyNoClockSystem :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor` | CI, no device |
 | Roborazzi screenshots (from Phase 3) | `./gradlew :android:recordRoborazziDebug` / `verifyRoborazziDebug` | CI, no device |
 | Device verification | See [`docs/MANUAL_CHECKS.md`](docs/MANUAL_CHECKS.md) | Real hardware only, Phase 7 |
 
