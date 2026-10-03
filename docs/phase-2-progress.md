@@ -26,8 +26,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 |---|---|---|
 | A | `phase-2/sqlite-parity` | Merged (PR #13, merge commit `43d4724`) |
 | 1 | `phase-2/android-data-wiring` | Merged (PR #14, merge commit `f5de0ca`) |
-| B | `phase-2/telemetry-split` | Open for review (see "PR B" below) |
-| 2 | `phase-2/capability` | Not started |
+| B | `phase-2/telemetry-split` | Merged (PR #15, merge commit `397ae01`) |
+| 2 | `phase-2/capability` | Open for review (see "PR 2" below) |
 | 3 | `phase-2/arming` | Not started |
 | 4 | `phase-2/workers` | Not started |
 | 5 | `phase-2/ringer` | Not started |
@@ -66,10 +66,16 @@ Approved: `app.cash.sqldelight:android-driver` 2.4.0, `androidx.work:work-runtim
 
 20. **Corruption is a lost schedule** (from the review of PR #14; recorded now, built later). A fresh database has no templates, so after corruption nothing rings until she sets them up again, and the marker for the reliability view is not enough. **PR 5, when notification channels exist:** when the marker is written for the shared database, post one immediate notification on the Critical channel telling her that her reminders were reset and need setting up again. The android store's corruption does not notify (ADR 0048).
 21. **An alarm fire that maps to no occurrence must not crash and must write nothing** (from the review of PR #14). After a reset or a restore, the request code of a fired alarm can name an `alarmSlot` no occurrence has. **PR 3:** the fire path handles it, with a test that covers it.
-22. **Decision needed before PR 3: the live process after mid-use corruption** (ADR 0049). After the corruption handler runs in the middle of a query the process holds a closed driver, and every repository call throws until a new driver opens. The options are in ADR 0049 (rebuild the Koin graph, let the holder reopen, end the process). The decision belongs to Claude (technical review) and shapes how the alarm receiver, workers and ringer read the database.
+22. **Decision needed before PR 3: the live process after mid-use corruption** (ADR 0049). After the corruption handler runs in the middle of a query the process holds a closed driver, and every repository call throws until a new driver opens. The options are in ADR 0049 (rebuild the Koin graph, let the holder reopen, end the process). The decision belongs to Claude (technical review) and shapes how the alarm receiver, workers and ringer read the database. **Decided in the review of PR #15 and recorded in ADR 0051:** the shared database ends the process through an injected seam after the marker is durable (corruption found mid-query only; on open the framework's retry is enough), the android store reopens under a lock with exactly one live driver and never fails the alarm path.
 23. **The app runs in one process** (ADR 0046, decision of Claude (technical review)), enforced by `verifySingleProcess` on the merged manifest. It starts to matter in PR 4, when WorkManager's components merge in.
 24. **The journal mode is set explicitly to a rollback journal on both databases** (ADR 0047, decision of Claude (technical review)).
 25. **Mutation hygiene is standing practice** (decision of Claude (technical review), now in CLAUDE.md's testing section): show the diff and confirm it is exactly the intended change; afterwards confirm the intended test failed, on an assertion, for the intended reason; the record states both checks.
+
+
+26. **The Critical channel input** (PR 2 left room for it): `CapabilityInputs.criticalChannelAllowed`, read through the seam `PlatformCapabilityReader.criticalChannelBlocked`, which reads as not blocked until channels exist. **PR 5 wires it** to the real channel state, and a user can block that one channel while notifications stay on, which must fail Tier 3 for critical delivery (the table already says so). The resolution table has 64 rows; adding an input means extending it, and the test fails until it is.
+27. **The reset notification for the shared database's corruption** (decision 20) is posted by the corruption handler before it ends the process (ADR 0051), so PR 5 adds it to `CorruptionHandler` for the shared database only.
+28. **No more `apply(from)` script plugins without asking** (review of PR #15). If more build logic needs sharing across modules, the next step is an included build, and that is a decision for Claude (technical review).
+29. **CI is read through the GitHub MCP.** If the MCP job listing fails, the handover says how it failed, so the fallback is a recorded exception and not a habit.
 
 
 ## Findings from orientation that the work depends on
@@ -138,6 +144,28 @@ Findings from this PR:
 - **`@SQLiteMode` in Robolectric 4.17.** It is deprecated ("will be deleted in a forthcoming release"). NATIVE is now the default ("the default behavior is now equivalent to NATIVE mode, so this annotation is generally no longer needed"); LEGACY still works but is itself deprecated. There is no replacement annotation or property. The annotation is kept for its intent, and the real guard is `assertNativeSqliteMode()`, which reads the effective mode from `ConfigurationRegistry`. When the annotation is deleted the tests stop compiling, which is the alarm to drop it and keep the assertion.
 - **Lint and the backup rules.** Lint rejects an `<exclude>` that is not under an `<include>`, so the android store has no exclude of its own. The rules are an allow-list (the shared database and its journal), the store is out by not being included, and `BackupRulesTest` pins the include list and checks no include is a prefix of a store file name. Lint's own check treats an include path as a prefix, which is why the shared database's `.corrupt` copy keeps an explicit exclude. Whether a real backup agent matches prefixes is not known without a device (P2-7).
 
+## PR 2: `phase-2/capability`
+
+Branched from `main` at `397ae01adc70acd7084175dd69e44972a3c7f51b` (the merge of PR B).
+
+Scope: the tier ADR (ADR 0050); delivery resolution as a pure function over six inputs; the platform adapter, tested per SDK; the 64 row expected table as data; the manifest permissions and `verifyManifestPermissions`; the Open Item for the battery optimisation request; the follow ups of the PR #15 review (data branch coverage, the canary column decode guard, CI read through the MCP) and the corruption decision (ADR 0051). ADRs 0050 and 0051. Mutations are in `phase-2-traceability.md` (C1 to C15, D1 to D5, R8 and R9), run at `3cfbbd6`.
+
+No new CI job. `verify-android-structure` also runs `verifyManifestPermissions` and its self-test.
+
+Numbers, measured at `c0609b4` (the head differs from it only in documentation): 120 `shared` tests (117 before) and 110 android tests (61 before), none failing. `shared` line coverage 633/650 (97.4%), branch coverage 189/193 (97.9%): data 84/87 (96.6%), domain 8/8, engine 97/98 (99.0%), all above their gates.
+
+The five data branches (follow up 1 of the PR #15 review). Before the work the data package was 72/77, with five uncovered branches. Three are the Phase 1 quiet hours branches, `AppSettingsRepository.kt:72` (one) and `:73` (two), the arms of `toQuietHours` that the `quiet_hours_valid` CHECK makes unreachable and that are kept as a loud failure. The other two were `Mappers.kt:23`, both arms of `Long?.toBooleanOrNull()`, whose only caller was the telemetry repository PR B removed. That function had no callers left, so it is deleted, not covered (judgment of Claude). Data is now 84/87, the three Phase 1 branches only. The engine's one uncovered branch is unchanged (the compiler generated default of the exhaustive `when` in `adherenceFigures`).
+
+How the other payload fields are stored (follow up 2). `event` holds sparse nullable columns, one set per payload variant (`snooze_number`, `mission_result_type`, `water_ml`, `weight_grams`, `caregiver_link_id`, and now `canary_scheduled_at` and `canary_actual_at`), and the only constraint is `CHECK (source IN ('USER', 'SYSTEM'))`. A row's payload is whichever column is set, and nothing in the schema ties a column to an event type. The canary columns follow that convention. For the others a column set on the wrong event type still decodes as that payload; that was left alone, as the review asked only for the canary columns. Decoding now fails with `IllegalStateException` on canary columns set on any event type but `CANARY_RESULT`, and on a `CANARY_RESULT` with an actual instant and no scheduled one; a `CANARY_RESULT` with neither decodes as no payload (the old form). No schema change.
+
+CI through the MCP (follow up 3): see the PR description for how it was read.
+
+Findings from this PR:
+
+- **`canUseFullScreenIntent()` has no Robolectric shadow**, and its real call under Robolectric is a constant false with no setter. It is read through a seam (`fullScreenIntentApi`), tested for flow through and for a default that wrongly reads true; a default that wrongly reads false cannot be caught off a device (C11, `MANUAL_CHECKS.md` P2-10). `ShadowAlarmManager.setCanScheduleExactAlarms` is a static setter. Every other input has a shadow.
+- **Lint accepted the four permissions** without a baseline. The merged manifest holds exactly those four today, so nothing from a dependency has been added yet; WorkManager's will have to come through the allowlist in PR 4.
+- **The android store's repositories now read the database through a provider** on every call and never throw (ADR 0051), so a store opens on first use, not when a repository is resolved. The Koin test was adjusted to say so.
+
 ## Next
 
-After PR B is merged and reviewed: PR 2 `phase-2/capability`. Branch from `main` at the merge commit. Start by reading this file, decisions 4 and 5 above (the tier ADR, the manifest permissions, `@Config` at SDK 29, 31, 33 and the latest), the PR 2 notes in the Step 1 report, and `docs/phase-2-traceability.md`. The tier ADR takes the next number after 0049.
+After PR 2 is merged and reviewed: PR 3 `phase-2/arming`. Branch from `main` at the merge commit. Start by reading this file, decisions 6, 14, 17, 18, 21 and 22 above (the watchdog record, caregiver rungs, fire telemetry, the unknown slot fire and the corruption decision as decided), the Step 1 notes on arming (`AlarmScheduler` port in `shared`, the Android implementation, request codes from `alarmSlot` only, `FLAG_IMMUTABLE`, one alarm armed at a time, re arm on fire), and `docs/phase-2-traceability.md` rows R1 to R3 and R7. Scenario 3's Android half and the `SecurityException` test land there. The capability resolution of this PR is what arming reads.

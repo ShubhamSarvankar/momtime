@@ -240,7 +240,7 @@ The critical path. Nothing else in the codebase deserves this much care.
 
 ### 5.1 Delivery stack
 
-1. `AlarmManager.setAlarmClock()` for the wake. The system does not adjust delivery time for these and delivers them in low power modes. `setExactAndAllowWhileIdle` is the Tier 2 fallback; note it is throttled to roughly one fire per app per nine minutes in deep Doze, which breaks a 5 minute ladder, so it is a fallback and not a substitute.
+1. `AlarmManager.setAlarmClock()` for the wake. The system does not adjust delivery time for these and delivers them in low power modes. It is the only exact mechanism. On API 31 and above it needs the same exact alarm capability as every other exact API (`setExact`, `setExactAndAllowWhileIdle`), so there is no exact fallback that could rescue a missing capability, and `setExactAndAllowWhileIdle`, which is also throttled to roughly one fire per app per nine minutes in deep Doze, has no role. Exact capability is what `canScheduleExactAlarms()` reports (taken as true on API 29 and 30, where the method does not exist and is not called), never a permission check, because a battery optimisation exemption also grants it. Without it the app arms an inexact `setAndAllowWhileIdle` alarm and delivers Tier 1 (ADR 50).
 2. A `BroadcastReceiver` that immediately starts a foreground service typed `mediaPlayback` as the ringer.
 3. A notification with `setFullScreenIntent`, and a ring `Activity` with `showWhenLocked` and `turnScreenOn`.
 
@@ -299,11 +299,13 @@ Resolved at runtime on each platform, not inferred from OS version. An Android 1
 
 | Tier | Android | iOS (later) |
 |---|---|---|
-| `TIER_3` | Exact alarm + full screen intent + battery exemption | AlarmKit authorised, iOS 26+ |
-| `TIER_2` | Exact alarm, full screen intent denied: heads up + ringer service | UserNotifications time sensitive + Live Activity |
-| `TIER_1` | Inexact alarms, plain notifications. Honest about it in the UI. | |
+| `TIER_3` | Exact capability, plus effective full screen intent (`canUseFullScreenIntent()`, and notifications enabled, and the Critical channel not blocked), plus battery exemption | AlarmKit authorised, iOS 26+ |
+| `TIER_2` | Exact capability, short of Tier 3: heads up and the ringer service where notifications are delivered, the overlay where it is granted, audio only otherwise | UserNotifications time sensitive + Live Activity |
+| `TIER_1` | Not exact: an inexact alarm and plain notifications. Honest about it in the UI. With notifications denied as well, nothing is delivered visibly and the app shows a blocking banner. | |
 
 The UI and the escalation policy read the tier. The canary reports which tier the device **actually achieves**, not which one it claims.
+
+Android resolves the tier with a pure function over six inputs: exact capability, full screen intent, notifications enabled, battery exemption, overlay permission, and whether the Critical channel is blocked. The result is android's own type (a tier, the mechanism that arms the alarm, and presentation flags for full screen intent, heads up, overlay and audio only), and the tier maps to the shared `DeliveryCapability`, which keeps its three values (ADR 50). A user can block one channel while notifications stay on, and Tier 3 must then fail for critical delivery, so that is an input; channels arrive in PR 5 and until then it is read as not blocked. The expected result for every one of the 64 combinations is written out as data in the tests, and the test fails if a combination is missing from it.
 
 ### 5.9 Missions
 

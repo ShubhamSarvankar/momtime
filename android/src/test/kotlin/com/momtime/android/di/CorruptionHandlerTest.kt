@@ -14,10 +14,12 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * The order the corruption handler works in (ADR 0044, ADR 0049): the database is closed before its file
- * is moved aside. On Linux a file can be renamed while it is open, so a handler that moved it first
- * would work there and fail on a platform that refuses, and nothing observable on a JVM file system
- * would tell. This records what is true of the file at the instant `close` is called instead.
+ * The order the corruption handler works in (ADR 0044, ADR 0049, ADR 0051): the database is closed before
+ * its file is moved aside, the marker is durable before the process ends, and the process ends only for
+ * corruption found in the middle of a query. On Linux a file can be renamed while it is open, so a
+ * handler that moved it first would work there and fail on a platform that refuses, and nothing
+ * observable on a JVM file system would tell. This records what is true at the instant `close` and the
+ * process end are called instead.
  */
 class CorruptionHandlerTest {
     private val directory = Files.createTempDirectory("momtime-corruption").toFile()
@@ -44,6 +46,7 @@ class CorruptionHandlerTest {
     private fun recording(
         path: String?,
         observed: Observed,
+        open: Boolean = true,
     ): SupportSQLiteDatabase =
         Proxy.newProxyInstance(
             SupportSQLiteDatabase::class.java.classLoader,
@@ -51,6 +54,7 @@ class CorruptionHandlerTest {
         ) { _, method, _ ->
             when (method.name) {
                 "getPath" -> path
+                "isOpen" -> open
                 "close" -> {
                     observed.closed++
                     observed.databasePresentAtClose = database.exists()
@@ -83,12 +87,14 @@ class CorruptionHandlerTest {
     @Test
     fun `an in-memory database has nothing to keep and writes no marker`() {
         val observed = Observed()
+        var ended = 0
 
-        CorruptionHandler(marker, clock).handle(recording(null, observed))
+        CorruptionHandler(marker, clock, processEnd = { ended++ }).handle(recording(null, observed))
 
         assertEquals(1, observed.closed)
         assertFalse(corrupt.exists())
         assertFalse("no marker for a database with no file", marker.exists())
+        assertEquals("nothing to replace, so the process is not ended", 0, ended)
     }
 
     @Test
@@ -106,5 +112,61 @@ class CorruptionHandlerTest {
         assertFalse(File(directory, "momtime.db-wal").exists())
         assertFalse(File(directory, "momtime.db-shm").exists())
         assertEquals(Instant.parse("2026-01-01T00:00:00Z"), CorruptionMarker.read(marker)?.corruptedAt)
+    }
+
+    // The process ends after the database is closed, the file is kept aside and the marker is readable, so
+    // a process that dies straight afterwards leaves all three behind (ADR 0051).
+    @Test
+    fun `the process ends only after the marker is durable`() {
+        database.writeBytes(ByteArray(64) { it.toByte() })
+        val observed = Observed()
+        var calls = 0
+        var markerAtEnd: CorruptionMarker? = null
+        var corruptAtEnd = false
+        var closedAtEnd = 0
+        val end =
+            ProcessEnd {
+                calls++
+                markerAtEnd = CorruptionMarker.read(marker)
+                corruptAtEnd = corrupt.isFile
+                closedAtEnd = observed.closed
+            }
+
+        CorruptionHandler(marker, clock, processEnd = end).handle(recording(database.path, observed))
+
+        assertEquals("the process must end exactly once", 1, calls)
+        assertNotNull("the marker must be readable when the process ends", markerAtEnd)
+        assertTrue("the damaged copy must be in place when the process ends", corruptAtEnd)
+        assertEquals("the database must be closed when the process ends", 1, closedAtEnd)
+    }
+
+    // Corruption found while a database is still being opened is replaced by the framework's own retry, so
+    // nothing holds a closed database and nothing needs to end or reopen (ADR 0051).
+    @Test
+    fun `corruption found on open neither ends the process nor reports a closed database`() {
+        database.writeBytes(ByteArray(64) { it.toByte() })
+        var ended = 0
+        var reported = 0
+
+        CorruptionHandler(marker, clock, { ended++ }, { reported++ })
+            .handle(recording(database.path, Observed(), open = false))
+
+        assertEquals(0, ended)
+        assertEquals(0, reported)
+        assertTrue("the file is still kept aside", corrupt.isFile)
+        assertNotNull(CorruptionMarker.read(marker))
+    }
+
+    @Test
+    fun `a database that can be reopened is told, and its process is left alone`() {
+        database.writeBytes(ByteArray(64) { it.toByte() })
+        var ended = 0
+        var reported = 0
+
+        CorruptionHandler(marker, clock, onClosedByCorruption = { reported++ })
+            .handle(recording(database.path, Observed()))
+
+        assertEquals("the owner must be told exactly once", 1, reported)
+        assertEquals(0, ended)
     }
 }

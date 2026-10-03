@@ -1,5 +1,7 @@
 import org.gradle.api.GradleException
+import org.w3c.dom.Element
 import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 
 plugins {
     alias(libs.plugins.android.application)
@@ -549,6 +551,150 @@ val selfTestVerifySingleProcess =
         }
     }
 
+// --- Manifest permissions (ADR 0050). Every permission changes the Play declarations, and a library can
+// bring its own (WorkManager does in PR 4), so the merged manifest's permissions are an exact allowlist, in
+// both directions: nothing extra, and nothing missing. Attributes such as maxSdkVersion are part of the
+// entry, so SCHEDULE_EXACT_ALARM losing its maxSdkVersion of 32 is a change too. A permission is added to
+// this list on purpose, in the PR that needs it, or the build fails.
+
+val permissionAllowlist =
+    setOf(
+        "uses-permission|android.permission.USE_EXACT_ALARM|",
+        "uses-permission|android.permission.SCHEDULE_EXACT_ALARM|maxSdkVersion=32",
+        "uses-permission|android.permission.USE_FULL_SCREEN_INTENT|",
+        "uses-permission|android.permission.POST_NOTIFICATIONS|",
+    )
+
+/** Every `uses-permission*` element as `element|name|attributes`, attributes sorted and without the name. */
+fun declaredPermissions(manifest: File): Set<String> {
+    val factory = DocumentBuilderFactory.newInstance()
+    factory.isNamespaceAware = true
+    val elements = factory.newDocumentBuilder().parse(manifest).getElementsByTagName("*")
+    val found = mutableSetOf<String>()
+    for (i in 0 until elements.length) {
+        val element = elements.item(i) as Element
+        if (!element.tagName.startsWith("uses-permission")) continue
+        val name = element.getAttributeNS("http://schemas.android.com/apk/res/android", "name")
+        val others =
+            (0 until element.attributes.length)
+                .map { element.attributes.item(it) }
+                .filter { it.localName != "name" && !it.nodeName.startsWith("xmlns") }
+                .map { "${it.localName}=${it.nodeValue}" }
+                .sorted()
+        found += "${element.tagName}|$name|${others.joinToString(";")}"
+    }
+    return found
+}
+
+fun permissionProblems(
+    manifest: File,
+    allowed: Set<String>,
+): List<String> {
+    val found = declaredPermissions(manifest)
+    return (found - allowed).sorted().map { "${manifest.parentFile.name}: not in the allowlist: $it" } +
+        (allowed - found).sorted().map { "${manifest.parentFile.name}: missing from the manifest: $it" }
+}
+
+val verifyManifestPermissions =
+    tasks.register("verifyManifestPermissions") {
+        group = "verification"
+        description = "Fails if the merged manifest's permissions differ from the exact allowlist (ADR 0050)"
+        dependsOn("processDebugManifest", "processReleaseManifest")
+        doLast {
+            // Fail closed: a merged manifest that is missing means the check read nothing.
+            val missing = mergedManifests.filterNot { it.isFile }
+            if (missing.isNotEmpty()) {
+                throw GradleException("verifyManifestPermissions found no merged manifest at: $missing")
+            }
+            val problems = mergedManifests.flatMap { permissionProblems(it, permissionAllowlist) }
+            if (problems.isNotEmpty()) {
+                throw GradleException(
+                    "the merged manifest's permissions differ from the allowlist; every permission is added on " +
+                        "purpose (ADR 0050):\n" + problems.joinToString("\n"),
+                )
+            }
+        }
+    }
+
+val selfTestVerifyManifestPermissions =
+    tasks.register("selfTestVerifyManifestPermissions") {
+        group = "verification"
+        description = "Proves verifyManifestPermissions detects each kind of difference, with fixtures"
+        doLast {
+            val root =
+                layout.buildDirectory
+                    .dir("manifest-permissions-fixture")
+                    .get()
+                    .asFile
+            root.deleteRecursively()
+
+            fun manifest(
+                name: String,
+                body: String,
+            ): File {
+                val dir = File(root, name).also { it.mkdirs() }
+                return File(dir, "AndroidManifest.xml").also {
+                    it.writeText(
+                        "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n$body\n" +
+                            "<application />\n</manifest>\n",
+                    )
+                }
+            }
+
+            val exact = "<uses-permission android:name=\"android.permission.USE_EXACT_ALARM\" />"
+            val schedule =
+                "<uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" android:maxSdkVersion=\"32\" />"
+            val fullScreen = "<uses-permission android:name=\"android.permission.USE_FULL_SCREEN_INTENT\" />"
+            val notifications = "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\" />"
+            val all = listOf(exact, schedule, fullScreen, notifications)
+
+            val failures = mutableListOf<String>()
+            val clean = permissionProblems(manifest("clean", all.joinToString("\n")), permissionAllowlist)
+            if (clean.isNotEmpty()) failures += "the exact list was flagged: $clean"
+            val reordered =
+                permissionProblems(manifest("reordered", all.reversed().joinToString("\n")), permissionAllowlist)
+            if (reordered.isNotEmpty()) failures += "a reordered list was flagged: $reordered"
+
+            val mustBeFlagged =
+                mapOf(
+                    "an extra permission" to
+                        all + "<uses-permission android:name=\"android.permission.INTERNET\" />",
+                    "SCHEDULE_EXACT_ALARM without its maxSdkVersion" to
+                        listOf(
+                            exact,
+                            "<uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" />",
+                            fullScreen,
+                            notifications,
+                        ),
+                    "SCHEDULE_EXACT_ALARM with another maxSdkVersion" to
+                        listOf(
+                            exact,
+                            "<uses-permission android:name=\"android.permission.SCHEDULE_EXACT_ALARM\" android:maxSdkVersion=\"33\" />",
+                            fullScreen,
+                            notifications,
+                        ),
+                    "a missing permission" to listOf(exact, schedule, fullScreen),
+                    "a uses-permission-sdk-23 variant" to
+                        listOf(
+                            "<uses-permission-sdk-23 android:name=\"android.permission.USE_EXACT_ALARM\" />",
+                            schedule,
+                            fullScreen,
+                            notifications,
+                        ),
+                )
+            for ((what, body) in mustBeFlagged) {
+                val found =
+                    permissionProblems(manifest(what.replace(' ', '-'), body.joinToString("\n")), permissionAllowlist)
+                if (found.isEmpty()) failures += "not detected: $what"
+            }
+            root.deleteRecursively()
+            if (failures.isNotEmpty()) {
+                throw GradleException("verifyManifestPermissions self-test failed:\n" + failures.joinToString("\n"))
+            }
+            logger.lifecycle("verifyManifestPermissions self-test passed.")
+        }
+    }
+
 tasks.named("check") {
     dependsOn(
         verifyNoGeneratedQueries,
@@ -557,5 +703,7 @@ tasks.named("check") {
         selfTestVerifyNoClockSystem,
         verifySingleProcess,
         selfTestVerifySingleProcess,
+        verifyManifestPermissions,
+        selfTestVerifyManifestPermissions,
     )
 }

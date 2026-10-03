@@ -20,47 +20,57 @@ data class FireTelemetry(
     val bootCount: Long?,
 )
 
+/**
+ * No call throws (ADR 0051): a failure returns false, null or zero, because a lost telemetry row must
+ * never stop an alarm.
+ */
 interface FireTelemetryRepository {
-    fun insert(telemetry: FireTelemetry)
+    /** True if the row was stored. */
+    fun insert(telemetry: FireTelemetry): Boolean
 
+    /** The row, or null if there is none or the store failed. */
     fun findForEvent(eventId: String): FireTelemetry?
 
+    /** The number of rows, or zero if the store failed. */
     fun count(): Long
 }
 
+/** Reads the database through [database] on every call, so a database that was replaced is picked up. */
 class SqlDelightFireTelemetryRepository(
-    database: AndroidStoreDatabase,
+    private val database: () -> AndroidStoreDatabase,
 ) : FireTelemetryRepository {
-    private val queries = database.fireTelemetryQueries
-
-    override fun insert(telemetry: FireTelemetry) {
-        queries.insertFireTelemetry(
-            event_id = telemetry.eventId,
-            resolved_tier = telemetry.resolvedTier.name,
-            screen_on = telemetry.screenOn?.toLong(),
-            audio_focus_obtained = telemetry.audioFocusObtained?.toLong(),
-            battery_pct = telemetry.batteryPct?.toLong(),
-            doze_state = telemetry.dozeState,
-            watchdog_repair = telemetry.watchdogRepair.toLong(),
-            boot_count = telemetry.bootCount,
-        )
-    }
-
-    override fun findForEvent(eventId: String): FireTelemetry? =
-        queries.selectFireTelemetryForEvent(eventId).executeAsOneOrNull()?.let {
-            FireTelemetry(
-                eventId = it.event_id,
-                resolvedTier = DeliveryCapability.valueOf(it.resolved_tier),
-                screenOn = it.screen_on?.let { value -> value != 0L },
-                audioFocusObtained = it.audio_focus_obtained?.let { value -> value != 0L },
-                batteryPct = it.battery_pct?.toInt(),
-                dozeState = it.doze_state,
-                watchdogRepair = it.watchdog_repair != 0L,
-                bootCount = it.boot_count,
+    override fun insert(telemetry: FireTelemetry): Boolean =
+        nonFatal(false) {
+            database().fireTelemetryQueries.insertFireTelemetry(
+                event_id = telemetry.eventId,
+                resolved_tier = telemetry.resolvedTier.name,
+                screen_on = telemetry.screenOn?.toLong(),
+                audio_focus_obtained = telemetry.audioFocusObtained?.toLong(),
+                battery_pct = telemetry.batteryPct?.toLong(),
+                doze_state = telemetry.dozeState,
+                watchdog_repair = telemetry.watchdogRepair.toLong(),
+                boot_count = telemetry.bootCount,
             )
+            true
         }
 
-    override fun count(): Long = queries.countFireTelemetry().executeAsOne()
+    override fun findForEvent(eventId: String): FireTelemetry? =
+        nonFatal(null) {
+            database().fireTelemetryQueries.selectFireTelemetryForEvent(eventId).executeAsOneOrNull()?.let {
+                FireTelemetry(
+                    eventId = it.event_id,
+                    resolvedTier = DeliveryCapability.valueOf(it.resolved_tier),
+                    screenOn = it.screen_on?.let { value -> value != 0L },
+                    audioFocusObtained = it.audio_focus_obtained?.let { value -> value != 0L },
+                    batteryPct = it.battery_pct?.toInt(),
+                    dozeState = it.doze_state,
+                    watchdogRepair = it.watchdog_repair != 0L,
+                    bootCount = it.boot_count,
+                )
+            }
+        }
+
+    override fun count(): Long = nonFatal(0L) { database().fireTelemetryQueries.countFireTelemetry().executeAsOne() }
 
     private fun Boolean.toLong() = if (this) 1L else 0L
 }

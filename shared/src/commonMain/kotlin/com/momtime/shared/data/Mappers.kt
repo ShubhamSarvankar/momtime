@@ -20,8 +20,6 @@ internal fun Boolean.toDb(): Long = if (this) 1L else 0L
 
 internal fun Long.toBoolean(): Boolean = this != 0L
 
-internal fun Long?.toBooleanOrNull(): Boolean? = this?.let { it != 0L }
-
 internal fun TimeZone.toDb(): String = id
 
 internal fun String.toTimeZone(): TimeZone = TimeZone.of(this)

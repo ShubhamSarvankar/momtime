@@ -73,6 +73,7 @@ class DatabaseCorruptionTest {
         assertTrue("the corrupt file must be kept as ${DatabaseFiles.CORRUPT_NAME}", corruptFile.isFile)
         assertArrayEquals("the kept file must be the corrupt one, unchanged", bytes, corruptFile.readBytes())
         assertEquals(DatabaseFiles.CORRUPT_NAME, corruptFile.name)
+        assertEquals("corruption found on open must not end the process", 0, second.processEnd.calls)
     }
 
     @Test
@@ -159,7 +160,14 @@ class DatabaseCorruptionTest {
     // trust the pages it has cached.
     @Test
     fun `corruption found during a query is handled like corruption on open`() {
-        val graph = graph()
+        var markerAtEnd: CorruptionMarker? = null
+        var corruptAtEnd = false
+        val recording =
+            RecordingProcessEnd {
+                markerAtEnd = CorruptionMarker.read(markerFile)
+                corruptAtEnd = corruptFile.isFile
+            }
+        val graph = TestGraph(context, DatabaseFiles.NAME, processEnd = recording).also { graphs.add(it) }
         val template = graph.seedTemplate()
         val occurrences = graph.get<OccurrenceRepository>()
         var n = 0
@@ -185,6 +193,9 @@ class DatabaseCorruptionTest {
         val marker = CorruptionMarker.read(markerFile)
         assertNotNull("the handler must write the marker", marker)
         assertTrue(marker!!.preserved)
+        assertEquals("the shared database's process must end exactly once", 1, graph.processEnd.calls)
+        assertNotNull("the marker must be durable before the process ends", markerAtEnd)
+        assertTrue("the damaged copy must be in place before the process ends", corruptAtEnd)
     }
 
     private val windowStart = Instant.parse("2026-01-01T00:00:00Z")
