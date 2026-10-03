@@ -41,10 +41,13 @@ momtime/
 | Android assemble + lint | `./gradlew :android:assembleDebug :android:lint` | CI, no device |
 | Detekt | `./gradlew detekt` | CI, no device |
 | ktlint | `./gradlew ktlintCheck` | CI, no device |
-| Robolectric (alarm subsystem, from Phase 2) | `./gradlew :android:testDebugUnitTest` | CI, no device |
+| Robolectric, native SQLite (Android data layer now; alarm subsystem as it lands) | `./gradlew :android:testDebugUnitTest` | CI, no device |
+| Android structural checks (no generated query type in android sources; no wall clock outside the DI package) | `./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifyNoClockSystem :android:selfTestVerifyNoClockSystem` | CI, no device |
 | Roborazzi screenshots (from Phase 3) | `./gradlew :android:recordRoborazziDebug` / `verifyRoborazziDebug` | CI, no device |
 | Device verification | See [`docs/MANUAL_CHECKS.md`](docs/MANUAL_CHECKS.md) | Real hardware only, Phase 7 |
 
 `./gradlew check` runs the full local verification set (tests, Detekt, ktlint, the import ban and its self-test) in one command.
+
+On Windows, keep Robolectric test names short: Robolectric names its temporary data directory after the test class and method, and a database path longer than 260 characters fails to open (`SQLITE_CANTOPEN`). CI runs on Linux and is not affected.
 
 `shared/src/commonMain/sqldelight/databases/1.db` is a **committed** schema snapshot, not a build artifact — it's what migration verification compares the current `.sq` files against (ADR 0035). Regenerating it (`./gradlew :shared:generateCommonMainMomTimeDatabaseSchema`) is a deliberate, reviewed step, never something CI or `check` does automatically; doing so routinely would make migration verification a tautology.

@@ -36,7 +36,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :shared:verifyNoClockSystem :shared:selfTestVerifyNoClockSystem
+      - run: ./gradlew :shared:verifyNoClockSystem :shared:selfTestVerifyNoClockSystem :android:verifyNoClockSystem :android:selfTestVerifyNoClockSystem
 
   migration-test:
     runs-on: ubuntu-latest
@@ -92,3 +92,25 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew ktlintCheck
+
+  android-unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :android:testDebugUnitTest
+
+  verify-android-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries
