@@ -22,19 +22,42 @@ import com.momtime.shared.data.SqlDelightSyncStateRepository
 import com.momtime.shared.data.SqlDelightWaterGoalRepository
 import com.momtime.shared.data.SyncStateRepository
 import com.momtime.shared.data.WaterGoalRepository
+import org.koin.core.module.Module
 import org.koin.dsl.module
 
-val sharedModule =
+/**
+ * Holds the one [MomTimeDatabase], built on first use from the [DatabaseDriverFactory]. It is
+ * `internal`, so no other module can name it, and it is the only place a driver is created: a
+ * second driver on the same file brings SQLITE_BUSY back (ADR 0036). The database is not a Koin
+ * definition of its own, so `get<MomTimeDatabase>()` fails: a caller can reach repositories and
+ * nothing below them, which keeps the generated `updateOccurrenceState` query out of reach
+ * (IMPLEMENTATION_PLAN.md, Phase 2: the Koin graph exposes repositories only).
+ */
+internal class DatabaseHolder(
+    factory: DatabaseDriverFactory,
+) {
+    val database: MomTimeDatabase by lazy { MomTimeDatabase(factory.createDriver()) }
+}
+
+/**
+ * The repositories, all over one database. Needs a [DatabaseDriverFactory] from the platform
+ * module. A function and not a value, so each Koin application gets its own holder.
+ */
+fun sharedModule(): Module =
     module {
-        single { MomTimeDatabase(get<DatabaseDriverFactory>().createDriver()) }
-        single<PregnancyRepository> { SqlDelightPregnancyRepository(get()) }
-        single<ScheduleTemplateRepository> { SqlDelightScheduleTemplateRepository(get()) }
-        single<OccurrenceRepository> { SqlDelightOccurrenceRepository(get()) }
-        single<EventRepository> { SqlDelightEventRepository(get()) }
-        single<AlarmDeliveryTelemetryRepository> { SqlDelightAlarmDeliveryTelemetryRepository(get()) }
-        single<CaregiverLinkRepository> { SqlDelightCaregiverLinkRepository(get()) }
-        single<WaterGoalRepository> { SqlDelightWaterGoalRepository(get()) }
-        single<AppSettingsRepository> { SqlDelightAppSettingsRepository(get()) }
-        single<InterruptionBudgetRepository> { SqlDelightInterruptionBudgetRepository(get()) }
-        single<SyncStateRepository> { SqlDelightSyncStateRepository(get()) }
+        single { DatabaseHolder(get()) }
+        single<PregnancyRepository> { SqlDelightPregnancyRepository(get<DatabaseHolder>().database) }
+        single<ScheduleTemplateRepository> { SqlDelightScheduleTemplateRepository(get<DatabaseHolder>().database) }
+        single<OccurrenceRepository> { SqlDelightOccurrenceRepository(get<DatabaseHolder>().database) }
+        single<EventRepository> { SqlDelightEventRepository(get<DatabaseHolder>().database) }
+        single<AlarmDeliveryTelemetryRepository> {
+            SqlDelightAlarmDeliveryTelemetryRepository(get<DatabaseHolder>().database)
+        }
+        single<CaregiverLinkRepository> { SqlDelightCaregiverLinkRepository(get<DatabaseHolder>().database) }
+        single<WaterGoalRepository> { SqlDelightWaterGoalRepository(get<DatabaseHolder>().database) }
+        single<AppSettingsRepository> { SqlDelightAppSettingsRepository(get<DatabaseHolder>().database) }
+        single<InterruptionBudgetRepository> {
+            SqlDelightInterruptionBudgetRepository(get<DatabaseHolder>().database)
+        }
+        single<SyncStateRepository> { SqlDelightSyncStateRepository(get<DatabaseHolder>().database) }
     }

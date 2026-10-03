@@ -24,8 +24,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 
 | Step | Branch | Status |
 |---|---|---|
-| A | `phase-2/sqlite-parity` | Open for review (see "PR A" below) |
-| 1 | `phase-2/android-data-wiring` | Not started |
+| A | `phase-2/sqlite-parity` | Merged (PR #13, merge commit `43d4724`) |
+| 1 | `phase-2/android-data-wiring` | Open for review (see "PR 1" below) |
 | B | `phase-2/telemetry-split` | Not started |
 | 2 | `phase-2/capability` | Not started |
 | 3 | `phase-2/arming` | Not started |
@@ -75,7 +75,7 @@ Approved: `app.cash.sqldelight:android-driver` 2.4.0, `androidx.work:work-runtim
 
 ## Unverified (carry until settled)
 
-Robolectric 4.17's default `SQLiteMode` and the race behaviour on the Android driver (PR 1 runs it); Play policy on `USE_EXACT_ALARM` for a medication reminder; whether an OEM clean is a force-stop (P2-2); whether the ringer foreground service sounds with notifications denied and whether a MediaStyle notification still posts; whether a foreground service can start from `LOCKED_BOOT_COMPLETED` on Android 15; OEM overlays that could flip the default journal mode; the WorkManager evidence for the direct boot manifest settings is from androidx-main, not the 2.12.0 tag.
+The race behaviour on a device (PR 1 showed it under Robolectric only, ADR 0045; P2-9); Play policy on `USE_EXACT_ALARM` for a medication reminder; whether an OEM clean is a force-stop (P2-2); whether the ringer foreground service sounds with notifications denied and whether a MediaStyle notification still posts; whether a foreground service can start from `LOCKED_BOOT_COMPLETED` on Android 15; OEM overlays that could flip the default journal mode; the WorkManager evidence for the direct boot manifest settings is from androidx-main, not the 2.12.0 tag.
 
 ## PR A: `phase-2/sqlite-parity`
 
@@ -83,6 +83,32 @@ Scope (approved): SQLDelight dialect to 3.18 (ADR 0042), `upsertWaterGoal` rewri
 
 Numbers, measured at code commit `90755bc` (the PR head differs from it only in docs): 107 `shared` tests (99 before), line coverage 648/664 (97.6%), branch coverage 194/198 (98.0%), with per package gates data 89/92 (96.7%), domain 8/8, engine 97/98 (99.0%).
 
+## PR 1: `phase-2/android-data-wiring`
+
+Branched from `main` at `43d47241ff59afa188756ece95a9d673ffc15ac3` (the merge of PR A).
+
+Scope (decisions 3, 11, 12 and 13 above, and the PR 1 prompt): Robolectric in android unit tests with native SQLite pinned and asserted; the production `AndroidDatabaseDriverFactory` and `MomTimeDatabaseCallback` (foreign keys on, `onCorruption` per ADR 0044, journal mode untouched); the Koin graph exposing repositories only; `verifyNoGeneratedQueries` and an android `verifyNoClockSystem`, each with a fixture self test; the materialisation race under `AndroidSqliteDriver`; the v1 to v2 migration, the terminal trigger and orphan rejection under the Android driver; backup rules for API 29 to 36; the extended `verifySqliteFloor` list; the two CLAUDE.md precedents; ADR 0044 and ADR 0045. Mutations are in `phase-2-traceability.md` (B1 to B12, E5 to E7), run at `a1c8622`.
+
+New CI jobs, which Shubham adds to the required checks on `main`: `android-unit-test` and `verify-android-structure`. The android clock check runs inside the existing `verify-no-clock-system` job, so that job's name is unchanged.
+
+Numbers, measured at `a1c8622` (the head differs from it by documentation and one KDoc comment): 40 android tests (18 Robolectric tests at SDK 29 and 36, plus 4 plain JUnit backup rule tests), 109 `shared` tests (107 before); `shared` line coverage 651/667 (97.6%), branch coverage 194/198 (98.0%), per package data 89/92, domain 8/8, engine 97/98, all above their gates.
+
+Completion of the Android half of ADR 0043 (ADR 0043 itself is not edited): `MomTimeDatabaseCallback.onConfigure` enables foreign keys on the Android driver, asserted by `AndroidDriverConfigurationTest` and `AndroidSchemaTest`, with `foreign_key_check` clean after the v1 to v2 migration (B1). `ARCHITECTURE.md` section 2 describes the driver factory.
+
+What the experiments showed, and what they did not:
+
+- **The wait is the connection pool's (ADR 0045).** B waits in `SQLiteConnectionPool.waitForConnection`, reached from `SQLiteSession.beginTransaction`, before it touches SQLite's lock, at both SDKs. ADR 0036 had attributed it to `BEGIN IMMEDIATE`. With two drivers on one file, B is refused with `SQLiteDatabaseLockedException: database is locked (code 5 SQLITE_BUSY)`. Enabling WAL did not change the wait in a mutation run. Observed for 2 seconds only, on Robolectric's native SQLite, not a device (`MANUAL_CHECKS.md` P2-9).
+- **Journal mode under Robolectric is `memory`**, not the device's `TRUNCATE`. The test pins `memory` and rejects WAL. The device value is `MANUAL_CHECKS.md` P2-6.
+- **`@SQLiteMode` is deprecated in Robolectric 4.17.** The annotation still selects the mode and `assertNativeSqliteMode()` reads the effective mode from `ConfigurationRegistry`; pinning a class to LEGACY fails all of its tests (traceability B11). If a later Robolectric removes the annotation, this assertion fails to compile, which is the intended alarm.
+- **Windows path length.** Robolectric names its temp data directory after the test class and method, and a database path over 260 characters fails with `SQLITE_CANTOPEN`. Test method names in database tests are kept short. CI is Linux and not affected. A Robolectric SDK 36 run needs `--add-opens` flags for JDK internals, set in `android/build.gradle.kts`.
+- **Corruption** is exercised for open-time detection only (a file that is not a database). Mid-query corruption is `MANUAL_CHECKS.md` P2-8.
+
+The function probe, extended (review follow up 1). About 110 function names were probed against the 3.18 dialect with one `.sq` file of probe statements. It rejects every one of: `unixepoch`, `concat`, `concat_ws`, `string_agg`, `format`, `octet_length`, `unhex`, `timediff`, `sign`, `ceil`, `ceiling`, `floor`, `trunc`, `pow`, `power`, `sqrt`, `ln`, `log`, `log2`, `log10`, `exp`, `mod`, `pi`, `radians`, `degrees`, the trigonometric and hyperbolic functions, `json*`, `jsonb*`, `json_error_position`, the window functions as scalar calls, `unistr`, `sqlite_offset`, `if`, `load_extension`, `rtreenode`. It accepts five that the floor cannot run, all now in `verifySqliteFloor`: `iif` (SQLite 3.32), `soundex` (needs `SQLITE_SOUNDEX`, set in no Android build from API 29 to 36), and the FTS5 functions `bm25`, `highlight` and `snippet` (no Android build from API 29 to 36 compiles FTS5; `dist/Android.bp` enables FTS3 and FTS4). It also accepts functions that exist on 3.22 and are fine. This extends the list under the mechanism ADR 0042 describes, so there is no new ADR; ADR 0042 said the list "grows when a probe shows another accepted construct", and this is that. The probe does not check arity (`abs(1, 2, 3)` is accepted).
+
+JSON on devices, established from the AOSP build flags of `external/sqlite` (`dist/Android.bp`) for android-10 to android-16, not assumed: JSON1 is not compiled in on API 29 to 33 (it needs `SQLITE_ENABLE_JSON1`, which is not set), so JSON functions are unavailable there. From API 34 the SQLite is 3.39 or later, where JSON is built in unless omitted, and no tag omits it, so JSON is available on API 34 and later in the AOSP build. The math functions are not compiled in on any API from 29 to 36 (no tag sets `SQLITE_ENABLE_MATH_FUNCTIONS`). OEM builds are unverified, and every tag sets `SQLITE_OMIT_COMPILEOPTION_DIAGS`, so a device cannot be asked with `PRAGMA compile_options`. The dialect already rejects every `json*` and math function, so the project cannot use them whatever a device has.
+
+Other compile flags noticed in the same files, relevant later: `SQLITE_DEFAULT_LEGACY_ALTER_TABLE` is set in the android-16 `dist/Android.bp` and `android/Android.bp` adds legacy alter table flags (which release tags carry it was not checked), so on those builds `ALTER TABLE ... RENAME` may follow the legacy rules (references in triggers and views are not rewritten), unlike the JVM's SQLite. `1.sqm` renames `app_settings` only, which nothing references, so it is unaffected; a future migration that renames a table other objects reference must be tested on the floor behaviour (Phase 7 API 29 emulator suite, `MANUAL_CHECKS.md` P2-4). `SQLITE_DEFAULT_AUTOVACUUM=1`, `SQLITE_SECURE_DELETE` and `SQLITE_TEMP_STORE=3` are also set.
+
 ## Next
 
-After PR A is merged and reviewed: PR 1 `phase-2/android-data-wiring`. Branch from `main` at the merge commit. Start by reading this file, the PR 1 description in decisions 3, 11, 12 and 13 above, and `docs/phase-2-traceability.md`.
+After PR 1 is merged and reviewed: PR B `phase-2/telemetry-split`. Branch from `main` at the merge commit. Start by reading this file, decision 8 above (the telemetry violation; check whether `alarm_delivery_telemetry` needs to exist at all before building a slim table; the android store is a second SQLDelight database in the android module and STOP and report if the SQLDelight plugin does not work in an AGP 9 application module; the structural check gains confinement of the store's own generated queries to its repository package; `CapabilityBoundaryTest` needs a new positive control; the telemetry finding joins CLAUDE.md's testing precedents), and `docs/phase-2-traceability.md`. The `momtime_android.db`-style store file must be excluded from backup: the rules name the files they include, so a new file is excluded unless added on purpose.

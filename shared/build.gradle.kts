@@ -502,13 +502,19 @@ val selfTestVerifyBranchCoverage =
     }
 
 // --- SQLite floor 3.22 (ADR 0042). The gate is the SQLDelight 3.18 dialect, which rejects newer
-// syntax at compile time. This scan covers only what that dialect was shown to accept although the
-// function is newer than 3.22. Found by probing the dialect, not by assumption: `iif` (3.32). Every
-// other post-3.22 construct probed (upsert, RETURNING, window functions, FILTER, UPDATE FROM, NULLS
-// FIRST/LAST, generated columns, STRICT, RENAME COLUMN, json, unixepoch, concat, string_agg and
-// others) is a compile error under the dialect. Add a name here only with the probe that showed it
-// was accepted.
-val sqliteFunctionsNewerThanFloor = listOf("iif")
+// syntax at compile time. It does not check every function name: a probe of about 110 function names
+// found five it accepts that the Android SQLite on the floor cannot run. Every other post-3.22
+// construct probed (upsert, RETURNING, window functions, FILTER, UPDATE FROM, NULLS FIRST/LAST,
+// generated columns, STRICT, RENAME COLUMN, json*, jsonb*, unixepoch, concat, concat_ws, string_agg,
+// format, octet_length, unhex, timediff, and the 3.35 math functions) is a compile error under the
+// dialect. The five accepted ones:
+//   iif                       added in SQLite 3.32; API 29 ships 3.22.
+//   soundex                   needs SQLITE_SOUNDEX, set in no Android build from API 29 to 36.
+//   bm25, highlight, snippet  FTS5 functions; no Android build from API 29 to 36 compiles FTS5
+//                             (external/sqlite dist/Android.bp enables FTS3 and FTS4 only).
+// Add a name here only with the probe that showed the dialect accepts it. The self-test pins the
+// expected set separately from this list, so removing a name fails it.
+val sqliteFunctionsNewerThanFloor = listOf("iif", "soundex", "bm25", "highlight", "snippet")
 
 fun findPostFloorSqliteFunctions(files: Iterable<File>): List<String> {
     val offenders = mutableListOf<String>()
@@ -553,6 +559,18 @@ val selfTestVerifySqliteFloor =
                     .asFile
             fixtureDir.deleteRecursively()
             fixtureDir.mkdirs()
+            // Pinned here on purpose, separately from sqliteFunctionsNewerThanFloor: dropping a name from
+            // that list must fail this test, not shrink its own expectation.
+            val expectedNames = listOf("iif", "soundex", "bm25", "highlight", "snippet")
+            val missed =
+                expectedNames.filter { name ->
+                    val probe = File(fixtureDir, "Probe_$name.sq")
+                    probe.writeText("pick:\nSELECT $name(daily_goal_ml) FROM water_goal;\n")
+                    findPostFloorSqliteFunctions(listOf(probe)).size != 1
+                }
+            if (missed.isNotEmpty()) {
+                throw GradleException("verifySqliteFloor failed to detect: $missed")
+            }
             val bad = File(fixtureDir, "Bad.sq")
             bad.writeText("pick:\nSELECT iif(daily_goal_ml > 0, 1, 0) FROM water_goal;\n")
             val commented = File(fixtureDir, "Commented.sq")
