@@ -59,7 +59,17 @@ class EventLogReductionTest {
         reconciledAt: Instant,
     ): Event =
         checkNotNull(
-            Reconcile.evaluate(occurrence.copy(state = OccurrenceState.PENDING), criticality, reconciledAt, hasTerminalEvent = false, generateId = { "evt-${seq++}" }),
+            Reconcile.evaluate(
+                occurrence.copy(
+                    state = OccurrenceState.PENDING,
+                ),
+                criticality,
+                reconciledAt,
+                hasTerminalEvent = false,
+                generateId = {
+                    "evt-${seq++}"
+                },
+            ),
         ) { "expected MISSED" }
 
     private fun figures(
@@ -157,7 +167,14 @@ class EventLogReductionTest {
         val miss = missed(o, Criticality.CRITICAL, base + 2.hours)
         val backfill = event(o, EventType.COMPLETED_BACKFILLED, base + 10.hours)
         val events = listOf(miss, backfill)
-        assertEquals(EventLogReduction.AdherenceFigures(0, 1, 0), figures(listOf(o), events, base + 10.hours - 1.milliseconds))
+        assertEquals(
+            EventLogReduction.AdherenceFigures(0, 1, 0),
+            figures(
+                listOf(o),
+                events,
+                base + 10.hours - 1.milliseconds,
+            ),
+        )
         assertEquals(EventLogReduction.AdherenceFigures(1, 0, 0), figures(listOf(o), events, base + 10.hours))
     }
 
@@ -198,7 +215,10 @@ class EventLogReductionTest {
         val date = base.toLocalDateTime(zone).date
         val o = occ()
         val events = listOf(event(o, EventType.COMPLETED, base))
-        assertEquals(0, criticalDays(mapOf(date to listOf(o)), events, listOf(date), criticality = Criticality.STANDARD))
+        assertEquals(
+            0,
+            criticalDays(mapOf(date to listOf(o)), events, listOf(date), criticality = Criticality.STANDARD),
+        )
     }
 
     @Test
@@ -265,7 +285,8 @@ class EventLogReductionTest {
         val events: List<Event>,
         val criticality: Map<String, Criticality>,
     ) {
-        fun latestEffectTime(): Instant = events.maxOfOrNull { it.effectiveAt ?: it.deviceTimestamp } ?: Instant.fromEpochMilliseconds(0)
+        fun latestEffectTime(): Instant =
+            events.maxOfOrNull { it.effectiveAt ?: it.deviceTimestamp } ?: Instant.fromEpochMilliseconds(0)
     }
 
     private fun generate(random: Random): History {

@@ -41,6 +41,11 @@ object EventLogReduction {
             else -> null
         }
 
+    private class Counted(
+        val outcome: Outcome,
+        val at: Instant,
+    )
+
     /**
      * The outcome of each occurrence as of [asOf]: the counted terminal event with the latest
      * effect time wins, so a backfill entered after a miss turns missed into completed from its
@@ -50,23 +55,23 @@ object EventLogReduction {
         events: List<Event>,
         asOf: Instant,
     ): Map<String, Outcome> {
-        val best = HashMap<String, Event>()
+        val best = HashMap<String, Counted>()
         for (event in events) {
             val occurrenceId = event.occurrenceId ?: continue
-            if (event.outcome() == null || event.effectTime() > asOf) continue
+            val outcome = event.outcome() ?: continue
+            val at = event.effectTime()
+            if (at > asOf) continue
             val current = best[occurrenceId]
-            if (current == null || supersedes(event, current)) best[occurrenceId] = event
+            if (current == null || supersedes(at, outcome, current)) best[occurrenceId] = Counted(outcome, at)
         }
-        return best.mapValues { checkNotNull(it.value.outcome()) }
+        return best.mapValues { it.value.outcome }
     }
 
     private fun supersedes(
-        candidate: Event,
-        current: Event,
-    ): Boolean {
-        val byTime = candidate.effectTime().compareTo(current.effectTime())
-        return if (byTime != 0) byTime > 0 else checkNotNull(candidate.outcome()) < checkNotNull(current.outcome())
-    }
+        at: Instant,
+        outcome: Outcome,
+        current: Counted,
+    ): Boolean = if (at != current.at) at > current.at else outcome < current.outcome
 
     fun adherenceFigures(
         occurrences: List<Occurrence>,
