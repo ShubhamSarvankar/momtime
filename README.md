@@ -27,8 +27,9 @@ momtime/
 
 ## Requirements
 
-- **JDK 21.** `shared` pins its Gradle toolchain to 21 (`jvmToolchain(21)`) and CI runs Temurin 21. Gradle 9.8 itself needs JDK 17 or newer to start. Gradle toolchain auto-provisioning is not configured, so a JDK 21 must already be installed, and the simplest setup is to run Gradle on it by pointing `JAVA_HOME` at it. Android Studio's bundled JBR is a JDK 21 and works.
-- Two failures to recognise: Gradle refusing to start with "requires JVM 17 or later" means `JAVA_HOME` points at an older JDK (JDK 11 was found this way); "Cannot find a Java installation ... languageVersion=21 ... Toolchain download repositories have not been configured" means Gradle started on another JDK (JDK 25 was found this way) and no JDK 21 is installed or registered with Gradle.
+- **JDK to launch Gradle: 17 or later.** Gradle 9.8 itself needs JDK 17+ to start, so `JAVA_HOME` must point at one. Android Studio's bundled `jbr` directory (a JDK 21) works.
+- **JDK 21 toolchain: provisioned for you.** `shared` and `server` pin their toolchain to Eclipse Temurin 21 (`jvmToolchain` with `languageVersion` 21 and vendor `ADOPTIUM`), the same distribution CI installs with `setup-java` (`temurin`), so local builds and CI compile on the same JDK. The Foojay toolchain resolver plugin (`org.gradle.toolchains.foojay-resolver-convention`, pinned to 1.0.0 in `settings.gradle.kts`, ADR 0041) downloads Temurin 21 on first use if Gradle cannot find one, so you do not need to install it. The launcher JDK is separate: the plugin does not change what Gradle starts on.
+- **If Gradle fails to start** with "requires JVM 17 or later", `JAVA_HOME` points at an older JDK. That was the actual cause of the local failure found in Phase 1: `JAVA_HOME` pointed at a JDK 11 (Zulu). The plugin cannot fix this, because Gradle never gets as far as reading `settings.gradle.kts`. Point `JAVA_HOME` at JDK 17 or later.
 
 ## Running the test suites
 
