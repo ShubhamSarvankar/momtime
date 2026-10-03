@@ -31,7 +31,7 @@ class SqlDelightEventRepository(
     private val database: MomTimeDatabase,
 ) : EventRepository {
     override fun insert(event: Event) {
-        val (snoozeNumber, missionType, waterMl, weightGrams, caregiverLinkId) = event.payload.toColumns()
+        val columns = event.payload.toColumns()
         database.eventQueries.insertEvent(
             id = event.id,
             occurrence_id = event.occurrenceId,
@@ -39,11 +39,13 @@ class SqlDelightEventRepository(
             device_timestamp = event.deviceTimestamp.toDb(),
             effective_at = event.effectiveAt.toDbOrNull(),
             source = event.source.name,
-            snooze_number = snoozeNumber,
-            mission_result_type = missionType,
-            water_ml = waterMl,
-            weight_grams = weightGrams,
-            caregiver_link_id = caregiverLinkId,
+            snooze_number = columns.snoozeNumber,
+            mission_result_type = columns.missionType,
+            water_ml = columns.waterMl,
+            weight_grams = columns.weightGrams,
+            caregiver_link_id = columns.caregiverLinkId,
+            canary_scheduled_at = columns.canaryScheduledAt,
+            canary_actual_at = columns.canaryActualAt,
         )
     }
 
@@ -82,6 +84,8 @@ class SqlDelightEventRepository(
         val waterMl: Long?,
         val weightGrams: Long?,
         val caregiverLinkId: String?,
+        val canaryScheduledAt: Long? = null,
+        val canaryActualAt: Long? = null,
     )
 
     private fun EventPayload.toColumns(): PayloadColumns =
@@ -92,6 +96,16 @@ class SqlDelightEventRepository(
             is EventPayload.Water -> PayloadColumns(null, null, waterMl.toLong(), null, null)
             is EventPayload.Weight -> PayloadColumns(null, null, null, weightGrams.toLong(), null)
             is EventPayload.CaregiverReference -> PayloadColumns(null, null, null, null, caregiverLinkId)
+            is EventPayload.Canary ->
+                PayloadColumns(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    canaryScheduledAt = scheduledAt.toDb(),
+                    canaryActualAt = actualAt.toDbOrNull(),
+                )
         }
 
     private fun com.momtime.shared.data.Event.toDomain(): Event {
@@ -103,6 +117,8 @@ class SqlDelightEventRepository(
                 water_ml != null -> EventPayload.Water(water_ml.toInt())
                 weight_grams != null -> EventPayload.Weight(weight_grams.toInt())
                 caregiver_link_id != null -> EventPayload.CaregiverReference(caregiver_link_id)
+                canary_scheduled_at != null ->
+                    EventPayload.Canary(canary_scheduled_at.toInstant(), canary_actual_at.toInstantOrNull())
                 else -> EventPayload.None
             }
         return Event(

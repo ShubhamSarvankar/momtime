@@ -1,0 +1,28 @@
+-- Schema version 2 to 3 (ADR 0048).
+--
+-- Device state and the resolved delivery tier leave the shared schema: they are platform
+-- capability differences, and invariant 5 keeps those out of the schema, the event log and the
+-- domain vocabulary. The android module owns that data now, in its own database.
+--
+-- What is platform neutral stays. A canary describes its own event, so its scheduled and actual
+-- instants become two columns on the event table (the payload of CANARY_RESULT). Per fire timing
+-- needs no column at all: it is the rung's instant against ALARM_FIRED's deviceTimestamp.
+--
+-- The canary instants already recorded in the telemetry table are copied onto their events before
+-- the table is dropped. Dropping a child table needs no table rebuild, and ADD COLUMN works on the
+-- SQLite 3.22 floor (ADR 0042).
+
+ALTER TABLE event ADD COLUMN canary_scheduled_at INTEGER;
+ALTER TABLE event ADD COLUMN canary_actual_at INTEGER;
+
+UPDATE event
+SET canary_scheduled_at = (
+        SELECT t.canary_scheduled_at FROM alarm_delivery_telemetry t WHERE t.event_id = event.id
+    ),
+    canary_actual_at = (
+        SELECT t.canary_actual_at FROM alarm_delivery_telemetry t WHERE t.event_id = event.id
+    )
+WHERE event_type = 'CANARY_RESULT'
+    AND id IN (SELECT event_id FROM alarm_delivery_telemetry WHERE canary_scheduled_at IS NOT NULL);
+
+DROP TABLE alarm_delivery_telemetry;

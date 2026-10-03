@@ -10,6 +10,8 @@ CREATE TABLE event (
     water_ml INTEGER,
     weight_grams INTEGER,
     caregiver_link_id TEXT,
+    canary_scheduled_at INTEGER,
+    canary_actual_at INTEGER,
 
     CHECK (source IN ('USER', 'SYSTEM'))
 );
@@ -20,8 +22,9 @@ CREATE INDEX event_type_timestamp_idx ON event(event_type, device_timestamp);
 insertEvent:
 INSERT INTO event(
     id, occurrence_id, event_type, device_timestamp, effective_at, source,
-    snooze_number, mission_result_type, water_ml, weight_grams, caregiver_link_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    snooze_number, mission_result_type, water_ml, weight_grams, caregiver_link_id,
+    canary_scheduled_at, canary_actual_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectEventById:
 SELECT * FROM event WHERE id = ?;

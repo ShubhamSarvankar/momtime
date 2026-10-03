@@ -1,12 +1,6 @@
 package com.momtime.shared.data
 
-import com.momtime.shared.domain.AlarmDeliveryTelemetry
 import com.momtime.shared.domain.CaregiverLink
-import com.momtime.shared.domain.DeliveryCapability
-import com.momtime.shared.domain.Event
-import com.momtime.shared.domain.EventPayload
-import com.momtime.shared.domain.EventSource
-import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.InterruptionBudget
 import com.momtime.shared.domain.NotificationPolicy
 import com.momtime.shared.domain.Pregnancy
@@ -194,40 +188,5 @@ class RemainingRepositoriesTest {
         val synced = SyncState(Instant.fromEpochMilliseconds(500), Instant.fromEpochMilliseconds(1000))
         repo.update(synced)
         assertEquals(synced, repo.current())
-    }
-
-    @Test
-    fun `alarm delivery telemetry is absent when declined and present when recorded`() {
-        val eventRepo = SqlDelightEventRepository(database)
-        val event =
-            Event(
-                id = "evt-1",
-                occurrenceId = null,
-                eventType = EventType.ALARM_FIRED,
-                deviceTimestamp = Instant.fromEpochMilliseconds(0),
-                effectiveAt = null,
-                source = EventSource.SYSTEM,
-                payload = EventPayload.None,
-            )
-        eventRepo.insert(event)
-
-        val telemetryRepo = SqlDelightAlarmDeliveryTelemetryRepository(database)
-        // Declined telemetry: zero rows, not nulls scattered through the log (ADR 0033 Q3).
-        assertNull(telemetryRepo.findForEvent(event.id))
-
-        val telemetry =
-            AlarmDeliveryTelemetry(
-                eventId = event.id,
-                alarmSlot = 7,
-                resolvedTier = DeliveryCapability.TIER_2,
-                canaryScheduledAt = Instant.fromEpochMilliseconds(100),
-                canaryActualAt = Instant.fromEpochMilliseconds(150),
-                screenOn = true,
-                audioFocusObtained = false,
-                batteryPct = 42,
-                dozeState = "ACTIVE",
-            )
-        telemetryRepo.insert(telemetry)
-        assertEquals(telemetry, telemetryRepo.findForEvent(event.id))
     }
 }

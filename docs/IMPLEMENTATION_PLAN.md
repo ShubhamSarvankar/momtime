@@ -123,7 +123,7 @@ Three event log reductions listed under Deliverables were not built in Phase 1 a
 
 The critical path. Built and verified on the JVM via Robolectric. Device verification is Phase 7.
 
-**Status: in progress.** Work is tracked in `docs/phase-2-progress.md` (deleted when Phase 2 closes) and `docs/phase-2-traceability.md`. Done so far: the SQLite floor and foreign key enforcement on the JVM (`phase-2/sqlite-parity`, ADR 0042 and ADR 0043), and the Android data wiring (`phase-2/android-data-wiring`: the production driver factory with foreign keys enforced, corrupt databases kept aside, the Koin graph exposing repositories only, the structural checks, backup rules, and the materialisation race shown to wait in the framework connection pool under Robolectric, ADR 0044 and ADR 0045). Nothing in the alarm subsystem proper is built yet. The alarm subsystem will not be described as complete before Phase 7: it will pass the automated layers with device checks outstanding.
+**Status: in progress.** Work is tracked in `docs/phase-2-progress.md` (deleted when Phase 2 closes) and `docs/phase-2-traceability.md`. Done so far: the SQLite floor and foreign key enforcement on the JVM (`phase-2/sqlite-parity`, ADR 0042 and ADR 0043), and the Android data wiring (`phase-2/android-data-wiring`: the production driver factory with foreign keys enforced, corrupt databases kept aside, the Koin graph exposing repositories only, the structural checks, backup rules, and the materialisation race shown to wait in the framework connection pool under Robolectric, ADR 0044 and ADR 0045). Then the telemetry split (`phase-2/telemetry-split`: the delivery tier and device state leave the shared schema for the android store, the explicit rollback journal, the single process check, corruption found during a query, ADR 0046 to ADR 0049). Nothing in the alarm subsystem proper is built yet. The alarm subsystem will not be described as complete before Phase 7: it will pass the automated layers with device checks outstanding.
 
 **Deliverables**
 
@@ -142,7 +142,7 @@ The critical path. Built and verified on the JVM via Robolectric. Device verific
 - Audio: `USAGE_ALARM`, `CATEGORY_ALARM`, `.wav` assets under 30 seconds, volume ramp, backup louder sound after an unacknowledged interval.
 - Notification channels split by criticality.
 - Per template vibration patterns.
-- Canary: onboarding 60 second test, daily silent canary, per fire telemetry recording scheduled versus actual, tier, screen on, audio focus, battery and Doze state.
+- Canary: onboarding 60 second test, daily silent canary, per fire telemetry recording scheduled versus actual, tier, screen on, audio focus, battery and Doze state. The tier and the state of the device are kept in the android store, not in the shared schema (ADR 0048); the shared log carries only platform neutral facts, the canary instants among them.
 - Local telemetry storage, in app reliability view, export. No upload yet.
 - Samsung One UI onboarding walkthrough: battery optimisation, Sleeping apps, Deep sleeping apps, Put unused apps to sleep, with deep link attempts and screenshot fallbacks.
 - Koin graph that exposes repositories only, never `MomTimeDatabase` or any generated `*Queries` type. The generated `updateOccurrenceState` query is reachable through `database.occurrenceQueries`; the terminal trigger (ADR 0037) guards terminal states, but a non terminal state change through that query would skip the event append, so no `android` code may be able to reach it.

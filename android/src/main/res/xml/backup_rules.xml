@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Auto Backup on API 29 and 30, where android:dataExtractionRules is ignored (ADR 0034, ADR 0044).
-    Same content as data_extraction_rules.xml.
+    Auto Backup on API 29 and 30, where android:dataExtractionRules is ignored (ADR 0034, ADR 0044,
+    ADR 0048). Same content and the same allow-list as data_extraction_rules.xml: the android store
+    is out because it is not included.
 -->
 <full-backup-content>
     <include domain="database" path="momtime.db" />

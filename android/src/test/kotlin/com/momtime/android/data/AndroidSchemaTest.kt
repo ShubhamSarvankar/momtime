@@ -156,6 +156,16 @@ class AndroidSchemaTest {
                 "'CRITICAL', '08:00', 'Asia/Kolkata', 'DAILY')",
         )
         db.execSQL(insertOccurrenceSql("occ-1", "tmpl-1", "2026-01-01", "MISSED", 7))
+        // A canary recorded by the version 2 schema: its instants sit in the telemetry table and move onto
+        // the event in version 3 (ADR 0048).
+        db.execSQL(
+            "INSERT INTO event(id, occurrence_id, event_type, device_timestamp, effective_at, source) " +
+                "VALUES ('canary', NULL, 'CANARY_RESULT', 0, NULL, 'SYSTEM')",
+        )
+        db.execSQL(
+            "INSERT INTO alarm_delivery_telemetry(event_id, canary_scheduled_at, canary_actual_at, resolved_tier) " +
+                "VALUES ('canary', 100, 150, 'TIER_2')",
+        )
         // Equal bounds cannot satisfy the version 2 CHECK; the migration clears both.
         db.execSQL(
             "INSERT INTO app_settings(id, quiet_hours_start, quiet_hours_end, ring_grade_daily_budget) " +
@@ -164,7 +174,7 @@ class AndroidSchemaTest {
     }
 
     @Test
-    fun `a v1 database migrates to v2 with foreign keys on and keeps its rows`() {
+    fun `a v1 database migrates to v3 with foreign keys on and keeps its rows`() {
         val name = "m-v1a.db"
         v1Database(name) { seedV1Rows(it) }
 
@@ -175,9 +185,14 @@ class AndroidSchemaTest {
         val settings = graph.get<AppSettingsRepository>().current()
         assertNull("the unsatisfiable quiet hours must be cleared", settings.quietHours)
         assertEquals("other settings must survive the rebuild", 8, settings.ringGradeDailyBudget)
+        assertEquals(
+            "the canary instants must move onto their event",
+            EventPayload.Canary(Instant.fromEpochMilliseconds(100), Instant.fromEpochMilliseconds(150)),
+            graph.get<EventRepository>().findById("canary")?.payload,
+        )
 
         val driver = graph.factory.createDriver()
-        assertEquals("2", driver.pragma("user_version"))
+        assertEquals("3", driver.pragma("user_version"))
         assertEquals("1", driver.pragma("foreign_keys"))
         assertEquals(emptyList<String>(), driver.foreignKeyViolations())
     }

@@ -1,6 +1,5 @@
 package com.momtime.shared.di
 
-import com.momtime.shared.data.AlarmDeliveryTelemetryRepository
 import com.momtime.shared.data.AppSettingsRepository
 import com.momtime.shared.data.CaregiverLinkRepository
 import com.momtime.shared.data.DatabaseDriverFactory
@@ -10,7 +9,6 @@ import com.momtime.shared.data.MomTimeDatabase
 import com.momtime.shared.data.OccurrenceRepository
 import com.momtime.shared.data.PregnancyRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
-import com.momtime.shared.data.SqlDelightAlarmDeliveryTelemetryRepository
 import com.momtime.shared.data.SqlDelightAppSettingsRepository
 import com.momtime.shared.data.SqlDelightCaregiverLinkRepository
 import com.momtime.shared.data.SqlDelightEventRepository
@@ -50,9 +48,6 @@ fun sharedModule(): Module =
         single<ScheduleTemplateRepository> { SqlDelightScheduleTemplateRepository(get<DatabaseHolder>().database) }
         single<OccurrenceRepository> { SqlDelightOccurrenceRepository(get<DatabaseHolder>().database) }
         single<EventRepository> { SqlDelightEventRepository(get<DatabaseHolder>().database) }
-        single<AlarmDeliveryTelemetryRepository> {
-            SqlDelightAlarmDeliveryTelemetryRepository(get<DatabaseHolder>().database)
-        }
         single<CaregiverLinkRepository> { SqlDelightCaregiverLinkRepository(get<DatabaseHolder>().database) }
         single<WaterGoalRepository> { SqlDelightWaterGoalRepository(get<DatabaseHolder>().database) }
         single<AppSettingsRepository> { SqlDelightAppSettingsRepository(get<DatabaseHolder>().database) }

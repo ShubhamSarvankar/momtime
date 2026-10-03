@@ -25,8 +25,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | Step | Branch | Status |
 |---|---|---|
 | A | `phase-2/sqlite-parity` | Merged (PR #13, merge commit `43d4724`) |
-| 1 | `phase-2/android-data-wiring` | Open for review (see "PR 1" below) |
-| B | `phase-2/telemetry-split` | Not started |
+| 1 | `phase-2/android-data-wiring` | Merged (PR #14, merge commit `f5de0ca`) |
+| B | `phase-2/telemetry-split` | Open for review (see "PR B" below) |
 | 2 | `phase-2/capability` | Not started |
 | 3 | `phase-2/arming` | Not started |
 | 4 | `phase-2/workers` | Not started |
@@ -63,6 +63,14 @@ Approved: `app.cash.sqldelight:android-driver` 2.4.0, `androidx.work:work-runtim
 17. **Every `PendingIntent` carries `FLAG_IMMUTABLE`**, and request codes come only from `alarmSlot`. Scenario 14 (PR 6): the next rung is selected from the record of fired rungs (the `ALARM_FIRED` count), never by comparing rung instants with now; mutation: replace that with a now comparison and show that with the clock set backward the test fails by re-arming a fired rung.
 18. **Ring actions** (PR 5): acknowledge, snooze and skip each dispatch to the domain; each test asserts the exact event log delta and state delta; stopping the sound writes nothing. Boot catch up (PR 6) arms an alarm for now and lets the alarm path start the ringer; boot never starts it.
 19. **Sounds, Samsung walkthrough, progress file**: placeholder `.wav` files from a committed script (under 30 seconds, loopable, provenance in the commit); OEM settings intents are unverified until Phase 7, each gets a MANUAL_CHECKS row; screenshot fallbacks stay placeholders until Shubham supplies A15 screenshots.
+
+20. **Corruption is a lost schedule** (from the review of PR #14; recorded now, built later). A fresh database has no templates, so after corruption nothing rings until she sets them up again, and the marker for the reliability view is not enough. **PR 5, when notification channels exist:** when the marker is written for the shared database, post one immediate notification on the Critical channel telling her that her reminders were reset and need setting up again. The android store's corruption does not notify (ADR 0048).
+21. **An alarm fire that maps to no occurrence must not crash and must write nothing** (from the review of PR #14). After a reset or a restore, the request code of a fired alarm can name an `alarmSlot` no occurrence has. **PR 3:** the fire path handles it, with a test that covers it.
+22. **Decision needed before PR 3: the live process after mid-use corruption** (ADR 0049). After the corruption handler runs in the middle of a query the process holds a closed driver, and every repository call throws until a new driver opens. The options are in ADR 0049 (rebuild the Koin graph, let the holder reopen, end the process). The decision belongs to Claude (technical review) and shapes how the alarm receiver, workers and ringer read the database.
+23. **The app runs in one process** (ADR 0046, decision of Claude (technical review)), enforced by `verifySingleProcess` on the merged manifest. It starts to matter in PR 4, when WorkManager's components merge in.
+24. **The journal mode is set explicitly to a rollback journal on both databases** (ADR 0047, decision of Claude (technical review)).
+25. **Mutation hygiene is standing practice** (decision of Claude (technical review), now in CLAUDE.md's testing section): show the diff and confirm it is exactly the intended change; afterwards confirm the intended test failed, on an assertion, for the intended reason; the record states both checks.
+
 
 ## Findings from orientation that the work depends on
 

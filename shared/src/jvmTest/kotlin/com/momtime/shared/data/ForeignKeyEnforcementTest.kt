@@ -2,7 +2,6 @@ package com.momtime.shared.data
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.momtime.shared.domain.AlarmDeliveryTelemetry
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventPayload
@@ -109,7 +108,6 @@ class ForeignKeyEnforcementTest {
                 OccurrenceState.PENDING,
                 1,
             )
-        val orphanTelemetry = AlarmDeliveryTelemetry("no-such-event", 1, null, null, null, null, null, null, null)
         val orphans: Map<String, () -> Unit> =
             mapOf(
                 "template with no pregnancy" to { SqlDelightScheduleTemplateRepository(db).insert(template()) },
@@ -118,8 +116,6 @@ class ForeignKeyEnforcementTest {
                     { SqlDelightEventRepository(db).insert(event("e-1", "no-such-occurrence")) },
                 "water goal with no pregnancy" to
                     { SqlDelightWaterGoalRepository(db).upsert(WaterGoal("no-such-pregnancy", 2000, 3)) },
-                "telemetry with no event" to
-                    { SqlDelightAlarmDeliveryTelemetryRepository(db).insert(orphanTelemetry) },
             )
         for ((name, insert) in orphans) {
             val failure = assertFailsWith<Exception>("an orphan was accepted: $name") { insert() }

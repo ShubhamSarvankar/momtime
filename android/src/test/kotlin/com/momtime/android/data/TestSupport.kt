@@ -4,6 +4,8 @@ import android.content.Context
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import com.momtime.android.di.AndroidDatabaseDriverFactory
+import com.momtime.android.di.AndroidStoreDriverFactory
+import com.momtime.android.di.StoreDriverFactory
 import com.momtime.android.di.momTimeModules
 import com.momtime.shared.data.DatabaseDriverFactory
 import com.momtime.shared.data.PregnancyRepository
@@ -51,11 +53,29 @@ internal class TrackingFactory(
     fun closeAll() = synchronized(drivers) { drivers.forEach { runCatching { it.close() } } }
 }
 
-/** A Koin application of the production modules over a database file named [name]. */
+/** The same for the android store's driver factory. */
+internal class TrackingStoreFactory(
+    private val delegate: StoreDriverFactory,
+) : StoreDriverFactory {
+    private val drivers = mutableListOf<SqlDriver>()
+
+    val created: Int get() = synchronized(drivers) { drivers.size }
+
+    override fun createDriver(): SqlDriver =
+        delegate.createDriver().also { driver -> synchronized(drivers) { drivers.add(driver) } }
+
+    fun closeAll() = synchronized(drivers) { drivers.forEach { runCatching { it.close() } } }
+}
+
+/**
+ * A Koin application of the production modules over a shared database file named [name] and an
+ * android store file named [storeName].
+ */
 internal class TestGraph(
     context: Context,
     val name: String = "t-${UUID.randomUUID().toString().take(8)}.db",
     clock: Clock = testClock,
+    val storeName: String = "s-${UUID.randomUUID().toString().take(8)}.db",
 ) {
     // Robolectric does not always create the databases directory the way a device does when the
     // framework asks for a database path, so the test makes it.
@@ -64,7 +84,9 @@ internal class TestGraph(
     }
 
     val factory = TrackingFactory(AndroidDatabaseDriverFactory(context, name, clock))
-    private val application: KoinApplication = koinApplication { modules(momTimeModules(context, factory)) }
+    val storeFactory = TrackingStoreFactory(AndroidStoreDriverFactory(context, storeName, clock))
+    private val application: KoinApplication =
+        koinApplication { modules(momTimeModules(context, factory, storeFactory)) }
     val koin get() = application.koin
 
     inline fun <reified T : Any> get(): T = koin.get()
@@ -72,6 +94,7 @@ internal class TestGraph(
     fun close() {
         application.close()
         factory.closeAll()
+        storeFactory.closeAll()
     }
 }
 

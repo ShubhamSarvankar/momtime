@@ -23,8 +23,12 @@ data class Event(
 
 /**
  * Typed, event-specific (ARCHITECTURE.md section 3.3). The data layer flattens this to sparse
- * nullable columns on the `event` table (ADR 0033's Q3 telemetry-split reasoning applies the
- * same way here: only one event_type's worth of fields is ever populated per row).
+ * nullable columns on the `event` table (only one event_type's worth of fields is
+ * ever populated per row).
+ *
+ * Nothing platform specific is in the log or in these payloads: the delivery tier, whether the
+ * screen turned on, audio focus, battery and Doze state live in the android module's own store
+ * (ADR 0048, CLAUDE.md invariant 5).
  */
 sealed interface EventPayload {
     data object None : EventPayload
@@ -48,23 +52,16 @@ sealed interface EventPayload {
     data class CaregiverReference(
         val caregiverLinkId: String,
     ) : EventPayload
+
+    /**
+     * The payload of CANARY_RESULT: when the canary was scheduled to fire, and when it did, or null
+     * if it was never seen to fire. Both are platform neutral instants that describe this event.
+     * Nothing about how the device delivered it belongs here (invariant 5, ADR 0048).
+     */
+    data class Canary(
+        val scheduledAt: Instant,
+        val actualAt: Instant?,
+    ) : EventPayload
 }
 
 enum class MissionResultType { BARCODE, PHOTO_MATCH }
-
-/**
- * Delivery telemetry for ALARM_SCHEDULED/ALARM_FIRED/CANARY_RESULT/WATCHDOG_REPAIR events,
- * stored in the separate alarm_delivery_telemetry table (ADR 0033 Q3) so its migrations never
- * touch the narrow, hot `event` table. Opt-in — absent entirely (not null-filled) when declined.
- */
-data class AlarmDeliveryTelemetry(
-    val eventId: String,
-    val alarmSlot: Int?,
-    val resolvedTier: DeliveryCapability?,
-    val canaryScheduledAt: Instant?,
-    val canaryActualAt: Instant?,
-    val screenOn: Boolean?,
-    val audioFocusObtained: Boolean?,
-    val batteryPct: Int?,
-    val dozeState: String?,
-)

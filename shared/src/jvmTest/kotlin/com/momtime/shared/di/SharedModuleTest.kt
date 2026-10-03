@@ -1,7 +1,6 @@
 package com.momtime.shared.di
 
 import app.cash.sqldelight.db.SqlDriver
-import com.momtime.shared.data.AlarmDeliveryTelemetryRepository
 import com.momtime.shared.data.AppSettingsRepository
 import com.momtime.shared.data.CaregiverLinkRepository
 import com.momtime.shared.data.DatabaseDriverFactory
@@ -54,7 +53,6 @@ class SharedModuleTest {
             ScheduleTemplateRepository::class,
             OccurrenceRepository::class,
             EventRepository::class,
-            AlarmDeliveryTelemetryRepository::class,
             CaregiverLinkRepository::class,
             WaterGoalRepository::class,
             AppSettingsRepository::class,

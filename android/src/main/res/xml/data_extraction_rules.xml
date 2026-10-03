@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Auto Backup and device transfer on API 31 and above (ADR 0034, ADR 0044). The shared database is
-    backed up whole, with its rollback journal, so a copy taken while a transaction was hot is still
-    recoverable. The quarantined .corrupt copy never leaves the device. The corruption marker lives
-    in the no-backup directory and is never included.
+    Auto Backup and device transfer on API 31 and above (ADR 0034, ADR 0044, ADR 0048).
+
+    An allow-list: only the shared database and its rollback journal are included, so a copy taken
+    while a transaction was hot is still recoverable. Everything else in the database directory is out,
+    which is how the android store (momtime_android.db) stays on the device: it holds what the operating
+    system did on this device and the alarm this device armed, and a restored phone has armed nothing.
+    Lint rejects an exclude that is not under an include, so the store has no exclude of its own; a test
+    pins the include list exactly and checks that no include is a prefix of a store file name.
+
+    The include path of the shared database is also a prefix of the quarantined copy
+    (momtime.db.corrupt), so that copy is excluded by name. The corruption markers live in the
+    no-backup directory and are never included.
 -->
 <data-extraction-rules>
     <cloud-backup>

@@ -11,7 +11,6 @@ import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.WaterGoal
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -49,17 +48,24 @@ class AndroidDriverConfigurationTest {
     @Test
     fun `sqlite runs in native mode`() = assertNativeSqliteMode()
 
+    // The journal mode is set, not left to a default (ADR 0047): a rollback journal, TRUNCATE. Under
+    // Robolectric the unset default is MEMORY, so a database that is not told its mode fails this,
+    // and so does one put into WAL. The device default is TRUNCATE too (AOSP config.xml), but only an
+    // explicit setting makes the value independent of it; MANUAL_CHECKS P2-6 holds the device remainder.
     @Test
-    fun `foreign keys on and journal mode not WAL`() {
+    fun `the shared database has foreign keys on and a TRUNCATE rollback journal`() {
         val driver = graph.factory.createDriver()
 
         assertEquals("1", driver.pragma("foreign_keys"))
-        val journalMode = driver.pragma("journal_mode")
-        assertNotEquals("the database must not be in WAL mode", "wal", journalMode.lowercase())
-        // Robolectric's native runtime opens in MEMORY. The device default is TRUNCATE (AOSP
-        // config.xml, db_default_journal_mode), which no Robolectric test can show; MANUAL_CHECKS P2-6.
-        // Pinned so that any change here, such as WAL or a different framework default, is noticed.
-        assertEquals("memory", journalMode.lowercase())
+        assertEquals("truncate", driver.pragma("journal_mode").lowercase())
+    }
+
+    @Test
+    fun `the android store has foreign keys on and a TRUNCATE rollback journal`() {
+        val driver = graph.storeFactory.createDriver()
+
+        assertEquals("1", driver.pragma("foreign_keys"))
+        assertEquals("truncate", driver.pragma("journal_mode").lowercase())
     }
 
     @Test
