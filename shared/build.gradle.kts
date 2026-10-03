@@ -501,8 +501,79 @@ val selfTestVerifyBranchCoverage =
         }
     }
 
+// --- SQLite floor 3.22 (ADR 0042). The gate is the SQLDelight 3.18 dialect, which rejects newer
+// syntax at compile time. This scan covers only what that dialect was shown to accept although the
+// function is newer than 3.22. Found by probing the dialect, not by assumption: `iif` (3.32). Every
+// other post-3.22 construct probed (upsert, RETURNING, window functions, FILTER, UPDATE FROM, NULLS
+// FIRST/LAST, generated columns, STRICT, RENAME COLUMN, json, unixepoch, concat, string_agg and
+// others) is a compile error under the dialect. Add a name here only with the probe that showed it
+// was accepted.
+val sqliteFunctionsNewerThanFloor = listOf("iif")
+
+fun findPostFloorSqliteFunctions(files: Iterable<File>): List<String> {
+    val offenders = mutableListOf<String>()
+    val pattern = Regex("""\b(${sqliteFunctionsNewerThanFloor.joinToString("|")})\s*\(""", RegexOption.IGNORE_CASE)
+    files.forEach { file ->
+        file.readLines().forEachIndexed { index, line ->
+            val code = line.substringBefore("--")
+            if (pattern.containsMatchIn(code)) {
+                offenders += "${file.relativeTo(projectDir)}:${index + 1}: ${line.trim()}"
+            }
+        }
+    }
+    return offenders
+}
+
+val verifySqliteFloor =
+    tasks.register("verifySqliteFloor") {
+        group = "verification"
+        description = "Fails if a .sq/.sqm file uses a function newer than SQLite 3.22 that the 3.18 dialect accepts"
+        val sqlFiles =
+            fileTree(layout.projectDirectory.dir("src/commonMain/sqldelight")) { include("**/*.sq", "**/*.sqm") }.files
+        inputs.files(sqlFiles)
+        doLast {
+            val offenders = findPostFloorSqliteFunctions(sqlFiles)
+            if (offenders.isNotEmpty()) {
+                throw GradleException(
+                    "function newer than the SQLite 3.22 floor (ADR 0042):\n" + offenders.joinToString("\n"),
+                )
+            }
+        }
+    }
+
+val selfTestVerifySqliteFloor =
+    tasks.register("selfTestVerifySqliteFloor") {
+        group = "verification"
+        description = "Proves verifySqliteFloor detects a violation and ignores comments, using fixture files"
+        doLast {
+            val fixtureDir =
+                layout.buildDirectory
+                    .dir("sqlite-floor-fixture")
+                    .get()
+                    .asFile
+            fixtureDir.deleteRecursively()
+            fixtureDir.mkdirs()
+            val bad = File(fixtureDir, "Bad.sq")
+            bad.writeText("pick:\nSELECT iif(daily_goal_ml > 0, 1, 0) FROM water_goal;\n")
+            val commented = File(fixtureDir, "Commented.sq")
+            commented.writeText("-- iif( is not used here\nSELECT 1;\n")
+            val badHits = findPostFloorSqliteFunctions(listOf(bad))
+            val commentedHits = findPostFloorSqliteFunctions(listOf(commented))
+            fixtureDir.deleteRecursively()
+            if (badHits.size != 1) {
+                throw GradleException("verifySqliteFloor failed to detect a deliberately bad fixture: $badHits")
+            }
+            if (commentedHits.isNotEmpty()) {
+                throw GradleException("verifySqliteFloor flagged a comment: $commentedHits")
+            }
+            logger.lifecycle("verifySqliteFloor self-test passed.")
+        }
+    }
+
 tasks.named("check") {
     dependsOn(
+        verifySqliteFloor,
+        selfTestVerifySqliteFloor,
         verifyNoAndroidImports,
         selfTestVerifyNoAndroidImports,
         verifyNoClockSystem,
