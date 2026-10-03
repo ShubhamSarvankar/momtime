@@ -52,6 +52,23 @@ class BackupRulesTest {
             "$label: ${DatabaseFiles.CORRUPT_NAME} must be excluded",
             (database to DatabaseFiles.CORRUPT_NAME) in children(section, "exclude"),
         )
+        // The android store, its journal and its quarantined copy never leave the device (ADR 0048). The
+        // rules are an allow-list, so the store is out by not being included. Lint rejects an exclude
+        // that is not under an include, so there is none to check. What must hold is that no include
+        // names a store file, and that no include is a prefix of one: lint treats an include path as a
+        // prefix, and so may a backup agent. Each store file is checked on its own.
+        val includedPaths = children(section, "include").map { it.second }
+        for (file in listOf(
+            DatabaseFiles.STORE_NAME,
+            DatabaseFiles.STORE_JOURNAL_NAME,
+            DatabaseFiles.STORE_CORRUPT_NAME,
+        )) {
+            assertTrue("$label: $file must not be included", file !in includedPaths)
+            assertTrue(
+                "$label: an include is a prefix of $file: ${includedPaths.filter { file.startsWith(it) }}",
+                includedPaths.none { file.startsWith(it) },
+            )
+        }
     }
 
     @Test
@@ -84,5 +101,8 @@ class BackupRulesTest {
         assertEquals("momtime.db", DatabaseFiles.NAME)
         assertEquals(DatabaseFiles.NAME + "-journal", DatabaseFiles.JOURNAL_NAME)
         assertEquals(DatabaseFiles.NAME + ".corrupt", DatabaseFiles.CORRUPT_NAME)
+        assertEquals("momtime_android.db", DatabaseFiles.STORE_NAME)
+        assertEquals(DatabaseFiles.STORE_NAME + "-journal", DatabaseFiles.STORE_JOURNAL_NAME)
+        assertEquals(DatabaseFiles.STORE_NAME + ".corrupt", DatabaseFiles.STORE_CORRUPT_NAME)
     }
 }

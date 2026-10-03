@@ -51,6 +51,14 @@ class EventPayloadRoundTripTest {
     fun `caregiver reference payload round trips`() =
         assertRoundTrip(EventPayload.CaregiverReference(caregiverLinkId = "link-1"))
 
+    @Test
+    fun `canary payload round trips with and without an actual instant`() {
+        val scheduled = Instant.fromEpochMilliseconds(1_000)
+        assertRoundTrip(EventPayload.Canary(scheduledAt = scheduled, actualAt = Instant.fromEpochMilliseconds(1_250)))
+        // A canary never seen to fire: the actual instant is absent, not zero.
+        assertRoundTrip(EventPayload.Canary(scheduledAt = scheduled, actualAt = null))
+    }
+
     private fun assertRoundTrip(payload: EventPayload) {
         val id = "evt-${payload::class.simpleName}-${payload.hashCode()}"
         val event =

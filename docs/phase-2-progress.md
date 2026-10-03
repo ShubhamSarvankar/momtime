@@ -25,8 +25,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | Step | Branch | Status |
 |---|---|---|
 | A | `phase-2/sqlite-parity` | Merged (PR #13, merge commit `43d4724`) |
-| 1 | `phase-2/android-data-wiring` | Open for review (see "PR 1" below) |
-| B | `phase-2/telemetry-split` | Not started |
+| 1 | `phase-2/android-data-wiring` | Merged (PR #14, merge commit `f5de0ca`) |
+| B | `phase-2/telemetry-split` | Open for review (see "PR B" below) |
 | 2 | `phase-2/capability` | Not started |
 | 3 | `phase-2/arming` | Not started |
 | 4 | `phase-2/workers` | Not started |
@@ -63,6 +63,14 @@ Approved: `app.cash.sqldelight:android-driver` 2.4.0, `androidx.work:work-runtim
 17. **Every `PendingIntent` carries `FLAG_IMMUTABLE`**, and request codes come only from `alarmSlot`. Scenario 14 (PR 6): the next rung is selected from the record of fired rungs (the `ALARM_FIRED` count), never by comparing rung instants with now; mutation: replace that with a now comparison and show that with the clock set backward the test fails by re-arming a fired rung.
 18. **Ring actions** (PR 5): acknowledge, snooze and skip each dispatch to the domain; each test asserts the exact event log delta and state delta; stopping the sound writes nothing. Boot catch up (PR 6) arms an alarm for now and lets the alarm path start the ringer; boot never starts it.
 19. **Sounds, Samsung walkthrough, progress file**: placeholder `.wav` files from a committed script (under 30 seconds, loopable, provenance in the commit); OEM settings intents are unverified until Phase 7, each gets a MANUAL_CHECKS row; screenshot fallbacks stay placeholders until Shubham supplies A15 screenshots.
+
+20. **Corruption is a lost schedule** (from the review of PR #14; recorded now, built later). A fresh database has no templates, so after corruption nothing rings until she sets them up again, and the marker for the reliability view is not enough. **PR 5, when notification channels exist:** when the marker is written for the shared database, post one immediate notification on the Critical channel telling her that her reminders were reset and need setting up again. The android store's corruption does not notify (ADR 0048).
+21. **An alarm fire that maps to no occurrence must not crash and must write nothing** (from the review of PR #14). After a reset or a restore, the request code of a fired alarm can name an `alarmSlot` no occurrence has. **PR 3:** the fire path handles it, with a test that covers it.
+22. **Decision needed before PR 3: the live process after mid-use corruption** (ADR 0049). After the corruption handler runs in the middle of a query the process holds a closed driver, and every repository call throws until a new driver opens. The options are in ADR 0049 (rebuild the Koin graph, let the holder reopen, end the process). The decision belongs to Claude (technical review) and shapes how the alarm receiver, workers and ringer read the database.
+23. **The app runs in one process** (ADR 0046, decision of Claude (technical review)), enforced by `verifySingleProcess` on the merged manifest. It starts to matter in PR 4, when WorkManager's components merge in.
+24. **The journal mode is set explicitly to a rollback journal on both databases** (ADR 0047, decision of Claude (technical review)).
+25. **Mutation hygiene is standing practice** (decision of Claude (technical review), now in CLAUDE.md's testing section): show the diff and confirm it is exactly the intended change; afterwards confirm the intended test failed, on an assertion, for the intended reason; the record states both checks.
+
 
 ## Findings from orientation that the work depends on
 
@@ -109,6 +117,27 @@ JSON on devices, established from the AOSP build flags of `external/sqlite` (`di
 
 Other compile flags noticed in the same files, relevant later: `SQLITE_DEFAULT_LEGACY_ALTER_TABLE` is set in the android-16 `dist/Android.bp` and `android/Android.bp` adds legacy alter table flags (which release tags carry it was not checked), so on those builds `ALTER TABLE ... RENAME` may follow the legacy rules (references in triggers and views are not rewritten), unlike the JVM's SQLite. `1.sqm` renames `app_settings` only, which nothing references, so it is unaffected; a future migration that renames a table other objects reference must be tested on the floor behaviour (Phase 7 API 29 emulator suite, `MANUAL_CHECKS.md` P2-4). `SQLITE_DEFAULT_AUTOVACUUM=1`, `SQLITE_SECURE_DELETE` and `SQLITE_TEMP_STORE=3` are also set.
 
+## PR B: `phase-2/telemetry-split`
+
+Branched from `main` at `f5de0cabd2b77b72d5d5a8198ebc04e0d6870bf5` (the merge of PR 1).
+
+Scope: shared schema v3 (the telemetry table dropped, the canary instants as the `CANARY_RESULT` payload); the android store as a second SQLDelight database; the review follow ups of PR #14 (one process, explicit journal mode, mid-query corruption, mutation hygiene in CLAUDE.md); the records of decisions 20 to 25 above. ADRs 0046 (one process), 0047 (explicit rollback journal), 0048 (telemetry leaves the shared schema; the android store; supersedes parts of ADR 0033 and ADR 0034), 0049 (corruption found during a query). Mutations are in `phase-2-traceability.md` (T1 to T13), run at `a39602a`, each with the diff and the assertion that failed.
+
+No new CI job. The existing `migration-test` job now also runs `:android:verifyDebugAndroidStoreDatabaseMigration`, and `verify-android-structure` also runs `verifySingleProcess` and the android `verifySqliteFloor`, with their self-tests. `android-unit-test` and `verify-android-structure` (from PR 1) remain to be added to the required checks by Shubham if not yet done.
+
+Numbers, measured at `a39602a` (the head differs from it only in documentation): 117 `shared` tests (109 before) and 61 android tests (40 before), none failing. `shared` line coverage 629/647 (97.2%), branch coverage 177/183 (96.7%): data 72/77 (93.5%), domain 8/8, engine 97/98 (99.0%), all above their gates (the data package lost the telemetry repository's branches along with the repository).
+
+Did `alarm_delivery_telemetry` survive? No. Nothing needs it: per fire timing is the rung against `ALARM_FIRED`'s `deviceTimestamp`, `alarm_slot` is on the occurrence, the canary instants are the payload, and everything else is Android's. The migration copies existing canary instants onto their events before the drop, and an old `CANARY_RESULT` with no instants decodes as no payload; both are tested from v1 and from v2.
+
+SQLDelight in an AGP 9 application module: it works. The plugin registers `generateDebugAndroidStoreDatabaseInterface`, `generateDebugAndroidStoreDatabaseSchema` and `verifyDebugAndroidStoreDatabaseMigration`, and the generated code goes to `android/build/generated/sqldelight/code/AndroidStoreDatabase/debug/`. No stop was needed.
+
+Findings from this PR:
+
+- **Compatibility WAL, by AOSP tag (android-10 to android-16), for ADR 0047.** It is not on by default at any tag. A global setting decides it (`legacy_compatibility_wal_enabled`, default false, read in the `SQLiteDatabase` constructor), and it only takes effect for an app that sets neither a journal nor a sync mode. `db_compatibility_wal_supported` does not exist in `config.xml` at any tag. Without WAL the framework applies `TRUNCATE` and `FULL`. `setWriteAheadLoggingEnabled(false)`, which androidx always calls, does not defeat it; `disableWriteAheadLogging()` does. Whether Google or an OEM pushes the setting to production devices is unverified (P2-6). Both databases now call `disableWriteAheadLogging()` and then run `PRAGMA journal_mode=TRUNCATE` in `onConfigure`.
+- **Mid-query corruption invokes the handler** (`SQLiteQuery.fillWindow` and the `SQLiteStatement` paths), and it is tested at SDK 29 and 36. Statement preparation and `SQLiteRawStatement` are not routed to it. **The live process is left holding a closed database**: every later repository call throws `IllegalStateException` until a new driver opens. That is not fixed here; ADR 0049 lists the options and decision 22 above records that it needs deciding before PR 3.
+- **`@SQLiteMode` in Robolectric 4.17.** It is deprecated ("will be deleted in a forthcoming release"). NATIVE is now the default ("the default behavior is now equivalent to NATIVE mode, so this annotation is generally no longer needed"); LEGACY still works but is itself deprecated. There is no replacement annotation or property. The annotation is kept for its intent, and the real guard is `assertNativeSqliteMode()`, which reads the effective mode from `ConfigurationRegistry`. When the annotation is deleted the tests stop compiling, which is the alarm to drop it and keep the assertion.
+- **Lint and the backup rules.** Lint rejects an `<exclude>` that is not under an `<include>`, so the android store has no exclude of its own. The rules are an allow-list (the shared database and its journal), the store is out by not being included, and `BackupRulesTest` pins the include list and checks no include is a prefix of a store file name. Lint's own check treats an include path as a prefix, which is why the shared database's `.corrupt` copy keeps an explicit exclude. Whether a real backup agent matches prefixes is not known without a device (P2-7).
+
 ## Next
 
-After PR 1 is merged and reviewed: PR B `phase-2/telemetry-split`. Branch from `main` at the merge commit. Start by reading this file, decision 8 above (the telemetry violation; check whether `alarm_delivery_telemetry` needs to exist at all before building a slim table; the android store is a second SQLDelight database in the android module and STOP and report if the SQLDelight plugin does not work in an AGP 9 application module; the structural check gains confinement of the store's own generated queries to its repository package; `CapabilityBoundaryTest` needs a new positive control; the telemetry finding joins CLAUDE.md's testing precedents), and `docs/phase-2-traceability.md`. The `momtime_android.db`-style store file must be excluded from backup: the rules name the files they include, so a new file is excluded unless added on purpose.
+After PR B is merged and reviewed: PR 2 `phase-2/capability`. Branch from `main` at the merge commit. Start by reading this file, decisions 4 and 5 above (the tier ADR, the manifest permissions, `@Config` at SDK 29, 31, 33 and the latest), the PR 2 notes in the Step 1 report, and `docs/phase-2-traceability.md`. The tier ADR takes the next number after 0049.

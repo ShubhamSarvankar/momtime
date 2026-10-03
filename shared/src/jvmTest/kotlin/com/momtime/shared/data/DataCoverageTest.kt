@@ -1,9 +1,7 @@
 package com.momtime.shared.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.momtime.shared.domain.AlarmDeliveryTelemetry
 import com.momtime.shared.domain.Criticality
-import com.momtime.shared.domain.DeliveryCapability
 import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
@@ -56,54 +54,28 @@ class DataCoverageTest {
         SqlDelightPregnancyRepository(db).insert(Pregnancy("preg-1", PregnancyPhase.PRENATAL, epoch, epoch))
     }
 
-    private fun eventRow(id: String) =
-        Event(id, null, EventType.ALARM_FIRED, epoch, null, EventSource.SYSTEM, EventPayload.None)
-
-    // ---- telemetry ---------------------------------------------------------------------------
-
-    private val fullTelemetry =
-        AlarmDeliveryTelemetry(
-            eventId = "set-by-test",
-            alarmSlot = 7,
-            resolvedTier = DeliveryCapability.TIER_2,
-            canaryScheduledAt = Instant.fromEpochMilliseconds(100),
-            canaryActualAt = Instant.fromEpochMilliseconds(150),
-            screenOn = true,
-            audioFocusObtained = false,
-            batteryPct = 42,
-            dozeState = "IDLE",
-        )
+    // ---- canary payload ----------------------------------------------------------------------
+    // The canary's two instants are the payload of CANARY_RESULT (ADR 0048). The delivery SLO is
+    // computed from them, so a field silently dropped or swapped on the way through corrupts the one
+    // number the project is judged on.
 
     @Test
-    fun `telemetry round trips with every field set, every field null, and each field null alone`() {
-        val events = SqlDelightEventRepository(db)
-        val repo = SqlDelightAlarmDeliveryTelemetryRepository(db)
-        val nullAlone: List<Pair<String, AlarmDeliveryTelemetry.() -> AlarmDeliveryTelemetry>> =
-            listOf(
-                "alarmSlot" to { copy(alarmSlot = null) },
-                "resolvedTier" to { copy(resolvedTier = null) },
-                "canaryScheduledAt" to { copy(canaryScheduledAt = null) },
-                "canaryActualAt" to { copy(canaryActualAt = null) },
-                "screenOn" to { copy(screenOn = null) },
-                "audioFocusObtained" to { copy(audioFocusObtained = null) },
-                "batteryPct" to { copy(batteryPct = null) },
-                "dozeState" to { copy(dozeState = null) },
-                // Booleans must keep their value, not just their presence: false is not null.
-                "screenOn flipped" to { copy(screenOn = false, audioFocusObtained = true) },
-            )
+    fun `canary payload keeps both instants, an absent actual instant, and the right column for each`() {
+        val repo = SqlDelightEventRepository(db)
         val cases =
             listOf(
-                "all set" to fullTelemetry,
-                "all null" to
-                    AlarmDeliveryTelemetry("x", null, null, null, null, null, null, null, null),
-            ) + nullAlone.map { (name, change) -> "$name" to fullTelemetry.change() }
-
-        cases.forEachIndexed { index, (name, telemetry) ->
-            val id = "evt-$index"
-            events.insert(eventRow(id))
-            val row = telemetry.copy(eventId = id)
-            repo.insert(row)
-            assertEquals(row, repo.findForEvent(id), "telemetry case: $name")
+                "both set" to
+                    EventPayload.Canary(Instant.fromEpochMilliseconds(100), Instant.fromEpochMilliseconds(150)),
+                "never seen to fire" to EventPayload.Canary(Instant.fromEpochMilliseconds(100), null),
+                // Distinct values, so swapping the two columns would be seen.
+                "actual before scheduled" to
+                    EventPayload.Canary(Instant.fromEpochMilliseconds(500), Instant.fromEpochMilliseconds(400)),
+            )
+        cases.forEachIndexed { index, (name, payload) ->
+            val event =
+                Event("canary-$index", null, EventType.CANARY_RESULT, epoch, null, EventSource.SYSTEM, payload)
+            repo.insert(event)
+            assertEquals(event, repo.findById(event.id), "canary case: $name")
         }
     }
 

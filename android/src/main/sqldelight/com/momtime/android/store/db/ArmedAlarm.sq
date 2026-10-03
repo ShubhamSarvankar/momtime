@@ -1,0 +1,22 @@
+-- The alarm this app believes it armed: at most one row, because exactly one alarm is armed at a
+-- time (ADR 0017). The watchdog compares it with the rung the domain says should be next. It is
+-- state about the operating system, never about the schedule, so it lives with Android and not in
+-- the shared database, and it is not backed up: a restored phone has armed nothing (ADR 0048).
+CREATE TABLE armed_alarm (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    alarm_slot INTEGER NOT NULL,
+    rung_instant INTEGER NOT NULL,
+    armed_at INTEGER NOT NULL,
+    boot_count INTEGER NOT NULL,
+    exact_allowed INTEGER NOT NULL CHECK (exact_allowed IN (0, 1))
+);
+
+replaceArmedAlarm:
+INSERT OR REPLACE INTO armed_alarm(id, alarm_slot, rung_instant, armed_at, boot_count, exact_allowed)
+VALUES (0, ?, ?, ?, ?, ?);
+
+selectArmedAlarm:
+SELECT * FROM armed_alarm WHERE id = 0;
+
+clearArmedAlarm:
+DELETE FROM armed_alarm WHERE id = 0;

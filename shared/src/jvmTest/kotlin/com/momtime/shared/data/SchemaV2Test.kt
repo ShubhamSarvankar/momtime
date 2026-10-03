@@ -35,8 +35,8 @@ import kotlin.time.Instant
 /**
  * Schema version 2 (ADR 0037): the terminal-state trigger and the quiet_hours_valid CHECK.
  *
- * Every constraint test runs twice, against a fresh version 2 database and against a database
- * migrated from the committed version 1 baseline (`databases/1.db`), because a migration that
+ * Every constraint test runs twice, against a fresh database at the current version and against a database
+ * migrated from the committed version 1 baseline (`databases/1.db`) up to the current version, because a migration that
  * silently omitted a constraint would pass the fresh-database half alone. Invariant 2: a forward
  * migration test from every prior version.
  */
@@ -73,7 +73,7 @@ class SchemaV2Test {
         Files.copy(Path.of("src/commonMain/sqldelight/databases/1.db"), file, StandardCopyOption.REPLACE_EXISTING)
         val driver = openJvmSqliteDriver("jdbc:sqlite:$file").also { drivers.add(it) }
         seed(driver)
-        MomTimeDatabase.Schema.migrate(driver, 1, 2)
+        MomTimeDatabase.Schema.migrate(driver, 1, MomTimeDatabase.Schema.version)
         if (checkForeignKeys) {
             assertEquals(emptyList(), driver.foreignKeyViolations(), "migration left foreign key violations")
         }
@@ -81,7 +81,7 @@ class SchemaV2Test {
     }
 
     private fun bothDatabases(): List<Pair<String, MomTimeDatabase>> =
-        listOf("fresh v2" to freshV2(), "migrated from v1" to migratedFromV1())
+        listOf("fresh" to freshV2(), "migrated from v1" to migratedFromV1())
 
     private fun occurrence(
         state: OccurrenceState,
