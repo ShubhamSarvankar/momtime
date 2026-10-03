@@ -20,7 +20,7 @@ import kotlin.time.Clock
  * reminders keep working. A marker records that it happened.
  *
  * Journal mode is deliberately not touched: WAL is not enabled, so the database stays one file
- * for Auto Backup and the framework's connection pool stays at one connection.
+ * for Auto Backup (ADR 0044).
  */
 class MomTimeDatabaseCallback(
     schema: SqlSchema<QueryResult.Value<Unit>>,

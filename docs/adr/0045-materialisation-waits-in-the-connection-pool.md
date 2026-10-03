@@ -37,13 +37,13 @@ Robolectric 4.17, native SQLite (`@SQLiteMode(NATIVE)`, asserted in every data t
 
 ## Decision
 
-The mechanism is the framework's in-process connection pool, not SQLite's lock under `BEGIN IMMEDIATE`. With one driver on one file and the database not in WAL mode, a writer holds the pool's primary connection for the whole transaction, and a second thread waits in `SQLiteConnectionPool.waitForConnection` before it reaches SQLite at all. `BEGIN IMMEDIATE` is real, and it matters across drivers or processes because it takes the write lock at the start, so contention surfaces at `BEGIN` and not part way through a batch. But it is not what made B wait here.
+The mechanism is the framework's in-process connection pool, not SQLite's lock under `BEGIN IMMEDIATE`. With one driver on one file, a writer holds the pool's primary connection for the whole transaction, and a second thread waits in `SQLiteConnectionPool.waitForConnection` before it reaches SQLite at all. `BEGIN IMMEDIATE` is real, and it matters across drivers or processes because it takes the write lock at the start, so contention surfaces at `BEGIN` and not part way through a batch. But it is not what made B wait here.
 
 Consequences for the rest of the design:
 
 1. **One driver per database file is load-bearing**, not a tidy-up. The serialisation exists only within one pool. The Koin graph builds exactly one driver (asserted by test), and `phase-2/android-data-wiring` ties that to this ADR.
 2. **All database access stays in one process.** A second process opening the file is a second pool and meets the refusal shown by the control, after the framework's busy timeout. No component may declare `android:process` for database work, and `ARCHITECTURE.md` section 3.2 says so.
-3. **WAL stays off** (ADR 0044). With WAL the framework opens a pool of read connections and the evidence above would not apply.
+3. **WAL stays off**, for the reasons in ADR 0044 (the database stays one file for Auto Backup). It is not what makes the wait: with WAL enabled in the Android callback, as a mutation, both race tests still passed, so in this experiment the wait did not depend on the journal mode. A test asserts the journal mode, so turning WAL on fails a test and has to be a deliberate decision.
 4. `ARCHITECTURE.md` section 3.2 states exactly what was shown and by what mechanism, and does not claim device behaviour.
 
 ## Limits of this evidence

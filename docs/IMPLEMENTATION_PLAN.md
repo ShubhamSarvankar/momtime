@@ -123,7 +123,7 @@ Three event log reductions listed under Deliverables were not built in Phase 1 a
 
 The critical path. Built and verified on the JVM via Robolectric. Device verification is Phase 7.
 
-**Status: in progress.** Work is tracked in `docs/phase-2-progress.md` (deleted when Phase 2 closes) and `docs/phase-2-traceability.md`. Done so far: the SQLite floor and foreign key enforcement on the JVM (`phase-2/sqlite-parity`, ADR 0042 and ADR 0043). Nothing in the alarm subsystem is built yet. The alarm subsystem will not be described as complete before Phase 7: it will pass the automated layers with device checks outstanding.
+**Status: in progress.** Work is tracked in `docs/phase-2-progress.md` (deleted when Phase 2 closes) and `docs/phase-2-traceability.md`. Done so far: the SQLite floor and foreign key enforcement on the JVM (`phase-2/sqlite-parity`, ADR 0042 and ADR 0043), and the Android data wiring (`phase-2/android-data-wiring`: the production driver factory with foreign keys enforced, corrupt databases kept aside, the Koin graph exposing repositories only, the structural checks, backup rules, and the materialisation race shown to wait in the framework connection pool under Robolectric, ADR 0044 and ADR 0045). Nothing in the alarm subsystem proper is built yet. The alarm subsystem will not be described as complete before Phase 7: it will pass the automated layers with device checks outstanding.
 
 **Deliverables**
 
