@@ -1,5 +1,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        The permissions the app declares (ADR 0050). Requesting them is a later PR; declaring them is
+        what makes them requestable, and each one changes the Play declarations, so verifyManifestPermissions
+        holds this list exactly.
+
+        USE_EXACT_ALARM is granted at install and cannot be revoked; Play restricts it, and whether a
+        medication reminder qualifies is an open item, with the manifest-only fallback of dropping it.
+        SCHEDULE_EXACT_ALARM is the requestable one for API 31 and 32, as Android's manifest guidance says.
+        On API 33 and above capability comes from whichever is held, and the code asks the platform, never
+        which permission it is.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

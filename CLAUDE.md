@@ -75,7 +75,7 @@ These are not preferences. They exist because the user is pregnant, because the 
 
 The critical path. Be conservative here.
 
-- `setAlarmClock` is the primary mechanism. `setExactAndAllowWhileIdle` is a Tier 2 fallback only; it is throttled to roughly one fire per app per nine minutes in deep Doze and cannot sustain a five minute ladder.
+- `setAlarmClock` is the only exact mechanism. On API 31 and above it needs the same exact alarm capability as every other exact API, so there is no exact fallback. Exact capability is what `canScheduleExactAlarms()` reports, never a permission check, because a battery optimisation exemption also grants it. Without exact capability the app arms an inexact `setAndAllowWhileIdle` alarm and delivers Tier 1.
 - **One alarm armed at a time**, re armed on each fire, plus a `WorkManager` watchdog at the 15 minute floor that verifies and repairs it. Never pre arm a week of alarms. Samsung is reported to cap scheduled alarms per app around 500, and twelve occurrences with a four rung ladder is 48 a day.
 - **Boot never rings.** A `BOOT_COMPLETED` receiver on Android 15+ cannot start a `mediaPlayback` foreground service and throws `ForegroundServiceStartNotAllowedException`. Boot reschedules via WorkManager only. A missed occurrence fires late only inside the 30 minute catch up window, then goes to `MISSED` silently.
 - **Always check `canUseFullScreenIntent()` before relying on it.** On Android 14+ it is granted by default only to calling and alarm apps. Degrade to the Tier 2 path, never crash. A `SecurityException` here is the most common failure mode in this app category.
