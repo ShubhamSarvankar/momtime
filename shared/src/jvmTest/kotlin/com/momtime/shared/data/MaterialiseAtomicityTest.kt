@@ -55,9 +55,9 @@ class MaterialiseAtomicityTest {
 
     @BeforeTest
     fun setUp() {
-        driverA = JdbcSqliteDriver(url, props)
+        driverA = openJvmSqliteDriver(url, props)
         MomTimeDatabase.Schema.create(driverA)
-        driverB = JdbcSqliteDriver(url, props)
+        driverB = openJvmSqliteDriver(url, props)
         dbA = MomTimeDatabase(driverA)
         dbB = MomTimeDatabase(driverB)
         repoA = SqlDelightOccurrenceRepository(dbA)

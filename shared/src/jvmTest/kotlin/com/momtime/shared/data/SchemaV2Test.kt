@@ -43,6 +43,7 @@ import kotlin.time.Instant
 class SchemaV2Test {
     private val tempFiles = mutableListOf<Path>()
     private val drivers = mutableListOf<JdbcSqliteDriver>()
+    private lateinit var lastV1File: Path
     private val zone = TimeZone.of("Asia/Kolkata")
     private val scheduled = Instant.parse("2026-01-01T02:30:00Z")
 
@@ -53,18 +54,29 @@ class SchemaV2Test {
     }
 
     private fun freshV2(): MomTimeDatabase {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { drivers.add(it) }
+        val driver = openJvmSqliteDriver(JdbcSqliteDriver.IN_MEMORY).also { drivers.add(it) }
         MomTimeDatabase.Schema.create(driver)
         return MomTimeDatabase(driver)
     }
 
-    /** A real version 1 file, copied from the committed baseline; seeded by [seed], then migrated. */
-    private fun migratedFromV1(seed: (JdbcSqliteDriver) -> Unit = {}): MomTimeDatabase {
+    /**
+     * A real version 1 file, copied from the committed baseline; seeded by [seed], then migrated. Ends with
+     * PRAGMA foreign_key_check and fails on any orphan, so a migration that leaves one behind cannot pass.
+     * [checkForeignKeys] is false only for the test that proves the check can fail.
+     */
+    private fun migratedFromV1(
+        checkForeignKeys: Boolean = true,
+        seed: (JdbcSqliteDriver) -> Unit = {},
+    ): MomTimeDatabase {
         val file = Files.createTempFile("momtime-v1", ".db").also { tempFiles.add(it) }
+        lastV1File = file
         Files.copy(Path.of("src/commonMain/sqldelight/databases/1.db"), file, StandardCopyOption.REPLACE_EXISTING)
-        val driver = JdbcSqliteDriver("jdbc:sqlite:$file").also { drivers.add(it) }
+        val driver = openJvmSqliteDriver("jdbc:sqlite:$file").also { drivers.add(it) }
         seed(driver)
         MomTimeDatabase.Schema.migrate(driver, 1, 2)
+        if (checkForeignKeys) {
+            assertEquals(emptyList(), driver.foreignKeyViolations(), "migration left foreign key violations")
+        }
         return MomTimeDatabase(driver)
     }
 
@@ -274,6 +286,7 @@ class SchemaV2Test {
     fun `migration preserves existing occurrence rows`() {
         val db =
             migratedFromV1 { driver ->
+                seedTemplate(MomTimeDatabase(driver))
                 driver.execute(
                     null,
                     "INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, " +
@@ -314,5 +327,39 @@ class SchemaV2Test {
             assertNull(result, "${stored.state}: Reconcile appended an event for a terminal occurrence")
         }
         assertTrue(terminal.all { events.findForOccurrence(it.id).isEmpty() })
+    }
+
+    // The end-of-migration foreign_key_check can fail (ADR 0043). The orphan is planted with
+    // enforcement switched off, standing in for a migration that rebuilds a table and leaves a
+    // child row without its parent. The v1 to v2 migration does not touch the occurrence table, so
+    // it does not notice; only PRAGMA foreign_key_check does.
+    @Suppress("UNUSED_PARAMETER")
+    private fun plantOrphanOccurrence(enforcing: JdbcSqliteDriver) {
+        // A plain JdbcSqliteDriver on the same file: SQLite's default is enforcement off, which is
+        // exactly what lets a bad migration leave an orphan behind.
+        JdbcSqliteDriver("jdbc:sqlite:$lastV1File").use { plain ->
+            check(plain.pragma("foreign_keys") == "0") { "the planting connection must not enforce" }
+            plain.execute(
+                null,
+                "INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, " +
+                    "time_zone_id, state, alarm_slot) VALUES ('orphan', 'no-such-template', '2026-01-01', " +
+                    "${scheduled.toEpochMilliseconds()}, 'Asia/Kolkata', 'PENDING', 1)",
+                0,
+            )
+        }
+    }
+
+    @Test
+    fun `foreign_key_check reports an orphan the migration let through`() {
+        migratedFromV1(checkForeignKeys = false) { plantOrphanOccurrence(it) }
+        val violations = drivers.last().foreignKeyViolations()
+        assertEquals(1, violations.size, "expected exactly the planted orphan: $violations")
+        assertTrue(violations.single().startsWith("occurrence "), violations.single())
+    }
+
+    @Test
+    fun `a migration test with an orphan fails on the foreign key check`() {
+        val failure = assertFailsWith<AssertionError> { migratedFromV1 { plantOrphanOccurrence(it) } }
+        assertTrue(failure.message.orEmpty().contains("foreign key violations"), failure.message)
     }
 }

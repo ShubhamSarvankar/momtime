@@ -42,7 +42,7 @@ class DataCoverageTest {
 
     @BeforeTest
     fun setUp() {
-        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver = openJvmSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         MomTimeDatabase.Schema.create(driver)
         db = MomTimeDatabase(driver)
     }
@@ -50,6 +50,10 @@ class DataCoverageTest {
     @AfterTest
     fun tearDown() {
         driver.close()
+    }
+
+    private fun seedPregnancy() {
+        SqlDelightPregnancyRepository(db).insert(Pregnancy("preg-1", PregnancyPhase.PRENATAL, epoch, epoch))
     }
 
     private fun eventRow(id: String) =
@@ -153,6 +157,7 @@ class DataCoverageTest {
 
     @Test
     fun `water goal round trips`() {
+        seedPregnancy()
         val repo = SqlDelightWaterGoalRepository(db)
         val goal = WaterGoal("preg-1", dailyGoalMl = 2500, nudgeTimesPerDay = 4)
         repo.upsert(goal)
@@ -206,6 +211,7 @@ class DataCoverageTest {
 
     @Test
     fun `template round trips with and without its optional fields`() {
+        seedPregnancy()
         val repo = SqlDelightScheduleTemplateRepository(db)
         repo.insert(template("t-full", full = true))
         repo.insert(template("t-bare", full = false))
@@ -215,6 +221,7 @@ class DataCoverageTest {
 
     @Test
     fun `weekly and every-N-days recurrences round trip through the database`() {
+        seedPregnancy()
         val repo = SqlDelightScheduleTemplateRepository(db)
         val weekly = Recurrence.Weekly(setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY, DayOfWeek.SUNDAY))
         val everyN = Recurrence.EveryNDays(n = 3, anchorDate = LocalDate(2026, 1, 30))
@@ -250,6 +257,7 @@ class DataCoverageTest {
     // repository, so the CHECK is what is being tested and not the Kotlin mapping.
     @Test
     fun `recurrence CHECK accepts each valid shape and rejects every other`() {
+        seedPregnancy()
         rawTemplate("ok-daily", "DAILY")
         rawTemplate("ok-weekly", "WEEKLY", days = "MONDAY,THURSDAY")
         rawTemplate("ok-everyn", "EVERY_N_DAYS", n = "3", anchor = "2026-01-01")
@@ -275,6 +283,7 @@ class DataCoverageTest {
 
     @Test
     fun `mission CHECK accepts each valid shape and rejects every other`() {
+        seedPregnancy()
         rawTemplate("ok-none", "DAILY")
         rawTemplate("ok-barcode", "DAILY", mission = "'BARCODE'", barcode = "payload")
         rawTemplate("ok-photo", "DAILY", mission = "'PHOTO_MATCH'", photo = "hash")

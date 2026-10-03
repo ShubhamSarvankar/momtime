@@ -114,6 +114,39 @@ class RemainingRepositoriesTest {
         assertEquals(WaterGoal(pregnancy.id, 2500, 4), repo.findForPregnancy(pregnancy.id))
     }
 
+    private fun pregnancy(id: String) =
+        Pregnancy(id, PregnancyPhase.PRENATAL, Instant.fromEpochMilliseconds(0), Instant.fromEpochMilliseconds(0))
+
+    // The zero-row branch: no goal exists, so the UPDATE changes nothing and the INSERT must run.
+    @Test
+    fun `a water goal is created where none exists`() {
+        SqlDelightPregnancyRepository(database).insert(pregnancy("preg-1"))
+        val repo = SqlDelightWaterGoalRepository(database)
+        assertNull(repo.findForPregnancy("preg-1"))
+
+        repo.upsert(WaterGoal("preg-1", dailyGoalMl = 1800, nudgeTimesPerDay = 2))
+
+        assertEquals(WaterGoal("preg-1", 1800, 2), repo.findForPregnancy("preg-1"))
+    }
+
+    // The update branch: a goal exists, so the UPDATE must change it and no second insert may be
+    // attempted (a plain INSERT of an existing key throws). Another pregnancy's goal is untouched,
+    // which fails if the UPDATE loses its WHERE clause.
+    @Test
+    fun `a water goal update changes that pregnancy's goal and no other`() {
+        val pregnancies = SqlDelightPregnancyRepository(database)
+        pregnancies.insert(pregnancy("preg-1"))
+        pregnancies.insert(pregnancy("preg-2"))
+        val repo = SqlDelightWaterGoalRepository(database)
+        repo.upsert(WaterGoal("preg-1", 2000, 3))
+        repo.upsert(WaterGoal("preg-2", 1500, 1))
+
+        repo.upsert(WaterGoal("preg-1", 2600, 5))
+
+        assertEquals(WaterGoal("preg-1", 2600, 5), repo.findForPregnancy("preg-1"))
+        assertEquals(WaterGoal("preg-2", 1500, 1), repo.findForPregnancy("preg-2"))
+    }
+
     @Test
     fun `app settings default to seeded values and each field updates independently`() {
         val repo = SqlDelightAppSettingsRepository(database)

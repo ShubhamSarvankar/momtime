@@ -46,9 +46,10 @@ sqldelight {
             // .sq change without a corresponding .sqm migration makes verification fail against
             // it, which is invariant 2's enforcement mechanism working as intended.
             schemaOutputDirectory.set(layout.projectDirectory.dir("src/commonMain/sqldelight/databases"))
-            // Android 10+ (minSdk 29) ships SQLite well past 3.24; the plugin's default
-            // 3.18 dialect predates ON CONFLICT ... DO UPDATE, which water_goal's upsert uses.
-            dialect(libs.sqldelight.dialect.sqlite338)
+            // The SQLite floor is 3.22, the version Android 10 (API 29, minSdk) ships (ADR 0042).
+            // The highest SQLDelight dialect at or below it is 3.18, so the SQLDelight compiler
+            // rejects syntax newer than the floor: the dialect is the gate, not a text scan.
+            dialect(libs.sqldelight.dialect.sqlite318)
         }
     }
 }
