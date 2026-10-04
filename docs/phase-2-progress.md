@@ -341,7 +341,7 @@ Scope: the timezone decision (decision 70, answered by Claude (technical review)
 
 No new CI job; `verify-no-clock-system` runs the extended check in both modules, and `migration-test` verifies the shared schema's fourth migration.
 
-Numbers, measured at `0257611`: 209 `shared` tests (186 before PR 6b) and 806 android tests (776 before), none failing. `shared` line 870/887 (98.1%), branch 285/290 (98.3%): data 156/160 (97.5%, the three Phase 1 quiet hours branches and the `checkNotNull` of PR 5b), domain 8/8, engine 121/122 (99.2%), all above their gates. Shared schema version 5; no permission added.
+Numbers, measured at `0257611`: 209 `shared` tests (186 before PR 6b) and 807 android tests (776 before), none failing. `shared` line 870/887 (98.1%), branch 285/290 (98.3%): data 156/160 (97.5%, the three Phase 1 quiet hours branches and the `checkNotNull` of PR 5b), domain 8/8, engine 121/122 (99.2%), all above their gates. Shared schema version 5; no permission added.
 
 **Findings in their own right** (the review of PR #22 asked that a passing item that never tested its subject be flagged as a finding, not as background to another answer):
 
