@@ -241,6 +241,14 @@ class OccurrenceActionCommandTest {
         assertEquals(OccurrenceState.SKIPPED, state("b"))
     }
 
+    // A divergent row: the state says SNOOZED and the log has no SNOOZED event. There is no snooze to end.
+    @Test
+    fun `a snoozed state with no snooze event has no running snooze`() {
+        val a = occurrence("a", slot = 1, state = OccurrenceState.SNOOZED)
+
+        assertNull(command.runningSnoozeEnd(a))
+    }
+
     @Test
     fun `an unknown occurrence is reported and nothing is written`() {
         assertEquals(ActionResult.UnknownOccurrence, command.dispatch("nope", OccurrenceAction.ACKNOWLEDGE, now))

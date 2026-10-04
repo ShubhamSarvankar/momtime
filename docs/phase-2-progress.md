@@ -30,8 +30,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | 2 | `phase-2/capability` | Merged (PR #16, merge commit `77aa203`) |
 | 3 | `phase-2/arming` | Merged (PR #17, merge commit `8720d03`) |
 | 4 | `phase-2/workers` | Merged (PR #18, merge commit `6ef4909`) |
-| 5 | `phase-2/delivery` | Open for review (see "PR 5" below) |
-| 5b | `phase-2/actions` | Not started: her actions, snooze, the audio ramp and backup sound, vibration patterns |
+| 5 | `phase-2/delivery` | Merged (PR #19, merge commit `48738c9`) |
+| 5b | `phase-2/ring-actions` | Open for review (see "PR 5b" below). The progress file named this branch `phase-2/actions`; the PR 5b prompt named it `phase-2/ring-actions`, and the prompt is the later instruction |
 | 6 | `phase-2/system-broadcasts` | Not started |
 | 7 | `phase-2/canary-telemetry` | Not started |
 | 8 | `phase-2/permission-onboarding` | Not started |
@@ -266,6 +266,39 @@ Earlier decisions this PR completes: decision 15 (policy at fire time, through t
 
 Not verified: everything in `MANUAL_CHECKS.md` P2-16 to P2-19. The tests use a fake sound, a fake ringer launch and a fake overlay, and read notifications from Robolectric's shadow; nothing ran on a device, no sound was heard and no screen turned on from locked. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 5b: `phase-2/ring-actions`
+
+Branched from `main` at `48738c9b06b66d87cc1179c02e9147efaa4a963a` (the merge of PR #19).
+
+Scope: her three actions from the ring screen and the notification buttons, through the domain (ADR 0066); snooze through `ensureArmed`, with its own event so that it consumes no rung (ADR 0066); the Quiet notices channel (ADR 0064); the volume ramp, the backup sound, vibration, the android only settings file in backup and the muted stream record (ADR 0065); the review of PR #19 (decisions 56 to 58 below). Mutations are in `phase-2-traceability.md` (A1 to I2), run at `d40e74d`.
+
+The progress file's PR 5b items and the prompt agree. The file adds nothing the prompt lacks, except the end of the ring session when nothing in it is left unacknowledged (ADR 0062), which the prompt covers under "ringing stops when nothing in the session is unacknowledged", and the file's wording "her actions" for what the prompt calls actions.
+
+No new CI job. `verify-android-structure` runs `verifyManifestPermissions` with the new `VIBRATE` entry; the existing `migration-test` job verifies the android store's third migration.
+
+Numbers, measured at `d40e74d` plus the one shared test of the head: 180 `shared` tests (157 before) and 710 android tests (544 before), none failing. `shared` line coverage 820/836 (98.1%), branch coverage 277/282 (98.2%): data 148/152 (97.4%: the three Phase 1 quiet hours branches and one branch the inline `maxOfOrNull` in `OccurrenceActionCommand.runningSnoozeEnd` generates and no input reaches), domain 8/8, engine 121/122 (99.2%), all above their gates.
+
+The merged manifest's permissions after this PR (twelve): `USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM` (maxSdkVersion 32), `USE_FULL_SCREEN_INTENT`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `SYSTEM_ALERT_WINDOW`, `VIBRATE` (new), `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, and `androidx.core`'s own `com.momtime.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Components added to the app's own: `RingActionReceiver`, not exported.
+
+Findings from this PR:
+
+- **The snooze's end collides with a ladder rung more often than it looks.** A STANDARD ladder's repeat is ten minutes in, and a snooze is ten minutes, so snoozing at the first rung arms the same instant: `ensureArmed` then writes no `ALARM_SCHEDULED` (the instant did not change) and the delta of a snooze from a notification is the `SNOOZED` event alone. A CRITICAL snooze moves the head, so its delta is `SNOOZED` and `ALARM_SCHEDULED`. Both are asserted and commented.
+- **Robolectric records vibration attributes differently by release.** Up to API 32 the shadow keeps the `AudioAttributes`; from API 33 it keeps `VibrationAttributes`. The test reads whichever there is.
+- **The fire path needed no new branch for a snooze beyond choosing the event:** the snooze's end is a rung of the `RING` channel in selection, and the catch up window, the policy and the session continuation all apply to it unchanged.
+
+Decisions of this PR (the implementing session's, for review, unless noted):
+56. **Every ring grade interruption counts toward the budget, `CRITICAL` included: accepted** (review of PR #19, decision 48). `ARCHITECTURE.md` section 4.3 says it.
+57. **Silent presentations go to a fourth channel, Quiet notices, at importance low** (decision of Claude (technical review), ADR 0064, superseding decision 49 and ADR 0060's channel decision). Onboarding names it next to the Critical channel.
+58. **The channel sound overlapping the ringer is accepted pending P2-17; the show intent opening the ring screen is accepted until Phase 3** (review of PR #19), with a test that opening the screen with no session starts no sound and writes nothing.
+59. **`SNOOZE_ENDED`, a new system event type, tells a snooze's fire from a rung's** (the implementing session, ADR 0066, for review: this is a change to shared vocabulary). It needs no schema change and no migration. Alternatives and why they were rejected are in the ADR.
+60. **The snooze's end is delivered like any ring** (judgment, ADR 0066): it honours quiet hours and spends the budget when it rings.
+61. **The snooze duration is the existing `snoozeDurationMinutes` setting,** and a running snooze's end is read from the latest `SNOOZED` event plus that setting, so no column holds it.
+62. **The backup interval default is 2 minutes, the ramp is 30 percent to full over 6 seconds, and the vibration patterns are placeholders** (judgment, ADR 0065); all three are for a device to judge (P2-20, P2-21).
+63. **Notification buttons exist for a reminder notification and for the ring notification while one occurrence rings; with several the screen has each one's own** (judgment, ADR 0066), because a notification holds three actions.
+64. **A ring session vibrates with the pattern of the occurrence that started it** (judgment).
+
+Not verified: everything in `MANUAL_CHECKS.md` P2-20 to P2-25. The tests use fake players, a fake scheduler, a fake vibration where the service is concerned, and the shadows for the platform; nothing ran on a device, no sound was heard and no motor ran. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 5 is merged and reviewed: PR 5b: her actions on the ring screen (acknowledge, snooze, skip, each through the domain with the exact event and state delta; decision 18), snooze through `ensureArmed` (decision 36), the audio volume ramp and the louder backup sound, per template vibration patterns, and the end of the ring session when nothing in it is left unacknowledged (ADR 0062). Then PR 6 `phase-2/system-broadcasts` (boot, which arms and never rings, and the other broadcasts), PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
+After PR 5b is merged and reviewed: PR 6 `phase-2/system-broadcasts` (boot, which arms and never rings, and the other broadcasts), PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
