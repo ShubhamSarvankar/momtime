@@ -27,6 +27,17 @@ object AlarmEvents {
         now: Instant,
     ): Event = systemEvent(id, occurrenceId, EventType.ALARM_FIRED, now)
 
+    /**
+     * The watchdog found positive evidence that the armed alarm was lost and re armed it. Written only on that
+     * evidence, never on a pass that found everything correct (golden scenario 17). It names the occurrence whose
+     * rung was being armed, and changes no state.
+     */
+    fun watchdogRepair(
+        id: String,
+        occurrenceId: String,
+        now: Instant,
+    ): Event = systemEvent(id, occurrenceId, EventType.WATCHDOG_REPAIR, now)
+
     private fun systemEvent(
         id: String,
         occurrenceId: String,

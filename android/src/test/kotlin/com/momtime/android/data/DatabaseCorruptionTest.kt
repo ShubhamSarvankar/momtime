@@ -126,7 +126,7 @@ class DatabaseCorruptionTest {
         val first = TestGraph(context, DatabaseFiles.NAME, storeName = DatabaseFiles.STORE_NAME).also { graphs.add(it) }
         first.seedTemplate()
         first.get<ArmedAlarmRepository>().replace(
-            ArmedAlarm(1, testClock.now(), testClock.now(), bootCount = 1, exactAllowed = true),
+            ArmedAlarm(1, testClock.now(), testClock.now(), bootCount = 1, exactAllowed = true, versionCode = 1),
         )
         first.close()
         graphs.remove(first)

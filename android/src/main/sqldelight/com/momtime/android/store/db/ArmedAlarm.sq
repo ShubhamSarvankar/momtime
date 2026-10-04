@@ -8,12 +8,13 @@ CREATE TABLE armed_alarm (
     rung_instant INTEGER NOT NULL,
     armed_at INTEGER NOT NULL,
     boot_count INTEGER NOT NULL,
-    exact_allowed INTEGER NOT NULL CHECK (exact_allowed IN (0, 1))
+    exact_allowed INTEGER NOT NULL CHECK (exact_allowed IN (0, 1)),
+    version_code INTEGER NOT NULL DEFAULT 0
 );
 
 replaceArmedAlarm:
-INSERT OR REPLACE INTO armed_alarm(id, alarm_slot, rung_instant, armed_at, boot_count, exact_allowed)
-VALUES (0, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO armed_alarm(id, alarm_slot, rung_instant, armed_at, boot_count, exact_allowed, version_code)
+VALUES (0, ?, ?, ?, ?, ?, ?);
 
 selectArmedAlarm:
 SELECT * FROM armed_alarm WHERE id = 0;

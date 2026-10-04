@@ -16,7 +16,7 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 - Follow ups accepted from the review of PR A, still to do:
   - **PR 1:** extend the function probe beyond `iif`. The dialect rejects syntax but does not check every function name, so the gap is functions generally. Probe at least `unixepoch`, `concat`, `concat_ws`, `string_agg`, `format`, `octet_length`, the 3.35 math functions and the JSON functions; for JSON, establish whether they are available on API 29 devices rather than assume it. Add every function the dialect accepts to `verifySqliteFloor`'s list and mutation check one name. If this changes what ADR 0042 says, write a new ADR; if it only extends the list under the mechanism ADR 0042 describes, record it here.
   - **PR 1:** add two precedents to CLAUDE.md's testing section: the 8 declared foreign keys were never enforced (ADR 0043), and the 3.38 dialect sat above the 3.22 device floor and accepted syntax the device rejects while a comment asserted the opposite. The telemetry finding joins in PR B.
-  - **PR 4:** when `work-runtime` arrives, read WorkManager's manifest (the `directBootAware` settings of `SystemJobService` and the receivers) from the 2.12.0 AAR in the Gradle cache, the artifact we ship. The direct boot evidence so far is from `androidx-main`, which is not what ships.
+  - **PR 4:** when `work-runtime` arrives, read WorkManager's manifest (the `directBootAware` settings of `SystemJobService` and the receivers) from the 2.12.0 AAR in the Gradle cache, the artifact we ship. The direct boot evidence so far is from `androidx-main`, which is not what ships. **Done in PR 4 (ADR 0057): every job component is `directBootAware="false"`.**
   - **When the Android half of ADR 0043 lands** (PR 1): do not edit the ADR. Record the completion here, in the traceability file, and in `ARCHITECTURE.md` wherever it describes the driver.
 - Local build: Gradle needs JDK 17 or later as launcher. On the author's machine set `JAVA_HOME` to the Gradle-provisioned Temurin 21 (`~/.gradle/jdks/eclipse_adoptium-21-amd64-windows.2`) because the default `java` is 11. `./gradlew :shared:check ktlintCheck detekt :android:assembleDebug :server:test` is the local equivalent of CI.
 
@@ -27,9 +27,9 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | A | `phase-2/sqlite-parity` | Merged (PR #13, merge commit `43d4724`) |
 | 1 | `phase-2/android-data-wiring` | Merged (PR #14, merge commit `f5de0ca`) |
 | B | `phase-2/telemetry-split` | Merged (PR #15, merge commit `397ae01`) |
-| 2 | `phase-2/capability` | Open for review (see "PR 2" below) |
-| 3 | `phase-2/arming` | Not started |
-| 4 | `phase-2/workers` | Not started |
+| 2 | `phase-2/capability` | Merged (PR #16, merge commit `77aa203`) |
+| 3 | `phase-2/arming` | Merged (PR #17, merge commit `8720d03`) |
+| 4 | `phase-2/workers` | Open for review (see "PR 4" below) |
 | 5 | `phase-2/ringer` | Not started |
 | 6 | `phase-2/system-broadcasts` | Not started |
 | 7 | `phase-2/canary-telemetry` | Not started |
@@ -89,7 +89,7 @@ Approved: `app.cash.sqldelight:android-driver` 2.4.0, `androidx.work:work-runtim
 
 ## Unverified (carry until settled)
 
-The race behaviour on a device (PR 1 showed it under Robolectric only, ADR 0045; P2-9); Play policy on `USE_EXACT_ALARM` for a medication reminder; whether an OEM clean is a force-stop (P2-2); whether the ringer foreground service sounds with notifications denied and whether a MediaStyle notification still posts; whether a foreground service can start from `LOCKED_BOOT_COMPLETED` on Android 15; OEM overlays that could flip the default journal mode; the WorkManager evidence for the direct boot manifest settings is from androidx-main, not the 2.12.0 tag.
+The race behaviour on a device (PR 1 showed it under Robolectric only, ADR 0045; P2-9); Play policy on `USE_EXACT_ALARM` for a medication reminder; whether an OEM clean is a force-stop (P2-2); whether the ringer foreground service sounds with notifications denied and whether a MediaStyle notification still posts; whether a foreground service can start from `LOCKED_BOOT_COMPLETED` on Android 15; OEM overlays that could flip the default journal mode.
 
 ## PR A: `phase-2/sqlite-parity`
 
@@ -188,6 +188,47 @@ Numbers (at `0835a49`): 134 `shared` tests (120 before) and 211 android tests (1
 
 Not verified: everything in `MANUAL_CHECKS.md` P2-11 and P2-12. The tests read what was armed from `ShadowAlarmManager`; nothing was fired on a device. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 4: `phase-2/workers`
+
+Branched from `main` at `8720d03130d269f4be3b07d7fe75e4b1a0668688` (the merge of PR #17). The progress file named this branch `phase-2/watchdog`; the PR 4 prompt named it `phase-2/workers`, and the prompt is the later instruction.
+
+Scope: WorkManager (2.12.0, approved) and its manifest read from the artifact that ships (ADR 0057); the watchdog pass and the evidence that an armed alarm was lost (ADR 0058); the catch up rule, revised in the review of PR #18 so that a late rung is presented quietly and never dropped, decided at fire time only (ADR 0056); the daily materialisation job and the one time run the template edit path will call; the app start path; `Reconcile` and materialisation as commands in the domain layer; golden scenarios 3 and 17 through the worker; reboot detection by boot count; the app's version code in the armed record, with an android store migration from version 1 to 2 (ADR 0058, revised in the review); the android clock check extended to `SystemClock` and `BOOT_COUNT`; the restore test; the follow ups of the PR 3 review (decisions 36 to 39 below); ADR 0059 (`CAREGIVER` is not an event source). Mutations are in `phase-2-traceability.md` (W-1 to W-33), run at `75fd2ce`.
+
+No new CI job. `verify-android-structure` already runs `verifyManifestPermissions` (now with five more allowlist entries) and the clock check runs in `verify-no-clock-system`. The existing `migration-test` job runs `verifyDebugAndroidStoreDatabaseMigration`, which now also verifies the android store's first migration.
+
+Numbers, measured at `75fd2ce` (the head differs from it only in documentation): 149 `shared` tests (134 before) and 372 android tests (211 before), none failing. `shared` line coverage 734/751 (97.7%), branch coverage 234/238 (98.3%): data 125/128 (97.7%, the three Phase 1 quiet hours branches), domain 8/8, engine 101/102 (99.0%, the compiler generated default of the exhaustive `when`), all above their gates.
+
+Findings from this PR:
+
+- **WorkManager 2.12.0 adds five permissions and no process.** `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, and `androidx.core`'s own signature permission. Every component sets `directBootAware="false"` except Room's `MultiInstanceInvalidationService`. Evidence is the 2.12.0 AAR and the merged manifests, which replaces the `androidx-main` evidence (ADR 0057). The initialiser is the default one. `ACCESS_NETWORK_STATE` stays (review decision: WorkManager uses it and Phase 5 needs network constraints).
+- **`SystemForegroundService` declares no `android:foregroundServiceType`**, in the AAR manifest or in either merged manifest, so it commits the app to no foreground service type for Play and is left in place; the type would come from the `ForegroundInfo` of a `setForeground` call, which the app never makes (the review's item 5). The `FOREGROUND_SERVICE` permission stays for the ringer in PR 5.
+- **Robolectric does not run WorkManager's default initialiser.** Tests start the test `WorkManager`; `MomTimeApplication.startWork()` is open for that.
+- **On API 29 WorkManager arms an `AlarmManager` alarm of its own** (observed in `WorkTest`; none from SDK 30). The alarm oracle in the tests counts only alarms whose operation names `AlarmReceiver`.
+- **WorkManager 2.12 keeps a periodic job enqueued after a failed result.** The test driver shows it. The workers return `retry()` for the earlier second attempt, not for the job's survival; the first draft of ADR 0057 said otherwise and was corrected in the same PR.
+- **`WorkManagerTestInitHelper` supports a real thread pool**, so `APPEND_OR_REPLACE` is tested (the review's item 4): `MaterialisationQueueTest` holds the first run on a latch through the pass's `now` seam, enqueues a second, and sees `RUNNING` and `BLOCKED`, the second waiting; KEEP and REPLACE each fail it (W-28).
+- **The mutation run found weak tests twice.** On the first pass: the exclusivity tests (both sides end in the synchronized `ensureArmed`, so waiting proves nothing), the retry test, the fired timestamp walk, a `ClassCastException` where an assertion belonged. On the revision, the reviewer's list found none more, and the first run of the new battery had one mutation (N4) abort because its pattern matched nothing, which the runner reported and which was corrected and rerun.
+- **`ensureArmed`'s own capability read is redundant with the watchdog's**, so removing only one of the two is caught by the evidence test or by `CapabilityChangeTest` and not by scenario 3 through the worker (W-10).
+- **The android store's first migration** is `migrations/1.sqm` (`ALTER TABLE armed_alarm ADD COLUMN version_code INTEGER NOT NULL DEFAULT 0`); the committed baseline `1.db` is untouched. The `.sq` carries the same default so that `verifyDebugAndroidStoreDatabaseMigration` finds the two schemas equal.
+- **Robolectric prints `A resource was acquired at attached stack trace but never released` during the WorkManager tests.** It is WorkManager's test database; nothing in the app's code is named.
+
+Decisions of this PR. 36 to 39 are the follow ups of the PR 3 review, recorded as the prompt required; 40 to 47 are from the PR 4 work and its review:
+36. **Snooze is armed through `ensureArmed`, never a separate path** (decision of Claude (technical review)), so the watchdog repairs a lost snooze alarm too. **PR 5** adds `SNOOZED` to the selection using the snooze expiry, together with a test that the watchdog repairs a lost snooze alarm. Not built here. This replaces the note under decision 32.
+37. **`CAREGIVER` is not an event source** (decision of Claude (technical review), ADR 0059). `ARCHITECTURE.md` section 3.3 is corrected to `USER` and `SYSTEM`. Whether server written events such as `CAREGIVER_NOTIFIED` need a distinct source is a Phase 4 Open Item in `IMPLEMENTATION_PLAN.md`.
+38. **`MISSION_BYPASSED` carries the mission type: confirmed** (decision of Claude (technical review)). Decision 31's permissive guess is now a decision. ADR 0052 is not edited.
+39. **Phase 4 note: the server will call `NextRungResolver` with the caregiver channels, so its fired count must count only the channels it passes in.** The fired record is the count of `ALARM_FIRED` events again (decision 41), so the server must count the events of the channels it passes, and `CAREGIVER_NOTIFIED` and the device's `ALARM_FIRED` must not share one count.
+40. **A late rung is presented quietly and never dropped** (decision of Claude (technical review), a correction of its own first instruction; ADR 0056, revised in place). The window decides how a late rung is presented, at fire time only: within it as policy says; beyond it and within grace a silent notice that writes `ALARM_FIRED`; terminal, nothing. The watchdog and boot arm the earliest rung that has not fired, for now. `MISSED` stays as ADR 0030 derives it, and `ARCHITECTURE.md` section 4.5 is corrected. PR 5 implements the silent notice presentation (`Presentation.SILENT_NOTICE`): a notification with no ring, no vibration and no heads up.
+41. **The fired record is a count, so the timestamp walk is gone** (the implementing session's judgment, a departure from the review's wording, for review). The review asked to re point scenario 2 at the fired timestamp walk and delete `NextRungResolver.remaining`. Under decision 40 nothing is skipped without a fire: every rung is armed and fires in order, and the fire path is always for the first rung that has not fired, so the number of `ALARM_FIRED` events is exactly the number of rungs consumed. The walk and the timestamp list it needed have no remaining purpose, and `NextRungResolver.remaining` is what production calls again, so scenario 2's test runs the function production runs, which is the point of the review's item 3. A scenario 2 test through `ArmingSelection.next` was added next to the Phase 1 one, and breaking `remaining` fails both (W-30). If the review still wants the walk, it needs a case where a rung is consumed without a fire, which I could not find.
+42. **Update evidence is the app's version code** (decision of Claude (technical review), replacing the implementing session's `lastUpdateTime` against `armedAt`, which depends on the wall clock). The armed record carries `version_code`; android store migration 1 to 2 with its forward migration test (ADR 0058, revised in place).
+43. **Tolerances: 2 minutes for an exact alarm, 15 for an inexact one** (ADR 0058), accepted in the review as proposals that P2-14 will measure. In Tier 1 the 15 minute tolerance can count a deferred alarm as a lost one, so Tier 1 repair counts are an upper bound (added to P2-14).
+44. **The default initialiser** (ADR 0057), accepted in the review.
+45. **`ReconcileCommand` and `MaterialiseCommand` are in `shared/data`** and `OccurrenceRepository.findOpen` and `ScheduleTemplateRepository.findAllActive` were added (two queries, no schema change). `Reconcile` reads `PENDING` and `SNOOZED`. The fire path dispatches `Reconcile` first (ADR 0056).
+46. **`ACCESS_NETWORK_STATE` stays** (decision of Claude (technical review)).
+47. **`Presentation` is on the rung handed to the delivery port** (`FiredRung.presentation`, default `NORMAL`), an android type: platform capability stays out of `shared` (invariant 5).
+
+Also done: the nothing pending follow up (`ArmingTest`: `nothing pending cancels the armed alarm`, which already completed the only pending occurrence and asserted zero alarms and no record) and the duplicate fire follow up (`StaleFireTest`: `a duplicate fire is absorbed`: one `ALARM_FIRED`, one hand over, the next rung unchanged and still the second when it fires). Both are mutation checked (W-12, W-13).
+
+Not verified: everything in `MANUAL_CHECKS.md` P2-13 to P2-15. The tests read what was armed from `ShadowAlarmManager` and run the workers through `WorkManager`'s test driver; nothing ran on a device and no Doze cadence was observed. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 3 is merged and reviewed: PR 4 `phase-2/watchdog`: the `WorkManager` watchdog at the 15 minute floor calling `ensureArmed`, `WATCHDOG_REPAIR` only on positive evidence, the boot count seam, scenario 17, scenario 3 end to end through the worker, and the allowlist entries for WorkManager's permissions.
+After PR 4 is merged and reviewed: PR 5 `phase-2/ringer`: the ringer foreground service, the notification channels (and the Critical channel input, decision 26), the ring screen and its three actions (acknowledge, snooze, skip: decision 18), the corruption reset notification (decisions 20, 27 and 33), the `fire_telemetry` row (decision 34), and the snooze work of decision 36: `SNOOZED` in the selection by its expiry, with a test that the watchdog repairs a lost snooze alarm. the silent notice presentation (`Presentation.SILENT_NOTICE`: no ring, no vibration, no heads up) that the fire path hands to delivery for a rung beyond the catch up window (decision 40), and it implements `Presentation.NORMAL` as policy says (decision 15). Boot (PR 6) arms the earliest unconsumed rung through the same `ensureArmed`; the fire path decides (ADR 0056).

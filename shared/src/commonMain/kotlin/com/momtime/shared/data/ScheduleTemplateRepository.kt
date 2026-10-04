@@ -16,6 +16,9 @@ interface ScheduleTemplateRepository {
 
     fun findActiveForPregnancy(pregnancyId: String): List<ScheduleTemplate>
 
+    /** Every active template, whatever pregnancy it belongs to. What the daily materialisation reads. */
+    fun findAllActive(): List<ScheduleTemplate>
+
     fun setActive(
         id: String,
         active: Boolean,
@@ -60,6 +63,12 @@ class SqlDelightScheduleTemplateRepository(
             .selectScheduleTemplateById(id)
             .executeAsOneOrNull()
             ?.let { toDomain(it) }
+
+    override fun findAllActive(): List<ScheduleTemplate> =
+        database.scheduleTemplateQueries
+            .selectActiveScheduleTemplates()
+            .executeAsList()
+            .map { toDomain(it) }
 
     override fun findActiveForPregnancy(pregnancyId: String): List<ScheduleTemplate> =
         database.scheduleTemplateQueries.selectActiveScheduleTemplatesForPregnancy(pregnancyId).executeAsList().map {

@@ -46,4 +46,7 @@ internal class AlarmLog(
     fun scheduled(occurrenceId: String) = events.insert(AlarmEvents.scheduled(newId(), occurrenceId, clock.now()))
 
     fun fired(occurrenceId: String) = events.insert(AlarmEvents.fired(newId(), occurrenceId, clock.now()))
+
+    fun watchdogRepair(occurrenceId: String) =
+        events.insert(AlarmEvents.watchdogRepair(newId(), occurrenceId, clock.now()))
 }

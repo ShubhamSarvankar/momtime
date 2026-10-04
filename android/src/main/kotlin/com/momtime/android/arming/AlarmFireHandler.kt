@@ -1,15 +1,26 @@
 package com.momtime.android.arming
 
+import com.momtime.shared.data.ReconcileCommand
 import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.engine.ArmingSelection
+import com.momtime.shared.engine.CatchUp
 import kotlin.time.Instant
 
-/** The rung handed to delivery when an alarm fires. */
+/**
+ * How a fired rung is to be presented (ADR 0056). [NORMAL] is "as policy says": a ring, or silent under quiet hours
+ * or the interruption budget, which PR 5 decides. [SILENT_NOTICE] is a rung that fired beyond the catch up window:
+ * a notification with no ring, no vibration and no heads up, so that nothing sounds hours late and nothing is
+ * dropped.
+ */
+enum class Presentation { NORMAL, SILENT_NOTICE }
+
+/** The rung handed to delivery when an alarm fires, and how it is to be presented. */
 data class FiredRung(
     val occurrenceId: String,
     val alarmSlot: Int,
     val rung: EscalationRung,
+    val presentation: Presentation = Presentation.NORMAL,
 )
 
 /**
@@ -56,7 +67,13 @@ sealed interface FireOutcome {
  *   delivers nothing. These are alarms left over from before a reset, a completion or a re arm, and
  *   ringing for them would ring for a medication she has already taken, or for one that does not exist;
  * - the expected rung writes `ALARM_FIRED` through the domain (the count of these is the record of what has
- *   fired) and is handed to delivery.
+ *   fired) and is handed to delivery. Within the catch up window it is presented as policy says; beyond the
+ *   window, and still within grace, it is presented as a silent notice (ADR 0056). This is the only place
+ *   the catch up decision is made: the watchdog and boot arm the earliest rung that has not fired, for now,
+ *   and leave it to this.
+ *
+ * `Reconcile` is dispatched first, so an alarm that fires after the end of grace finds the occurrence `MISSED`
+ * and delivers nothing, and does not arm itself again (ADR 0030).
  *
  * In every case, and also if something above throws, the next alarm is armed: a chain that stops at one
  * stale fire would be silently dead until the watchdog found it.
@@ -66,21 +83,27 @@ class AlarmFireHandler internal constructor(
     private val log: AlarmLog,
     private val delivery: DeliveryPort,
     private val coordinator: ArmingCoordinator,
+    private val reconcile: ReconcileCommand,
 ) {
     fun onFire(
         slot: Int,
         rungInstant: Instant,
     ): FireOutcome =
-        try {
-            dispatch(slot, rungInstant)
-        } finally {
-            coordinator.ensureArmed()
+        // Exclusive of the watchdog: between writing `ALARM_FIRED` and arming the next rung the state is half
+        // done, and a watchdog pass must not read it as a lost alarm.
+        coordinator.exclusive {
+            try {
+                dispatch(slot, rungInstant)
+            } finally {
+                coordinator.ensureArmed()
+            }
         }
 
     private fun dispatch(
         slot: Int,
         rungInstant: Instant,
     ): FireOutcome {
+        reconcile.dispatch(log.now())
         val occurrence = candidates.owning(slot)
         return when {
             occurrence == null -> FireOutcome.UnknownSlot
@@ -96,7 +119,9 @@ class AlarmFireHandler internal constructor(
         val expected = ArmingSelection.expectedFor(candidates.of(occurrence), DEVICE_CHANNELS)
         if (expected == null || expected.instant != rungInstant) return FireOutcome.NotExpected
         log.fired(occurrence.id)
-        val fired = FiredRung(occurrence.id, occurrence.alarmSlot, expected)
+        val presentation =
+            if (CatchUp.isWithinWindow(expected.instant, log.now())) Presentation.NORMAL else Presentation.SILENT_NOTICE
+        val fired = FiredRung(occurrence.id, occurrence.alarmSlot, expected, presentation)
         delivery.deliver(fired)
         return FireOutcome.Fired(fired)
     }

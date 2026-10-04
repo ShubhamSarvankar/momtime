@@ -1,0 +1,5 @@
+-- Version 1 to 2 (Phase 2, PR 4): the armed record carries the app's version code, so that an update after
+-- arming is seen from the version and not from the wall clock (ADR 0058). A row armed before this has no
+-- version; 0 is never a real version code, so it reads as "not the version now", which is right: the update that
+-- brought this migration replaced the package and cleared its alarms.
+ALTER TABLE armed_alarm ADD COLUMN version_code INTEGER NOT NULL DEFAULT 0;

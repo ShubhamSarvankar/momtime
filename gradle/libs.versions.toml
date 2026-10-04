@@ -19,6 +19,7 @@ ktor = "3.6.0"
 robolectric = "4.17"
 roborazzi = "1.76.0"
 junit = "4.13.2"
+work = "2.12.0"
 kotlinxCoroutines = "1.10.2"
 
 [libraries]
@@ -34,6 +35,8 @@ ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 junit = { module = "junit:junit", version.ref = "junit" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+work-runtime = { module = "androidx.work:work-runtime", version.ref = "work" }
+work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

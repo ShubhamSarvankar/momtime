@@ -48,6 +48,22 @@ class ArmingSelectionTest {
         assertNull(ArmingSelection.next(listOf(c.copy(firedCount = 2)), device))
     }
 
+    // Golden scenario 2 through the entry point production calls: a reboot part way through a ladder resumes at the
+    // rung after the ones that fired, never at the start of the ladder.
+    @Test
+    fun `scenario 2 a reboot part way through resumes at the next rung`() {
+        val afterRing = candidate("a", 1, t0, Criticality.CRITICAL, fired = 1)
+        assertEquals(
+            EscalationRung(t0 + 5.minutes, Channel.RING_REPEAT),
+            ArmingSelection.next(listOf(afterRing), device)?.rung,
+        )
+        val afterBoth = candidate("a", 1, t0, Criticality.CRITICAL, fired = 2)
+        assertNull(
+            ArmingSelection.next(listOf(afterBoth), device),
+            "the rest of the ladder is the server's, not this device's",
+        )
+    }
+
     // A caregiver rung of A (10 minutes in) comes before a ring rung of B (12 minutes in).
     @Test
     fun `a caregiver rung of one occurrence does not precede a ring rung of another`() {

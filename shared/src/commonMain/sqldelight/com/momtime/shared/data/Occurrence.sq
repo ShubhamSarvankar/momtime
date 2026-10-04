@@ -41,6 +41,9 @@ SELECT * FROM occurrence WHERE alarm_slot = ?;
 selectPendingOccurrences:
 SELECT * FROM occurrence WHERE state = 'PENDING' ORDER BY scheduled_instant ASC;
 
+selectOpenOccurrences:
+SELECT * FROM occurrence WHERE state IN ('PENDING', 'SNOOZED') ORDER BY scheduled_instant ASC;
+
 selectOccurrencesForTemplate:
 SELECT * FROM occurrence WHERE template_id = ? ORDER BY scheduled_instant ASC;
 

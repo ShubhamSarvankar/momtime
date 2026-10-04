@@ -60,6 +60,9 @@ UPDATE schedule_template SET active = ? WHERE id = ?;
 selectScheduleTemplateById:
 SELECT * FROM schedule_template WHERE id = ?;
 
+selectActiveScheduleTemplates:
+SELECT * FROM schedule_template WHERE active = 1 ORDER BY id ASC;
+
 selectActiveScheduleTemplatesForPregnancy:
 SELECT * FROM schedule_template WHERE pregnancy_id = ? AND active = 1;
 
