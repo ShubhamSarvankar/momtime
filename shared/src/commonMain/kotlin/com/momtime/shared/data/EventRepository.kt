@@ -40,6 +40,7 @@ class SqlDelightEventRepository(
             effective_at = event.effectiveAt.toDbOrNull(),
             source = event.source.name,
             snooze_number = columns.snoozeNumber,
+            snoozed_until = columns.snoozedUntil,
             mission_result_type = columns.missionType,
             water_ml = columns.waterMl,
             weight_grams = columns.weightGrams,
@@ -86,12 +87,14 @@ class SqlDelightEventRepository(
         val caregiverLinkId: String?,
         val canaryScheduledAt: Long? = null,
         val canaryActualAt: Long? = null,
+        val snoozedUntil: Long? = null,
     )
 
     private fun EventPayload.toColumns(): PayloadColumns =
         when (this) {
             is EventPayload.None -> PayloadColumns(null, null, null, null, null)
-            is EventPayload.Snooze -> PayloadColumns(snoozeNumber.toLong(), null, null, null, null)
+            is EventPayload.Snooze ->
+                PayloadColumns(snoozeNumber.toLong(), null, null, null, null, snoozedUntil = snoozedUntil.toDb())
             is EventPayload.MissionResult -> PayloadColumns(null, missionType.name, null, null, null)
             is EventPayload.Water -> PayloadColumns(null, null, waterMl.toLong(), null, null)
             is EventPayload.Weight -> PayloadColumns(null, null, null, weightGrams.toLong(), null)
@@ -117,6 +120,7 @@ class SqlDelightEventRepository(
             buildSet {
                 if (effective_at != null) add(EventColumn.EFFECTIVE_AT)
                 if (snooze_number != null) add(EventColumn.SNOOZE_NUMBER)
+                if (snoozed_until != null) add(EventColumn.SNOOZED_UNTIL)
                 if (mission_result_type != null) add(EventColumn.MISSION_RESULT_TYPE)
                 if (water_ml != null) add(EventColumn.WATER_ML)
                 if (weight_grams != null) add(EventColumn.WEIGHT_GRAMS)
@@ -133,7 +137,8 @@ class SqlDelightEventRepository(
         }
         val payload: EventPayload =
             when {
-                snooze_number != null -> EventPayload.Snooze(snooze_number.toInt())
+                snooze_number != null && snoozed_until != null ->
+                    EventPayload.Snooze(snooze_number.toInt(), snoozed_until.toInstant())
                 mission_result_type != null ->
                     EventPayload.MissionResult(MissionResultType.valueOf(mission_result_type))
                 water_ml != null -> EventPayload.Water(water_ml.toInt())

@@ -51,19 +51,19 @@ object OccurrenceActions {
     }
 
     /**
-     * When the snooze that is still running ends, or null if none is. An occurrence has a running snooze only
-     * while it is `SNOOZED` and fewer snoozes have ended than were taken: each snooze ends exactly once, so the
-     * counts are the record, and no instant is compared with the time (golden scenario 14).
+     * When the snooze that is still running ends, or null if none is: [lastSnoozedUntil] is the end recorded in
+     * the latest `SNOOZED` event. An occurrence has a running snooze only while it is `SNOOZED` and fewer snoozes
+     * have ended than were taken: each snooze ends exactly once, so the counts are the record, and no instant is
+     * compared with the time (golden scenario 14). No setting is read: the end was decided when she snoozed.
      */
     fun runningSnoozeEnd(
         state: OccurrenceState,
-        lastSnoozedAt: Instant?,
+        lastSnoozedUntil: Instant?,
         snoozedCount: Int,
         endedCount: Int,
-        snoozeDuration: Duration,
     ): Instant? =
-        if (state == OccurrenceState.SNOOZED && lastSnoozedAt != null && endedCount < snoozedCount) {
-            lastSnoozedAt + snoozeDuration
+        if (state == OccurrenceState.SNOOZED && lastSnoozedUntil != null && endedCount < snoozedCount) {
+            lastSnoozedUntil
         } else {
             null
         }
@@ -85,7 +85,8 @@ object OccurrenceActions {
         occurrenceId: String,
         now: Instant,
         snoozeNumber: Int,
-    ): Event = userEvent(id, occurrenceId, EventType.SNOOZED, now, EventPayload.Snooze(snoozeNumber))
+        snoozedUntil: Instant,
+    ): Event = userEvent(id, occurrenceId, EventType.SNOOZED, now, EventPayload.Snooze(snoozeNumber, snoozedUntil))
 
     private fun userEvent(
         id: String,

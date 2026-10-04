@@ -38,6 +38,7 @@ class EventColumnGuardTest {
         listOf(
             Triple("effective_at", "5", setOf(EventType.MISSED)),
             Triple("snooze_number", "1", setOf(EventType.SNOOZED)),
+            Triple("snoozed_until", "600000", setOf(EventType.SNOOZED)),
             Triple("mission_result_type", "'BARCODE'", setOf(EventType.MISSION_VERIFIED, EventType.MISSION_BYPASSED)),
             Triple("water_ml", "250", setOf(EventType.WATER_LOGGED)),
             Triple("weight_grams", "68000", setOf(EventType.WEIGHT_LOGGED)),

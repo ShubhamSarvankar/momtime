@@ -33,8 +33,15 @@ data class Event(
 sealed interface EventPayload {
     data object None : EventPayload
 
+    /**
+     * A snooze: its number (the first is 1) and the instant it ends, [snoozedUntil]. The end is a derived instant
+     * and is recorded when it is decided, from the snooze duration then in force, as `MISSED` records its
+     * `effectiveAt` (ADR 0030): a later change to her snooze setting does not move a snooze already taken, and a
+     * server that mirrors events and not settings still knows when it ends (ADR 0066).
+     */
     data class Snooze(
         val snoozeNumber: Int,
+        val snoozedUntil: Instant,
     ) : EventPayload
 
     data class MissionResult(

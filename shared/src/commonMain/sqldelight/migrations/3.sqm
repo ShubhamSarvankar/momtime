@@ -1,0 +1,20 @@
+-- Schema version 3 to 4 (Phase 2, PR 5b, ADR 0066).
+--
+-- A snooze records when it ends. The end is a derived instant, decided once when she snoozes from the snooze
+-- duration then in force, and recorded with the event, as MISSED records its effectiveAt (ADR 0030). Selection,
+-- the watchdog and the fire path read it and never her current setting, so changing the setting while a snooze
+-- runs does not move it, and a server that mirrors events but not settings still knows when the snooze ends.
+--
+-- The column follows the sparse convention of the event table: nullable, and allowed on SNOOZED alone (the
+-- decode guard, ADR 0052). ADD COLUMN works on the SQLite 3.22 floor (ADR 0042).
+--
+-- A SNOOZED event written before this version has no end. Its end is its own timestamp plus ten minutes, the
+-- default snooze duration, which is what was in force for every snooze the app has recorded: no setting screen
+-- exists yet, so no snooze was taken with another duration. This UPDATE is part of a migration, an
+-- administrative path outside the domain layer, and not a state transition (invariant 4).
+
+ALTER TABLE event ADD COLUMN snoozed_until INTEGER;
+
+UPDATE event
+SET snoozed_until = device_timestamp + 600000
+WHERE event_type = 'SNOOZED' AND snoozed_until IS NULL;

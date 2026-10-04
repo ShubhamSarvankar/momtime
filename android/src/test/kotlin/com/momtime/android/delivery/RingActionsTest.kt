@@ -142,7 +142,7 @@ class RingActionsTest {
         val snoozed = f.arming.eventsOf("a", EventType.SNOOZED).single()
         assertEquals(
             com.momtime.shared.domain.EventPayload
-                .Snooze(1),
+                .Snooze(1, clockNow() + 10.minutes),
             snoozed.payload,
         )
         val alarm = f.arming.alarms().single()

@@ -56,12 +56,13 @@ class OccurrenceActionsTest {
     @Test
     fun `a snooze is running only while the snoozes that ended are fewer than the snoozes taken`() {
         val at = now - 3.minutes
-        assertEquals(at + ten, OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, at, 1, 0, ten))
-        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, at, 1, 1, ten), "it has ended")
-        assertEquals(at + ten, OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, at, 2, 1, ten))
-        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.PENDING, null, 0, 0, ten), "never snoozed")
-        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.PENDING, at, 1, 0, ten), "not SNOOZED")
-        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, null, 1, 0, ten), "no snooze event")
+        val end = at + ten
+        assertEquals(end, OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, end, 1, 0))
+        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, end, 1, 1), "it has ended")
+        assertEquals(end, OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, end, 2, 1))
+        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.PENDING, null, 0, 0), "never snoozed")
+        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.PENDING, end, 1, 0), "not SNOOZED")
+        assertNull(OccurrenceActions.runningSnoozeEnd(OccurrenceState.SNOOZED, null, 1, 0), "no snooze event")
     }
 
     @Test
@@ -75,8 +76,8 @@ class OccurrenceActionsTest {
             OccurrenceActions.skipped("e2", "occ", now),
         )
         assertEquals(
-            Event("e3", "occ", EventType.SNOOZED, now, null, EventSource.USER, EventPayload.Snooze(2)),
-            OccurrenceActions.snoozed("e3", "occ", now, snoozeNumber = 2),
+            Event("e3", "occ", EventType.SNOOZED, now, null, EventSource.USER, EventPayload.Snooze(2, now + ten)),
+            OccurrenceActions.snoozed("e3", "occ", now, snoozeNumber = 2, snoozedUntil = now + ten),
         )
     }
 }

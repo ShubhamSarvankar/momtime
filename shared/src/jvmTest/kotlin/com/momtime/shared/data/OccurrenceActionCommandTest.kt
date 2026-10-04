@@ -107,7 +107,7 @@ class OccurrenceActionCommandTest {
                 now,
                 null,
                 EventSource.USER,
-                EventPayload.Snooze(index + 1),
+                EventPayload.Snooze(index + 1, now + 10.minutes),
             ),
         )
     }
@@ -147,7 +147,7 @@ class OccurrenceActionCommandTest {
         assertEquals(ActionResult.Done, command.dispatch("a", OccurrenceAction.SNOOZE, now))
 
         assertEquals(
-            before + Triple(EventType.SNOOZED, EventSource.USER, EventPayload.Snooze(1)),
+            before + Triple(EventType.SNOOZED, EventSource.USER, EventPayload.Snooze(1, now + 10.minutes)),
             log("a"),
         )
         assertEquals(OccurrenceState.SNOOZED, state("a"))
@@ -249,32 +249,71 @@ class OccurrenceActionCommandTest {
         assertNull(command.runningSnoozeEnd(a))
     }
 
+    // The other divergent row: a SNOOZED event that records no end (nothing the app wrote, and none a migration
+    // leaves). It decodes with no payload, so there is no end to read and no snooze to arm.
+    @Test
+    fun `a SNOOZED event with no recorded end has no running snooze`() {
+        val a = occurrence("a", slot = 1, state = OccurrenceState.SNOOZED)
+        driver.execute(
+            null,
+            "INSERT INTO event(id, occurrence_id, event_type, device_timestamp, source, snooze_number) " +
+                "VALUES ('bare', 'a', 'SNOOZED', 0, 'USER', 1)",
+            0,
+        )
+
+        assertEquals(EventPayload.None, events.findById("bare")?.payload)
+        assertNull(command.runningSnoozeEnd(a))
+    }
+
     @Test
     fun `an unknown occurrence is reported and nothing is written`() {
         assertEquals(ActionResult.UnknownOccurrence, command.dispatch("nope", OccurrenceAction.ACKNOWLEDGE, now))
         assertEquals(emptySet(), command.available("nope", now))
     }
 
-    // A snooze is running from the SNOOZED event until a SNOOZE_ENDED has been written for it.
+    // A snooze is running from the SNOOZED event until a SNOOZE_ENDED has been written for it, and its end is the
+    // one recorded in the event.
     @Test
-    fun `the running snooze is read from the log and her setting`() {
+    fun `the running snooze is the end recorded when she snoozed`() {
         val a = occurrence("a", slot = 1)
         assertNull(command.runningSnoozeEnd(a), "not snoozed")
 
         command.dispatch("a", OccurrenceAction.SNOOZE, now)
         val snoozed = checkNotNull(occurrences.findById("a"))
         assertEquals(now + 10.minutes, command.runningSnoozeEnd(snoozed))
-
-        settings.updateSnoozeDurationMinutes(15)
-        assertEquals(now + 15.minutes, command.runningSnoozeEnd(snoozed), "her setting, read when asked")
+        assertEquals(
+            now + 10.minutes,
+            (events.findByOccurrenceAndType("a", EventType.SNOOZED).single().payload as EventPayload.Snooze)
+                .snoozedUntil,
+            "the end is recorded in the event itself",
+        )
 
         events.insert(
-            Event("end", "a", EventType.SNOOZE_ENDED, now + 15.minutes, null, EventSource.SYSTEM, EventPayload.None),
+            Event("end", "a", EventType.SNOOZE_ENDED, now + 10.minutes, null, EventSource.SYSTEM, EventPayload.None),
         )
         assertNull(command.runningSnoozeEnd(snoozed), "it has ended")
 
-        // A second snooze is running again until it too has ended.
+        // A second snooze is running again until it too has ended, and ends where it was recorded to end.
         command.dispatch("a", OccurrenceAction.SNOOZE, now + 20.minutes)
-        assertEquals(now + 35.minutes, command.runningSnoozeEnd(snoozed))
+        assertEquals(now + 30.minutes, command.runningSnoozeEnd(snoozed))
+    }
+
+    // Her setting is read once, when she snoozes. Changing it while a snooze runs does not move that snooze, and
+    // the next snooze takes the new duration.
+    @Test
+    fun `changing the snooze setting mid snooze does not move the running snooze`() {
+        occurrence("a", slot = 1)
+        command.dispatch("a", OccurrenceAction.SNOOZE, now)
+        val snoozed = checkNotNull(occurrences.findById("a"))
+        assertEquals(now + 10.minutes, command.runningSnoozeEnd(snoozed))
+
+        settings.updateSnoozeDurationMinutes(25)
+
+        assertEquals(now + 10.minutes, command.runningSnoozeEnd(snoozed), "the snooze already taken keeps its end")
+        events.insert(
+            Event("end", "a", EventType.SNOOZE_ENDED, now + 10.minutes, null, EventSource.SYSTEM, EventPayload.None),
+        )
+        command.dispatch("a", OccurrenceAction.SNOOZE, now + 11.minutes)
+        assertEquals(now + 36.minutes, command.runningSnoozeEnd(snoozed), "the next one takes the new duration")
     }
 }

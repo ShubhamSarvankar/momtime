@@ -82,6 +82,36 @@ class SnoozeTest {
         )
     }
 
+    // The end of a snooze is decided when she snoozes and recorded in the event (ADR 0066). Selection, the armed
+    // alarm and the watchdog read that, and never her current snooze setting: changing the setting mid snooze moves
+    // nothing, and the watchdog does not take the unchanged alarm for a wrong one.
+    @Test
+    fun `changing the snooze setting mid snooze moves nothing`() {
+        val a = f.due("a", Criticality.CRITICAL, slot = 31)
+        f.fire(a)
+        f.arming.clock.now = a.scheduledInstant + 1.minutes
+        controller.act("a", OccurrenceAction.SNOOZE)
+        val end = (a.scheduledInstant + 11.minutes).toEpochMilliseconds()
+        assertEquals(end, armedAt())
+        val log = f.arming.eventLog("a")
+
+        f.settings.updateSnoozeDurationMinutes(30)
+        f.arming.clock.now = a.scheduledInstant + 3.minutes
+        val result = f.arming.watchdog.run()
+
+        assertTrue("no evidence: ${result.evidence}", result.evidence.isEmpty())
+        assertEquals("the armed alarm is where it was", end, armedAt())
+        assertEquals(log, f.arming.eventLog("a"))
+        assertEquals(
+            "the expected snooze end is the recorded one",
+            a.scheduledInstant + 11.minutes,
+            f.arming.coordinator
+                .expected()
+                ?.rung
+                ?.instant,
+        )
+    }
+
     // My decision (PR 3 review): the watchdog repairs a lost snooze alarm, because the snooze is armed through the
     // same entry point. The alarm is lost as the system loses one, and the watchdog finds positive evidence.
     @Test

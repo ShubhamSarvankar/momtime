@@ -8,6 +8,7 @@ import com.momtime.shared.domain.EventType
 internal enum class EventColumn {
     EFFECTIVE_AT,
     SNOOZE_NUMBER,
+    SNOOZED_UNTIL,
     MISSION_RESULT_TYPE,
     WATER_ML,
     WEIGHT_GRAMS,
@@ -29,7 +30,7 @@ internal enum class EventColumn {
 internal fun allowedColumns(type: EventType): Set<EventColumn> =
     when (type) {
         EventType.MISSED -> setOf(EventColumn.EFFECTIVE_AT)
-        EventType.SNOOZED -> setOf(EventColumn.SNOOZE_NUMBER)
+        EventType.SNOOZED -> setOf(EventColumn.SNOOZE_NUMBER, EventColumn.SNOOZED_UNTIL)
         EventType.MISSION_VERIFIED, EventType.MISSION_BYPASSED -> setOf(EventColumn.MISSION_RESULT_TYPE)
         EventType.WATER_LOGGED -> setOf(EventColumn.WATER_ML)
         EventType.WEIGHT_LOGGED -> setOf(EventColumn.WEIGHT_GRAMS)
