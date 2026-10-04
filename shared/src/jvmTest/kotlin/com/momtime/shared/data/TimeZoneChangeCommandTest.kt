@@ -65,7 +65,7 @@ class TimeZoneChangeCommandTest {
         events = SqlDelightEventRepository(database)
         occurrences = SqlDelightOccurrenceRepository(database, events)
         val newId = { "id-${ids++}" }
-        change = TimeZoneChangeCommand(templates, occurrences)
+        change = TimeZoneChangeCommand(templates, occurrences, SqlDelightTransactor(database))
         materialise = MaterialiseCommand(templates, occurrences, newId)
         reconcile = ReconcileCommand(occurrences, templates, events, newId)
     }
@@ -271,17 +271,24 @@ class TimeZoneChangeCommandTest {
         }
     }
 
-    // Inactive templates, and the occurrences of inactive templates, are left exactly as they are.
+    // An inactive template's open occurrences can still ring, so they move too, and every template's zone follows the
+    // device, so a template reactivated later is already in her zone (ADR 0068).
     @Test
-    fun `an inactive template and its occurrences are left alone`() {
+    fun `an inactive template follows the device zone and its open occurrences move`() {
         templates.insert(template("off", active = false))
         occurrence("o", "off", slot = 5)
 
         val result = change.dispatch(tokyo, changedAt)
 
-        assertEquals(ZoneChangeResult(0, 0), result)
-        assertEquals(kolkata, checkNotNull(templates.findById("off")).timeZoneId)
-        assertEquals(dueInKolkata, scheduled("o"))
+        assertEquals(ZoneChangeResult(templatesMoved = 1, occurrencesMoved = 1), result)
+        assertEquals(tokyo, checkNotNull(templates.findById("off")).timeZoneId)
+        assertEquals(changedAt, scheduled("o"))
+        templates.setActive("off", true)
+        withMessage(
+            "reactivated, it is already in her zone",
+            tokyo,
+            checkNotNull(templates.findById("off")).timeZoneId,
+        )
     }
 
     // A second broadcast for the same zone, later, does not move a clamped occurrence again.

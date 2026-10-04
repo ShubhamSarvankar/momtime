@@ -144,7 +144,9 @@ class SchemaV2Test {
     // The trigger. The terminal set comes from Occurrence.isTerminal, the single Kotlin definition,
     // so a terminal state added to the enum without updating the trigger fails here. The update is
     // issued through the generated query, below the repository, because the trigger exists to
-    // protect against any writer.
+    // protect against any writer. Since schema version 5 (ADR 0068) any update to a terminal row aborts,
+    // including one that keeps its state, so every update to a terminal row is rejected here; the columns
+    // other than the state are in `trigger rejects an update of any column of a terminal row`.
     @Test
     fun `trigger rejects every change out of a terminal state and allows the rest`() {
         for ((label, db) in bothDatabases()) {
@@ -160,7 +162,7 @@ class SchemaV2Test {
                         occurrence(from, slot = n).copy(id = "occ-$n", localDate = LocalDate(2026, 1, n))
                     repo.insert(row)
                     val context = "$label: $from to $to"
-                    if (row.isTerminal && to != from) {
+                    if (row.isTerminal) {
                         assertFailsWith<Exception>(
                             context,
                         ) { db.occurrenceQueries.updateOccurrenceState(to.name, row.id) }
@@ -172,6 +174,60 @@ class SchemaV2Test {
                 }
             }
         }
+    }
+
+    // Every updatable column, on every state (ADR 0068, schema version 5). A terminal row refuses any update: its
+    // state, its instant, its zone, its date, its slot, its template and its id, even an update that changes
+    // nothing. An open row accepts every one of them. The updates are raw SQL, below the repository and the generated
+    // queries, because the trigger exists to protect against any writer.
+    @Test
+    fun `trigger rejects an update of any column of a terminal row`() {
+        val updates =
+            listOf(
+                "state" to "state = 'PENDING'",
+                "state, unchanged" to "state = state",
+                "scheduled_instant" to "scheduled_instant = scheduled_instant + 1",
+                "time_zone_id" to "time_zone_id = 'Asia/Tokyo'",
+                "local_date" to "local_date = date(local_date, '+1000 days')",
+                "alarm_slot" to "alarm_slot = alarm_slot + 1000",
+                "template_id, unchanged" to "template_id = template_id",
+                "id" to "id = id || 'x'",
+            )
+        for ((label, db, driver) in bothWithDrivers()) {
+            seedTemplate(db)
+            val repo = SqlDelightOccurrenceRepository(db)
+            var n = 0
+            for (state in OccurrenceState.entries) {
+                for ((column, set) in updates) {
+                    n++
+                    val row =
+                        occurrence(
+                            state,
+                            slot = n,
+                        ).copy(id = "occ-$n", localDate = LocalDate.fromEpochDays(20_000 + n))
+                    repo.insert(row)
+                    val context = "$label: $state, $column"
+                    if (row.isTerminal) {
+                        assertFailsWith<Exception>(context) {
+                            driver.execute(null, "UPDATE occurrence SET $set WHERE id = '${row.id}'", 0)
+                        }
+                        assertEquals(row, repo.findById(row.id), "$context: the row changed anyway")
+                    } else {
+                        driver.execute(null, "UPDATE occurrence SET $set WHERE id = '${row.id}'", 0)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun bothWithDrivers(): List<Triple<String, MomTimeDatabase, JdbcSqliteDriver>> {
+        val fresh = freshV2()
+        val freshDriver = drivers.last()
+        val migrated = migratedFromV1()
+        return listOf(
+            Triple("fresh", fresh, freshDriver),
+            Triple("migrated from v1", migrated, drivers.last()),
+        )
     }
 
     // State and event are one operation. A rejected transition leaves no event behind.

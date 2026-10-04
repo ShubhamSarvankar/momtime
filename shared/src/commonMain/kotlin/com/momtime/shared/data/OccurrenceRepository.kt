@@ -74,7 +74,8 @@ interface OccurrenceRepository {
      * Moves an occurrence to [scheduledInstant] in [zone] (ADR 0068): the one thing a time zone change does to an
      * occurrence. Its id, local date, `alarmSlot` and state are untouched, so the armed alarm's request code still
      * matches and its history is unchanged. It is not a state transition and writes no event. The caller never
-     * passes a terminal occurrence: that is the command's rule, and a terminal occurrence is immutable.
+     * passes a terminal occurrence, and the schema refuses it if it does: any update to a terminal row aborts
+     * (schema version 5).
      */
     fun reschedule(
         occurrenceId: String,

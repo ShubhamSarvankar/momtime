@@ -5,12 +5,12 @@ import android.content.Intent
 import androidx.work.Configuration
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.WorkQuery
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.momtime.android.arming.ArmingFixture
 import com.momtime.android.delivery.finished
 import com.momtime.android.delivery.withPendingResult
 import com.momtime.android.work.Pass
-import com.momtime.android.work.Work
 import com.momtime.android.work.WorkEntryPoint
 import com.momtime.android.work.WorkPasses
 import org.junit.After
@@ -52,6 +52,8 @@ class SystemQueueTest {
     private val releaseFirstPass = CountDownLatch(1)
     private val started = AtomicInteger()
     private val finishedPasses = AtomicInteger()
+    private val running = AtomicInteger()
+    private val mostAtOnce = AtomicInteger()
 
     /** What the clock said when each pass began, in the order the passes began. */
     private val clockAtStart = CopyOnWriteArrayList<Long>()
@@ -66,12 +68,14 @@ class SystemQueueTest {
         val counting =
             Pass {
                 val index = started.incrementAndGet()
+                mostAtOnce.accumulateAndGet(running.incrementAndGet(), ::maxOf)
                 clockAtStart += fixture.clock.now.toEpochMilliseconds()
                 if (index == 1) {
                     // The seam: the first pass stops here until the test lets it go.
                     firstPassIsHeld.countDown()
                     releaseFirstPass.await(WAIT_SECONDS, TimeUnit.SECONDS)
                 }
+                running.decrementAndGet()
                 finishedPasses.incrementAndGet()
             }
         WorkEntryPoint.provider =
@@ -86,8 +90,12 @@ class SystemQueueTest {
         fixture.close()
     }
 
+    /** The state of every system pass, whatever queue it is in: the test looks at what ran, not at a queue's name. */
     private fun states(): List<WorkInfo.State> =
-        workManager.getWorkInfosForUniqueWork(Work.SYSTEM_QUEUE).get().map { it.state }
+        workManager
+            .getWorkInfos(WorkQuery.fromStates(WorkInfo.State.entries.toList()))
+            .get()
+            .map { it.state }
 
     private fun broadcast(action: String) {
         val receiver = SystemBroadcastReceiver()
@@ -125,6 +133,7 @@ class SystemQueueTest {
         releaseFirstPass.countDown()
         awaitStates(listOf(WorkInfo.State.SUCCEEDED, WorkInfo.State.SUCCEEDED))
         assertEquals("both passes ran, the second after the first", 2, started.get())
+        assertEquals("a boot pass and a clock pass never overlap", 1, mostAtOnce.get())
         assertEquals(2, finishedPasses.get())
         assertEquals("the first pass began before the change", before.toEpochMilliseconds(), clockAtStart[0])
         assertEquals(

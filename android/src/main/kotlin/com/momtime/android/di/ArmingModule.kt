@@ -151,7 +151,7 @@ internal fun armingModule(
         single { Watchdog(get(), get(), get(), get(), get(), get()) }
         single { AppStart(get(), get(), get()) }
         single<DeviceZone> { DeviceZone(delivery.zone) }
-        single { TimeZoneChangeCommand(get(), get()) }
+        single { TimeZoneChangeCommand(get(), get(), get()) }
         single { TimeZonePass(get(), get(), get(), get(), get(), get()) }
         single {
             WorkPasses(

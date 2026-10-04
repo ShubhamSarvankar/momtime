@@ -20,6 +20,9 @@ interface ScheduleTemplateRepository {
     /** Every active template, whatever pregnancy it belongs to. What the daily materialisation reads. */
     fun findAllActive(): List<ScheduleTemplate>
 
+    /** Every template, active or not. What a time zone change reads: every template follows the device zone. */
+    fun findAll(): List<ScheduleTemplate>
+
     fun setActive(
         id: String,
         active: Boolean,
@@ -84,6 +87,12 @@ class SqlDelightScheduleTemplateRepository(
         database.scheduleTemplateQueries.selectActiveScheduleTemplatesForPregnancy(pregnancyId).executeAsList().map {
             toDomain(it)
         }
+
+    override fun findAll(): List<ScheduleTemplate> =
+        database.scheduleTemplateQueries
+            .selectAllScheduleTemplates()
+            .executeAsList()
+            .map(::toDomain)
 
     override fun setActive(
         id: String,

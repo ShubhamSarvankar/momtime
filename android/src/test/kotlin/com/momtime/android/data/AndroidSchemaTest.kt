@@ -91,7 +91,7 @@ class AndroidSchemaTest {
         val row = occurrence(n, from)
         occurrences.insert(row)
         val label = "$from to $to"
-        if (row.isTerminal && to != from) {
+        if (row.isTerminal) {
             assertRejected(label) { occurrences.transition(row.id, to, event(n, row.id)) }
             assertEquals("$label changed the row anyway", from, occurrences.findById(row.id)?.state)
             assertTrue(
@@ -120,6 +120,57 @@ class AndroidSchemaTest {
             }
         }
     }
+
+    // Every column of a terminal row, under the Android driver (ADR 0068, schema version 5): the instant and zone
+    // through the repository's one sanctioned path, the rest as raw SQL below it. An open row accepts all of them.
+    @Test
+    fun `the trigger refuses an update of any column of a terminal row`() {
+        val graph = graph()
+        graph.seedTemplate()
+        val occurrences = graph.get<OccurrenceRepository>()
+        val driver = graph.factory.createDriver()
+        val updates =
+            listOf(
+                "state, unchanged" to "state = state",
+                "scheduled_instant" to "scheduled_instant = scheduled_instant + 1",
+                "time_zone_id" to "time_zone_id = 'Asia/Tokyo'",
+                "local_date" to "local_date = date(local_date, '+1000 days')",
+                "alarm_slot" to "alarm_slot = alarm_slot + 1000",
+            )
+        var n = 100
+        for (state in OccurrenceState.entries) {
+            for ((column, set) in updates) {
+                n++
+                val row = distinct(n, state)
+                occurrences.insert(row)
+                val context = "$state, $column"
+                if (row.isTerminal) {
+                    assertRejected(
+                        context,
+                    ) { driver.execute(null, "UPDATE occurrence SET $set WHERE id = '${row.id}'", 0) }
+                    assertEquals("$context: the row changed anyway", row, occurrences.findById(row.id))
+                } else {
+                    driver.execute(null, "UPDATE occurrence SET $set WHERE id = '${row.id}'", 0)
+                }
+            }
+            val moved = distinct(n + 5000, state)
+            occurrences.insert(moved)
+            if (moved.isTerminal) {
+                assertRejected("$state, reschedule") {
+                    occurrences.reschedule(moved.id, scheduled + kotlin.time.Duration.parse("1h"), testZone)
+                }
+                assertEquals("$state: reschedule changed the row", moved, occurrences.findById(moved.id))
+            } else {
+                occurrences.reschedule(moved.id, scheduled + kotlin.time.Duration.parse("1h"), testZone)
+            }
+        }
+    }
+
+    /** A row with its own id, date and slot, so many rows can share the template. */
+    private fun distinct(
+        n: Int,
+        state: OccurrenceState,
+    ) = occurrence(1, state).copy(id = "occ-$n", localDate = LocalDate.fromEpochDays(20_000 + n), alarmSlot = n)
 
     private fun insertOccurrenceSql(
         id: String,
@@ -179,7 +230,7 @@ class AndroidSchemaTest {
     }
 
     @Test
-    fun `a v1 database migrates to v4 with foreign keys on and keeps its rows`() {
+    fun `a v1 database migrates to v5 with foreign keys on and keeps its rows`() {
         val name = "m-v1a.db"
         v1Database(name) { seedV1Rows(it) }
 
@@ -203,7 +254,7 @@ class AndroidSchemaTest {
         )
 
         val driver = graph.factory.createDriver()
-        assertEquals("4", driver.pragma("user_version"))
+        assertEquals("5", driver.pragma("user_version"))
         assertEquals("1", driver.pragma("foreign_keys"))
         assertEquals(emptyList<String>(), driver.foreignKeyViolations())
     }

@@ -63,6 +63,9 @@ UPDATE schedule_template SET time_zone_id = ? WHERE id = ?;
 selectScheduleTemplateById:
 SELECT * FROM schedule_template WHERE id = ?;
 
+selectAllScheduleTemplates:
+SELECT * FROM schedule_template ORDER BY id ASC;
+
 selectActiveScheduleTemplates:
 SELECT * FROM schedule_template WHERE active = 1 ORDER BY id ASC;
 
