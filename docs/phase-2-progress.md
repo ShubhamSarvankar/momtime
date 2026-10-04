@@ -166,6 +166,28 @@ Findings from this PR:
 - **Lint accepted the four permissions** without a baseline. The merged manifest holds exactly those four today, so nothing from a dependency has been added yet; WorkManager's will have to come through the allowlist in PR 4.
 - **The android store's repositories now read the database through a provider** on every call and never throw (ADR 0051), so a store opens on first use, not when a repository is resolved. The Koin test was adjusted to say so.
 
+## PR 3: `phase-2/arming`
+
+Branched from `main` at `77aa203b74648aab30224eb343d4020cac9e1682` (the merge of PR #16).
+
+Scope: the `AlarmScheduler` port; the Android scheduler; one `ensureArmed` entry point; selection from the fired record over the channels the device delivers (the `NextRungResolver` change, `ArmingSelection`); the fire path and its receiver (not exported, `goAsync`, always `finish`); scenario 3 against the entry point; the `SecurityException` case; the follow ups of the PR #16 review (hand maintained table, directory fsync, counted store failures with strict tests, the general decode guard, the `source` CHECK question). ADRs 0052 to 0055. Mutations are in `phase-2-traceability.md` (E-1 to E-21), run at `0835a49`.
+
+Decisions made in this PR (the implementing session, unless noted):
+30. **The port returns nothing and the resolver is shared.** `CapabilityResolver.current` is what the scheduler arms through; only `ensureArmed` resolves at the start of a pass, and a `SecurityException` resolves again.
+31. **`MISSION_BYPASSED` may carry `mission_result_type`** (ADR 0052): a permissive guess, to be tightened in Phase 5.
+32. **Snooze is not armed here.** `ensureArmed` selects `PENDING` occurrences only; arming a snoozed occurrence belongs to the ring actions in PR 5 (decision 18).
+33. **The reset notification must post on both corruption paths** (open time and mid query), as the review of PR #16 required; only the process end differs. PR 5 adds it to `CorruptionHandler` for the shared database on both paths. ADR 0051 is not edited.
+34. **The `fire_telemetry` row is not written yet.** What it records (screen on, audio focus) belongs to the ringer, PR 5.
+35. **`setAlarmClock` takes a null show intent** until there is an activity (`MANUAL_CHECKS.md` P2-11).
+
+The delivery table (follow up 1): nothing generates it. It was produced once by a throwaway script run inline in the PR 2 session; that script was never committed and no copy exists in the repository or the scratchpad. The CSV header and the test now say it is maintained by hand and never regenerated.
+
+The `source` CHECK (follow up 5): no ADR removed `CAREGIVER`. The enum and the CHECK have been `USER, SYSTEM` since Phase 1 (`7831864`, `04f4fc8`), and the `CAREGIVER` in ARCHITECTURE section 3.3 dates from the first architecture commit (`5187098`). It is a contradiction to settle before Phase 4, and nothing was changed.
+
+Numbers (at `0835a49`): 134 `shared` tests (120 before) and 211 android tests (110 before), none failing. `shared` line coverage 695/712 (97.6%), branch coverage 224/228 (98.2%): data 117/120 (97.5%, the three Phase 1 quiet hours branches), domain 8/8, engine 99/100.
+
+Not verified: everything in `MANUAL_CHECKS.md` P2-11 and P2-12. The tests read what was armed from `ShadowAlarmManager`; nothing was fired on a device. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 2 is merged and reviewed: PR 3 `phase-2/arming`. Branch from `main` at the merge commit. Start by reading this file, decisions 6, 14, 17, 18, 21 and 22 above (the watchdog record, caregiver rungs, fire telemetry, the unknown slot fire and the corruption decision as decided), the Step 1 notes on arming (`AlarmScheduler` port in `shared`, the Android implementation, request codes from `alarmSlot` only, `FLAG_IMMUTABLE`, one alarm armed at a time, re arm on fire), and `docs/phase-2-traceability.md` rows R1 to R3 and R7. Scenario 3's Android half and the `SecurityException` test land there. The capability resolution of this PR is what arming reads.
+After PR 3 is merged and reviewed: PR 4 `phase-2/watchdog`: the `WorkManager` watchdog at the 15 minute floor calling `ensureArmed`, `WATCHDOG_REPAIR` only on positive evidence, the boot count seam, scenario 17, scenario 3 end to end through the worker, and the allowlist entries for WorkManager's permissions.
