@@ -289,4 +289,20 @@ class AndroidSchemaTest {
         }
         assertEquals(OccurrenceState.MISSED, occurrences.findById("occ-1")?.state)
     }
+
+    // Schema version 5 (ADR 0068) reaches a database migrated from version 1 under the Android driver: its terminal
+    // row refuses an update of its instant and zone, not only a change of state.
+    @Test
+    fun `the migrated database refuses an update of a terminal row's instant`() {
+        val name = "m-v1d.db"
+        v1Database(name) { seedV1Rows(it) }
+
+        val graph = graph(name)
+        val occurrences = graph.get<OccurrenceRepository>()
+        val before = occurrences.findById("occ-1")
+        assertRejected("rescheduling a MISSED occurrence on a migrated database") {
+            occurrences.reschedule("occ-1", scheduled + kotlin.time.Duration.parse("1h"), testZone)
+        }
+        assertEquals(before, occurrences.findById("occ-1"))
+    }
 }
