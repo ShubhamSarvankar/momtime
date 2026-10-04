@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Every user facing string is here, English only in Phase 2. Hindi and Marathi come in Phase 3 and need human
+     review before release for anything health adjacent. User entered text (a medicine name, a dosage, a doctor's
+     instruction) is never a resource and is shown exactly as typed. -->
+<resources>
+    <string name="app_name">MomTime</string>
+
+    <!-- Notification channels, split by criticality and never by task type. -->
+    <string name="channel_critical_name">Critical reminders</string>
+    <string name="channel_critical_description">Medicines and routines you must not miss. This is the channel not to mute.</string>
+    <string name="channel_standard_name">Standard reminders</string>
+    <string name="channel_standard_description">Everyday reminders.</string>
+    <string name="channel_gentle_name">Gentle and quiet reminders</string>
+    <string name="channel_gentle_description">Reminders that arrive quietly: gentle ones, late ones, and any held back by quiet hours or the daily limit.</string>
+
+    <!-- A reminder in the notification shade. The title and the text of a reminder are hers, shown verbatim. -->
+    <string name="notification_reminder_fallback_title">Reminder</string>
+    <string name="notification_late_text">This reminder is late.</string>
+    <string name="notification_action_open">Open</string>
+    <plurals name="notification_due_title">
+        <item quantity="one">%d reminder is due</item>
+        <item quantity="other">%d reminders are due</item>
+    </plurals>
+
+    <!-- The ring screen. -->
+    <string name="ring_title">Time for your reminder</string>
+    <string name="ring_nothing_due">No reminder is ringing.</string>
+    <string name="ring_dosage_label">Dosage</string>
+    <string name="ring_instructions_label">Doctor\'s instructions</string>
+    <string name="ring_stop_sound">Stop the sound</string>
+    <string name="ring_sound_stopped">The sound is off. Your reminder is still waiting for you.</string>
+    <plurals name="ring_due_count">
+        <item quantity="one">%d reminder is due</item>
+        <item quantity="other">%d reminders are due</item>
+    </plurals>
+
+    <!-- Posted when the data on the phone had to be set aside, so her reminders are gone. -->
+    <string name="reset_notification_title">Your reminders were reset</string>
+    <string name="reset_notification_text">Something went wrong with the data on this phone, so your reminders need setting up again.</string>
+
+    <!-- The ringer's own notification while the sound plays. -->
+    <string name="ringer_notification_title">Reminder ringing</string>
+</resources>

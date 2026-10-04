@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import com.momtime.android.delivery.NotificationChannels
 
 /**
  * Reads each capability input from the platform, one input per function, so each can be tested against
@@ -17,15 +18,17 @@ import android.provider.Settings
  * API 31 and `canUseFullScreenIntent` from API 34; below those a guard stands in front of the call, and
  * a test at each SDK shows the call is not made.
  *
- * Two inputs are read through a seam. [criticalChannelBlocked] is one until notification channels exist in PR 5:
- * it reads as not blocked. [fullScreenIntentApi] is the other: Robolectric has no shadow for
+ * Two inputs are read through a seam. [criticalChannelBlocked] is one: it reads the Critical notification channel
+ * (`NotificationChannels.isCriticalBlocked`), which the user can block while notifications stay on
+ * (ADR 0050, ADR 0060).
+ * [fullScreenIntentApi] is the other: Robolectric has no shadow for
  * `canUseFullScreenIntent()`, and its real call is a constant false there that no test can change. The seam
  * defaults to the real call, guarded by the SDK check, and a test replaces it to show the value flows
  * through; what a real device reports is `MANUAL_CHECKS.md` P2-10.
  */
 class PlatformCapabilityReader(
     private val context: Context,
-    private val criticalChannelBlocked: () -> Boolean = { false },
+    private val criticalChannelBlocked: () -> Boolean = { NotificationChannels.isCriticalBlocked(context) },
     private val fullScreenIntentApi: () -> Boolean = {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
             context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()

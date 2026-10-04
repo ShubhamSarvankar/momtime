@@ -16,7 +16,7 @@ import com.momtime.shared.domain.DeliveryCapability
  * - [overlayAllowed]: the overlay (`SYSTEM_ALERT_WINDOW`) permission.
  * - [criticalChannelAllowed]: the Critical notification channel is not blocked. A user can block one channel
  *   while notifications stay enabled overall, and critical delivery must then not count as full screen.
- *   Channels arrive in PR 5; until then this is read as not blocked.
+ *   It is read from the Critical channel's importance (ADR 0060); a channel that does not exist yet is not blocked.
  */
 data class CapabilityInputs(
     val exactAlarm: Boolean,

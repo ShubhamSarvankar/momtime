@@ -9,6 +9,7 @@ import com.momtime.android.data.pregnancy
 import com.momtime.android.data.template
 import com.momtime.android.data.testZone
 import com.momtime.android.di.BootCount
+import com.momtime.android.di.DeliveryWiring
 import com.momtime.android.di.armingModule
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.android.work.WorkPasses
@@ -82,6 +83,7 @@ internal class ArmingFixture(
     name: String = "t-${java.util.UUID.randomUUID().toString().take(8)}.db",
     idPrefix: String = "gen",
     seedPregnancy: Boolean = true,
+    delivery: DeliveryWiring = DeliveryWiring(),
 ) {
     val api = SwitchableAlarmApi(PlatformAlarmApi(context.getSystemService(AlarmManager::class.java)))
     private var nextId = 0
@@ -101,6 +103,7 @@ internal class ArmingFixture(
                     BootCount { bootCount },
                     newId = { "$idPrefix-${nextId++}" },
                     appVersion = AppVersion { versionCode },
+                    delivery = delivery,
                 ),
         )
 
@@ -184,14 +187,21 @@ internal class ArmingFixture(
     fun requestCode(alarm: ShadowAlarmManager.ScheduledAlarm): Int = shadowOf(operation(alarm)).requestCode
 
     /** A template and one PENDING occurrence of it at [scheduled], in slot [slot]. Returns the occurrence. */
+    @Suppress("LongParameterList")
     fun seed(
         id: String,
         criticality: Criticality,
         scheduled: Instant,
         slot: Int,
+        dosage: String? = null,
+        doctorInstructions: String? = null,
     ): Occurrence {
         val templateId = "tmpl-$id"
-        graph.get<ScheduleTemplateRepository>().insert(template(templateId).copy(criticality = criticality))
+        graph.get<ScheduleTemplateRepository>().insert(
+            template(
+                templateId,
+            ).copy(criticality = criticality, dosage = dosage, doctorInstructions = doctorInstructions),
+        )
         val occurrence =
             Occurrence(
                 id = id,

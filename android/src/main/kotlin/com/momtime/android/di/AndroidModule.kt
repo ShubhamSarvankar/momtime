@@ -80,7 +80,7 @@ fun momTimeModules(
     driverFactory: DatabaseDriverFactory = AndroidDatabaseDriverFactory(context),
     storeFactory: StoreDriverFactory = AndroidStoreDriverFactory(context),
     storeFailures: StoreFailures = CountingStoreFailures(),
-    arming: Module = armingModule(context),
+    arming: Module = armingModule(context, delivery = DeliveryWiring(enabled = true)),
 ): List<Module> =
     listOf(
         androidModule(driverFactory),

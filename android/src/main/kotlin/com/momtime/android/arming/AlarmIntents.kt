@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import com.momtime.android.ring.RingActivity
 import kotlin.time.Instant
 
 /**
@@ -49,15 +50,18 @@ internal object AlarmIntents {
         PendingIntent.getBroadcast(context, slot, intent(context), IMMUTABLE or PendingIntent.FLAG_NO_CREATE)
 
     /**
-     * What the system shows for an alarm clock: the app's launch screen, if it has one. There is no activity
-     * yet, so this is null for now (`MANUAL_CHECKS.md` P2-11). Its request code is the slot as well; an
+     * What the system shows for an alarm clock, and opens when she taps it: the app's screen, which until Phase 3
+     * has one activity, the ring screen. With nothing ringing it says so. Its request code is the slot as well; an
      * activity `PendingIntent` is a different kind from a broadcast one and cannot collide with it.
      */
     fun show(
         context: Context,
         slot: Int,
-    ): PendingIntent? =
-        context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-            PendingIntent.getActivity(context, slot, it, IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        }
+    ): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            slot,
+            RingActivity.intent(context),
+            IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 }

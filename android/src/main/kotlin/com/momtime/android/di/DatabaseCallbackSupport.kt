@@ -40,6 +40,10 @@ internal fun SupportSQLiteDatabase.useRollbackJournal() {
  *   it. [onClosedByCorruption] tells the owner of a database that can be reopened (the android store).
  *   [processEnd] ends the process for the database that cannot (the shared database), after the
  *   marker is durable. Either is null where it does not apply.
+ *
+ * On both paths, once the marker is durable and before anything ends the process, [resetNotifier] tells her that
+ * her reminders were reset. The shared database has one; the android store, whose loss costs only telemetry and
+ * the armed record, has none (ADR 0048).
  */
 internal class CorruptionHandler(
     private val markerFile: File,
@@ -47,6 +51,7 @@ internal class CorruptionHandler(
     private val processEnd: ProcessEnd? = null,
     private val onClosedByCorruption: (() -> Unit)? = null,
     private val directorySync: DirectorySync = OsDirectorySync,
+    private val resetNotifier: ResetNotifier? = null,
 ) {
     fun handle(db: SupportSQLiteDatabase) {
         // A database that was open when corruption was found was in use. One still being opened is not.
@@ -57,6 +62,8 @@ internal class CorruptionHandler(
         if (path == null) return
         val preserved = quarantine(File(path))
         CorruptionMarker.write(markerFile, CorruptionMarker(clock.now(), preserved), directorySync)
+        // She is told her reminders were reset, on both paths, and before the process ends on the second (ADR 0051).
+        resetNotifier?.notifyReset()
         if (midUse) {
             onClosedByCorruption?.invoke()
             processEnd?.end()

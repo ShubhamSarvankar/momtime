@@ -18,6 +18,10 @@ data class FireTelemetry(
     val dozeState: String?,
     val watchdogRepair: Boolean,
     val bootCount: Long?,
+    /** Which delivery path the fire took (ADR 0060). Null for a row written before it was kept. */
+    val deliveryPath: String? = null,
+    /** Whether the ringer service started: false when the platform refused it. Null if it was not attempted. */
+    val ringerStarted: Boolean? = null,
 )
 
 /**
@@ -27,6 +31,16 @@ data class FireTelemetry(
 interface FireTelemetryRepository {
     /** True if the row was stored. */
     fun insert(telemetry: FireTelemetry): Boolean
+
+    /**
+     * Records what the ringer did for a fire: whether it started, and whether audio focus was obtained (null if
+     * it did not get that far). True if the row was updated.
+     */
+    fun recordRinger(
+        eventId: String,
+        started: Boolean,
+        audioFocus: Boolean?,
+    ): Boolean
 
     /** The row, or null if there is none or the store failed. */
     fun findForEvent(eventId: String): FireTelemetry?
@@ -51,7 +65,19 @@ class SqlDelightFireTelemetryRepository(
                 doze_state = telemetry.dozeState,
                 watchdog_repair = telemetry.watchdogRepair.toLong(),
                 boot_count = telemetry.bootCount,
+                delivery_path = telemetry.deliveryPath,
+                ringer_started = telemetry.ringerStarted?.toLong(),
             )
+            true
+        }
+
+    override fun recordRinger(
+        eventId: String,
+        started: Boolean,
+        audioFocus: Boolean?,
+    ): Boolean =
+        nonFatal(failures, "fire_telemetry.ringer", false) {
+            database().fireTelemetryQueries.updateRinger(started.toLong(), audioFocus?.toLong(), eventId)
             true
         }
 
@@ -67,6 +93,8 @@ class SqlDelightFireTelemetryRepository(
                     dozeState = it.doze_state,
                     watchdogRepair = it.watchdog_repair != 0L,
                     bootCount = it.boot_count,
+                    deliveryPath = it.delivery_path,
+                    ringerStarted = it.ringer_started?.let { value -> value != 0L },
                 )
             }
         }
