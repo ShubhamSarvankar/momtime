@@ -31,8 +31,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | 3 | `phase-2/arming` | Merged (PR #17, merge commit `8720d03`) |
 | 4 | `phase-2/workers` | Merged (PR #18, merge commit `6ef4909`) |
 | 5 | `phase-2/delivery` | Merged (PR #19, merge commit `48738c9`) |
-| 5b | `phase-2/ring-actions` | Open for review (see "PR 5b" below). The progress file named this branch `phase-2/actions`; the PR 5b prompt named it `phase-2/ring-actions`, and the prompt is the later instruction |
-| 6 | `phase-2/system-broadcasts` | Not started |
+| 5b | `phase-2/ring-actions` | Merged (PR #20, merge commit `f266621`). The progress file named this branch `phase-2/actions`; the PR 5b prompt named it `phase-2/ring-actions`, and the prompt is the later instruction |
+| 6 | `phase-2/system-broadcasts` | Open for review (see "PR 6" below). One item open: the timezone broadcast (decision 70) |
 | 7 | `phase-2/canary-telemetry` | Not started |
 | 8 | `phase-2/permission-onboarding` | Not started |
 | 9 | `docs/phase-2-close` | Not started |
@@ -308,6 +308,30 @@ The test added after the first battery was `OccurrenceActionCommandTest.a snooze
 
 Not verified: everything in `MANUAL_CHECKS.md` P2-20 to P2-25. The tests use fake players, a fake scheduler, a fake vibration where the service is concerned, and the shadows for the platform; nothing ran on a device, no sound was heard and no motor ran. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 6: `phase-2/system-broadcasts`
+
+Branched from `main` at `f266621deebae1c172b9667a5c2b83d4da46cdd2` (the merge of PR #20).
+
+Scope: the system broadcasts (boot, an app update, a clock change, a grant of exact alarm access), one receiver and one pass (ADR 0067); golden scenario 14 through the time change broadcast; the answers on updates and exported receivers, with their AOSP evidence. Mutations are in `phase-2-traceability.md` (K1 to K10), run at `f2cb41b`. **The timezone broadcast is not built: it is the one open item (decision 70).**
+
+No new CI job. `verify-android-structure` runs `verifySingleProcess` and `verifyManifestPermissions` over the merged manifest, which now holds the new receiver; no permission was added (`RECEIVE_BOOT_COMPLETED` was already declared).
+
+Numbers, measured at `f2cb41b`: 186 `shared` tests (unchanged) and 776 android tests (713 before), none failing. `shared` line 838/855 (98.0%), branch 281/286 (98.3%), unchanged, all above their gates. The merged manifest's permissions are the twelve of PR 5b.
+
+Findings from this PR:
+
+- **AOSP keeps an updated app's alarms**, which corrects ADR 0058's premise (decision 67 below). Read from `AlarmManagerService` at `android-10.0.0_r1` and `android-14.0.0_r1` and `android-16.0.0_r1` and the activity manager at `android-14.0.0_r1`; the release tags exist for 10 to 16. The alarm service moved into the jobscheduler APEX in Android 12, so earlier sessions' paths for `services/core` do not exist at the later tags.
+- **No receiver needs to be exported.** The platform's component check lets the system uid reach unexported components (`ActivityManager.checkComponentPermission`), the broadcasts are sent by the system server, and WorkManager's own `RescheduleReceiver` is declared `exported="false"` for `BOOT_COMPLETED` in the merged manifest. The prompt's exported receiver mutation therefore does not apply; the receiver instead ignores any action it does not expect, and a test shows it.
+- **The test fixture's clock and the scheduler agree on "for now".** A rung armed for now before the clock is set back would fire late if left alone; the pass re arms it at its own instant, which is what makes scenario 14's backward case depend on the time change broadcast, and what lets the mutation that removes the broadcast fail it.
+
+Decisions of this PR (the implementing session's, for review, unless noted):
+67. **ADR 0058's premise that an update clears alarms is corrected by ADR 0067** (not edited): AOSP keeps them. The version code evidence stays as a net, and the update broadcast's pass records the new version so the watchdog does not write a false `WATCHDOG_REPAIR`.
+68. **One receiver and one worker for all four broadcasts**, unique one time work per event with `APPEND_OR_REPLACE`, running `AppStart.run()` (`Reconcile`, then `ensureArmed`): the same entry point as a process start and the watchdog. Boot starts no service. Every receiver is `exported="false"`.
+69. **`LOCKED_BOOT_COMPLETED` stays unhandled** (progress decision 10, the PR 6 prompt) and nothing is direct boot aware.
+70. **The timezone broadcast is not handled, and Phase 1 defined no command that recomputes instants for travel** (the PR 6 prompt: stop and ask rather than invent the semantics). Golden scenario 8's test shows only that materialisation uses the template's zone. Questions for Claude (technical review): does a template's zone follow the device or stay where she set it; which occurrences move when it changes (pending and future only, as `ARCHITECTURE.md` section 11 says, but "future" within the 48 hour window or by regenerating it); what happens to an occurrence already materialised for a local date that has passed in the new zone; and does a moved occurrence keep its `alarmSlot` and id (it must, for invariant 10) or is it re materialised. The handler and its three mutations (the timezone handler touching a terminal occurrence, and the others) belong to the PR that builds the command.
+
+Not verified: everything in `MANUAL_CHECKS.md` P2-26 to P2-30. The tests call the receiver with the intent the system would send and run the work with `WorkManager`'s test driver; nothing rebooted a phone, updated an app, changed a clock or sent a real broadcast. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 5b is merged and reviewed: PR 6 `phase-2/system-broadcasts` (boot, which arms and never rings, and the other broadcasts), PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
+After PR 6 is merged and reviewed, and decision 70 is settled (the timezone handler may be a PR of its own): PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
