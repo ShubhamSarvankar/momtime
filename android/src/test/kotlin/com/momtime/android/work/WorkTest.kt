@@ -140,9 +140,9 @@ class WorkTest {
 
         runPeriodic(Work.WATCHDOG)
 
+        assertEquals("the job handed nothing to delivery", emptyList<FiredRung>(), fixture.delivery.delivered)
+        assertEquals("and wrote no ALARM_FIRED", 0, fixture.count(EventType.ALARM_FIRED, "a"))
         assertEquals(fixture.clock.now.toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
-        assertEquals(emptyList<FiredRung>(), fixture.delivery.delivered)
-        assertEquals(0, fixture.count(EventType.ALARM_FIRED, "a"))
     }
 
     // A transient failure asks for a retry. It never fails the periodic work, which would end the watchdog.

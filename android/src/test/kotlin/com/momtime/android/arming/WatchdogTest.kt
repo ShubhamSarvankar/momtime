@@ -267,11 +267,12 @@ class WatchdogTest {
         fixture.seed("a", Criticality.CRITICAL, t0, slot = 31)
         fixture.clock.now = t0 + 35.minutes
 
-        val atBoundary = fixture.watchdog.run().ensured as EnsureResult.Armed
+        val atBoundary = fixture.watchdog.run().ensured
+        assertTrue("armed, not nothing pending: $atBoundary", atBoundary is EnsureResult.Armed)
         assertEquals(
             "the first rung is stale, the second is exactly 30 minutes late",
             t0 + 5.minutes,
-            atBoundary.selection.rung.instant,
+            (atBoundary as EnsureResult.Armed).selection.rung.instant,
         )
         assertEquals(1, fixture.alarms().size)
 
