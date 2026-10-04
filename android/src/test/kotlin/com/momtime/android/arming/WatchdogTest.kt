@@ -21,6 +21,10 @@ import org.robolectric.annotation.SQLiteMode
 import org.robolectric.shadows.ShadowAlarmManager
 import org.robolectric.shadows.ShadowPausedSystemClock
 import org.robolectric.shadows.ShadowSystemClock
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
@@ -330,6 +334,52 @@ class WatchdogTest {
         fixture.bootCount = 8
 
         assertEquals(setOf(RepairEvidence.BOOT_COUNT_CHANGED), fixture.watchdog.run().evidence)
+    }
+
+    // A fire writes ALARM_FIRED and then arms the next rung. A watchdog pass that read the state between the two
+    // would see a record that does not match and call a healthy chain lost, so each waits for the other.
+    @Test
+    fun `the watchdog and the fire path wait for each other`() {
+        armedAndCorrect()
+        fixture.clock.now = t0
+        assertTrue("the watchdog waits while a fire holds the coordinator", blockedWhileHeld { fixture.watchdog.run() })
+        assertTrue(
+            "the fire path waits while the watchdog holds it",
+            blockedWhileHeld { fixture.handler.onFire(31, t0) },
+        )
+    }
+
+    /** True if [work], started while another thread holds the coordinator, does not finish until it is released. */
+    private fun blockedWhileHeld(work: () -> Unit): Boolean {
+        val holding = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val holder =
+            thread {
+                fixture.coordinator.exclusive {
+                    holding.countDown()
+                    release.await(WAIT_SECONDS, TimeUnit.SECONDS)
+                }
+            }
+        assertTrue(holding.await(WAIT_SECONDS, TimeUnit.SECONDS))
+        val finished = AtomicBoolean(false)
+        val worker =
+            thread {
+                work()
+                finished.set(true)
+            }
+        Thread.sleep(OBSERVE_MILLIS)
+        val waited = !finished.get()
+        release.countDown()
+        worker.join(WAIT_SECONDS * MILLIS)
+        holder.join(WAIT_SECONDS * MILLIS)
+        assertTrue("it finishes once released", finished.get())
+        return waited
+    }
+
+    private companion object {
+        const val WAIT_SECONDS = 10L
+        const val OBSERVE_MILLIS = 300L
+        const val MILLIS = 1000L
     }
 
     @Test

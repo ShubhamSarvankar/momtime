@@ -7,6 +7,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.momtime.android.arming.ArmingEntryPoint
 import com.momtime.android.arming.ArmingFixture
 import com.momtime.android.arming.FiredRung
 import com.momtime.android.arming.t0
@@ -58,11 +59,14 @@ class WorkTest {
         )
         workManager = WorkManager.getInstance(context)
         WorkEntryPoint.provider = { fixture.passes }
+        // The real application installs both entry points, so a worker that reached for the fire path would find it.
+        ArmingEntryPoint.provider = { fixture.handler }
     }
 
     @After
     fun tearDown() {
         WorkEntryPoint.provider = null
+        ArmingEntryPoint.provider = null
         fixture.close()
     }
 
