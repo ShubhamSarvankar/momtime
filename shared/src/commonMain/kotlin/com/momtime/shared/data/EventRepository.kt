@@ -110,13 +110,26 @@ class SqlDelightEventRepository(
 
     private fun com.momtime.shared.data.Event.toDomain(): Event {
         val type = EventType.valueOf(event_type)
-        // The payload columns are sparse: a row's payload is whichever column is set, and the table does
-        // not tie a column to an event type. The canary columns are only ever written for CANARY_RESULT
-        // (ADR 0048), so a row that breaks that is a mapping bug, and it fails loudly here rather than
-        // decoding as a payload nobody wrote. An old CANARY_RESULT with no instants decodes as no payload.
-        if (canary_scheduled_at != null || canary_actual_at != null) {
-            check(type == EventType.CANARY_RESULT) { "canary columns are set on a $type event ($id)" }
-            check(canary_scheduled_at != null) { "a CANARY_RESULT has an actual instant but no scheduled one ($id)" }
+        // The payload columns are sparse and the table ties none of them to a type, so a mapping bug could set
+        // any column on any event. Each type has its own set of allowed columns (EventColumn.kt) and a row that
+        // sets another fails loudly here, rather than decoding as a payload nobody wrote (ADR 0052).
+        val set =
+            buildSet {
+                if (effective_at != null) add(EventColumn.EFFECTIVE_AT)
+                if (snooze_number != null) add(EventColumn.SNOOZE_NUMBER)
+                if (mission_result_type != null) add(EventColumn.MISSION_RESULT_TYPE)
+                if (water_ml != null) add(EventColumn.WATER_ML)
+                if (weight_grams != null) add(EventColumn.WEIGHT_GRAMS)
+                if (caregiver_link_id != null) add(EventColumn.CAREGIVER_LINK_ID)
+                if (canary_scheduled_at != null) add(EventColumn.CANARY_SCHEDULED_AT)
+                if (canary_actual_at != null) add(EventColumn.CANARY_ACTUAL_AT)
+            }
+        val unexpected = set - allowedColumns(type)
+        check(unexpected.isEmpty()) { "columns $unexpected are set on a $type event ($id)" }
+        // A canary with an actual instant and no scheduled one was never written by the app. One with neither
+        // is the old form and decodes as no payload.
+        check(canary_actual_at == null || canary_scheduled_at != null) {
+            "a CANARY_RESULT has an actual instant but no scheduled one ($id)"
         }
         val payload: EventPayload =
             when {

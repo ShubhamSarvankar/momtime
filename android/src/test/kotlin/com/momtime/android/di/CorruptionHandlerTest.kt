@@ -169,4 +169,38 @@ class CorruptionHandlerTest {
         assertEquals("the owner must be told exactly once", 1, reported)
         assertEquals(0, ended)
     }
+
+    // The rename of the database and the write of the marker are durable only once the directory entry is
+    // (ADR 0055). The database directory is synced after the file is moved aside, and the marker directory
+    // after the marker is in place. The seam records the state of the files at the instant of each call.
+    @Test
+    fun `directories are synced after the rename and after the marker write`() {
+        database.writeBytes(ByteArray(64) { it.toByte() })
+        val noBackup = File(directory, "nobackup").also { it.mkdirs() }
+        val markerFile = File(noBackup, "marker")
+        val calls = mutableListOf<String>()
+        val sync =
+            DirectorySync { dir ->
+                calls +=
+                    "${dir.name} copy=${corrupt.exists()} original=${database.exists()} marker=${markerFile.exists()}"
+            }
+
+        CorruptionHandler(markerFile, clock, directorySync = sync).handle(recording(database.path, Observed()))
+
+        assertEquals(
+            listOf(
+                "${directory.name} copy=true original=false marker=false",
+                "nobackup copy=true original=false marker=true",
+            ),
+            calls,
+        )
+    }
+
+    // A directory that cannot be opened has nothing more to give, and syncing it must not stop the handler:
+    // reminders must keep working. (Off a device the platform call is a stub that throws, which is the same
+    // path.) That it syncs a real directory is `MANUAL_CHECKS.md` P2-8.
+    @Test
+    fun `syncing a directory that cannot be synced does not throw`() {
+        OsDirectorySync.sync(File(directory, "missing"))
+    }
 }

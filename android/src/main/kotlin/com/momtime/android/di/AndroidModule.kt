@@ -3,9 +3,11 @@ package com.momtime.android.di
 import android.content.Context
 import app.cash.sqldelight.db.SqlDriver
 import com.momtime.android.store.ArmedAlarmRepository
+import com.momtime.android.store.CountingStoreFailures
 import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.android.store.SqlDelightArmedAlarmRepository
 import com.momtime.android.store.SqlDelightFireTelemetryRepository
+import com.momtime.android.store.StoreFailures
 import com.momtime.android.store.db.AndroidStoreDatabase
 import com.momtime.shared.data.DatabaseDriverFactory
 import com.momtime.shared.di.clockModule
@@ -52,12 +54,20 @@ internal class StoreDatabaseHolder(
 }
 
 /** The android store's repositories, over one live driver. */
-fun androidStoreModule(storeFactory: StoreDriverFactory): Module =
+fun androidStoreModule(
+    storeFactory: StoreDriverFactory,
+    failures: StoreFailures,
+): Module =
     module {
         single<StoreDriverFactory> { storeFactory }
+        single<StoreFailures> { failures }
         single { StoreDatabaseHolder(get()) }
-        single<FireTelemetryRepository> { SqlDelightFireTelemetryRepository(get<StoreDatabaseHolder>()::database) }
-        single<ArmedAlarmRepository> { SqlDelightArmedAlarmRepository(get<StoreDatabaseHolder>()::database) }
+        single<FireTelemetryRepository> {
+            SqlDelightFireTelemetryRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<ArmedAlarmRepository> {
+            SqlDelightArmedAlarmRepository(get<StoreDatabaseHolder>()::database, get())
+        }
     }
 
 /**
@@ -69,4 +79,13 @@ fun momTimeModules(
     context: Context,
     driverFactory: DatabaseDriverFactory = AndroidDatabaseDriverFactory(context),
     storeFactory: StoreDriverFactory = AndroidStoreDriverFactory(context),
-): List<Module> = listOf(androidModule(driverFactory), androidStoreModule(storeFactory), clockModule, sharedModule())
+    storeFailures: StoreFailures = CountingStoreFailures(),
+    arming: Module = armingModule(context),
+): List<Module> =
+    listOf(
+        androidModule(driverFactory),
+        androidStoreModule(storeFactory, storeFailures),
+        arming,
+        clockModule,
+        sharedModule(),
+    )

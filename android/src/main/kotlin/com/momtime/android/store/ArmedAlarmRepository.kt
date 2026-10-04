@@ -17,8 +17,9 @@ data class ArmedAlarm(
 )
 
 /**
- * No call throws (ADR 0051). A failed read is "record missing", which sends the watchdog to its repair
- * path, and a failed write returns false; neither may stop an alarm.
+ * No call throws in production (ADR 0051, ADR 0054). A failed read is "record missing", which sends the
+ * watchdog to its repair path, and a failed write returns false; neither may stop an alarm. Each failure is
+ * counted and logged by [StoreFailures], and in tests it is thrown.
  */
 interface ArmedAlarmRepository {
     /** The record, or null if there is none or the store failed. */
@@ -37,9 +38,10 @@ interface ArmedAlarmRepository {
 /** Reads the database through [database] on every call, so a database that was replaced is picked up. */
 class SqlDelightArmedAlarmRepository(
     private val database: () -> AndroidStoreDatabase,
+    private val failures: StoreFailures,
 ) : ArmedAlarmRepository {
     override fun current(): ArmedAlarm? =
-        nonFatal(null) {
+        nonFatal(failures, "armed_alarm.current", null) {
             database().armedAlarmQueries.selectArmedAlarm().executeAsOneOrNull()?.let {
                 ArmedAlarm(
                     alarmSlot = it.alarm_slot.toInt(),
@@ -52,7 +54,7 @@ class SqlDelightArmedAlarmRepository(
         }
 
     override fun replace(alarm: ArmedAlarm): Boolean =
-        nonFatal(false) {
+        nonFatal(failures, "armed_alarm.replace", false) {
             database().armedAlarmQueries.replaceArmedAlarm(
                 alarm_slot = alarm.alarmSlot.toLong(),
                 rung_instant = alarm.rungInstant.toEpochMilliseconds(),
@@ -64,7 +66,7 @@ class SqlDelightArmedAlarmRepository(
         }
 
     override fun clear(): Boolean =
-        nonFatal(false) {
+        nonFatal(failures, "armed_alarm.clear", false) {
             database().armedAlarmQueries.clearArmedAlarm()
             true
         }

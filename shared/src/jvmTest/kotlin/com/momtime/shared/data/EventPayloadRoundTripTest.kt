@@ -30,26 +30,27 @@ class EventPayloadRoundTripTest {
     }
 
     @Test
-    fun `none payload round trips`() = assertRoundTrip(EventPayload.None)
+    fun `none payload round trips`() = assertRoundTrip(EventPayload.None, EventType.COMPLETED)
 
     @Test
-    fun `snooze payload round trips`() = assertRoundTrip(EventPayload.Snooze(snoozeNumber = 2))
+    fun `snooze payload round trips`() = assertRoundTrip(EventPayload.Snooze(snoozeNumber = 2), EventType.SNOOZED)
 
     @Test
     fun `mission result payload round trips for both mission types`() {
-        assertRoundTrip(EventPayload.MissionResult(MissionResultType.BARCODE))
-        assertRoundTrip(EventPayload.MissionResult(MissionResultType.PHOTO_MATCH))
+        assertRoundTrip(EventPayload.MissionResult(MissionResultType.BARCODE), EventType.MISSION_VERIFIED)
+        assertRoundTrip(EventPayload.MissionResult(MissionResultType.PHOTO_MATCH), EventType.MISSION_BYPASSED)
     }
 
     @Test
     fun `water payload round trips`() = assertRoundTrip(EventPayload.Water(waterMl = 250))
 
     @Test
-    fun `weight payload round trips`() = assertRoundTrip(EventPayload.Weight(weightGrams = 68_000))
+    fun `weight payload round trips`() =
+        assertRoundTrip(EventPayload.Weight(weightGrams = 68_000), EventType.WEIGHT_LOGGED)
 
     @Test
     fun `caregiver reference payload round trips`() =
-        assertRoundTrip(EventPayload.CaregiverReference(caregiverLinkId = "link-1"))
+        assertRoundTrip(EventPayload.CaregiverReference(caregiverLinkId = "link-1"), EventType.CAREGIVER_LINKED)
 
     @Test
     fun `canary payload round trips with and without an actual instant`() {

@@ -59,7 +59,7 @@ class CanaryDecodeTest {
             for (id in listOf("scheduled-$type", "actual-$type")) {
                 val failure = assertFailsWith<IllegalStateException>("$id decoded") { events.findById(id) }
                 assertTrue(
-                    failure.message.orEmpty().contains("canary columns are set on a $type event"),
+                    failure.message.orEmpty().contains("are set on a $type event"),
                     failure.message,
                 )
             }

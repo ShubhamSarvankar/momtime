@@ -21,8 +21,8 @@ data class FireTelemetry(
 )
 
 /**
- * No call throws (ADR 0051): a failure returns false, null or zero, because a lost telemetry row must
- * never stop an alarm.
+ * No call throws in production (ADR 0051, ADR 0054): a failure is counted and logged and returns false, null
+ * or zero, because a lost telemetry row must never stop an alarm. In tests it is thrown.
  */
 interface FireTelemetryRepository {
     /** True if the row was stored. */
@@ -38,9 +38,10 @@ interface FireTelemetryRepository {
 /** Reads the database through [database] on every call, so a database that was replaced is picked up. */
 class SqlDelightFireTelemetryRepository(
     private val database: () -> AndroidStoreDatabase,
+    private val failures: StoreFailures,
 ) : FireTelemetryRepository {
     override fun insert(telemetry: FireTelemetry): Boolean =
-        nonFatal(false) {
+        nonFatal(failures, "fire_telemetry.insert", false) {
             database().fireTelemetryQueries.insertFireTelemetry(
                 event_id = telemetry.eventId,
                 resolved_tier = telemetry.resolvedTier.name,
@@ -55,7 +56,7 @@ class SqlDelightFireTelemetryRepository(
         }
 
     override fun findForEvent(eventId: String): FireTelemetry? =
-        nonFatal(null) {
+        nonFatal(failures, "fire_telemetry.find", null) {
             database().fireTelemetryQueries.selectFireTelemetryForEvent(eventId).executeAsOneOrNull()?.let {
                 FireTelemetry(
                     eventId = it.event_id,
@@ -70,7 +71,10 @@ class SqlDelightFireTelemetryRepository(
             }
         }
 
-    override fun count(): Long = nonFatal(0L) { database().fireTelemetryQueries.countFireTelemetry().executeAsOne() }
+    override fun count(): Long =
+        nonFatal(failures, "fire_telemetry.count", 0L) {
+            database().fireTelemetryQueries.countFireTelemetry().executeAsOne()
+        }
 
     private fun Boolean.toLong() = if (this) 1L else 0L
 }
