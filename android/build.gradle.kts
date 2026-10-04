@@ -86,9 +86,11 @@ dependencies {
     implementation(libs.sqldelight.runtime)
     implementation(libs.koin.core)
     implementation(libs.kotlinx.datetime)
+    implementation(libs.work.runtime)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.work.testing)
 }
 
 // --- Structural check: no generated SQLDelight query type is reachable from android. ---
@@ -357,10 +359,12 @@ val selfTestVerifyNoGeneratedQueries =
     }
 
 // --- CLAUDE.md invariant 8, android half: no Clock.System and no System.currentTimeMillis outside the
-// android DI package. SystemClock and the boot count join the ban when the injected seam exists (PR 4).
+// android DI package, and (PR 4) no SystemClock read and no Settings.Global.BOOT_COUNT read either: the device
+// clock and the boot count are read only through the seams in that package, so a test can set them and a
+// watchdog test can tell a restart from a long uptime.
 
 fun findWallClockReferences(files: Iterable<File>): List<String> {
-    val pattern = Regex("""\bClock\.System\b|\bSystem\.currentTimeMillis\b""")
+    val pattern = Regex("""\bClock\.System\b|\bSystem\.currentTimeMillis\b|\bSystemClock\.|\bBOOT_COUNT\b""")
     val offenders = mutableListOf<String>()
     files.filterNot { isInDiPackage(it) }.forEach { file ->
         file.readLines().forEachIndexed { index, line ->
@@ -381,7 +385,8 @@ val verifyNoClockSystem =
             val offenders = findWallClockReferences(androidKotlinFiles)
             if (offenders.isNotEmpty()) {
                 throw GradleException(
-                    "Clock.System or System.currentTimeMillis outside com.momtime.android.di (invariant 8):\n" +
+                    "Clock.System, System.currentTimeMillis, SystemClock or BOOT_COUNT outside " +
+                        "com.momtime.android.di (invariant 8):\n" +
                         offenders.joinToString("\n"),
                 )
             }
@@ -412,7 +417,20 @@ val selfTestVerifyNoClockSystem =
             val system = fixture("app/System.kt", "val a = kotlin.time.Clock.System.now()")
             val millis = fixture("app/Millis.kt", "val b = System.currentTimeMillis()")
             val inDi = fixture("$androidDiPath/InDi.kt", "val c = kotlin.time.Clock.System.now()")
+            val inDiBoot =
+                fixture(
+                    "$androidDiPath/InDiBoot.kt",
+                    "val e = android.os.SystemClock.elapsedRealtime()\nval f = Settings.Global.BOOT_COUNT",
+                )
+            val uptime = fixture("app/Uptime.kt", "val d = android.os.SystemClock.elapsedRealtime()")
+            val bootCount =
+                fixture("app/Boot.kt", "val e = Settings.Global.getLong(r, Settings.Global.BOOT_COUNT, -1L)")
             val failures = mutableListOf<String>()
+            if (findWallClockReferences(listOf(uptime)).size != 1) failures += "SystemClock was not detected"
+            if (findWallClockReferences(listOf(bootCount)).size != 1) failures += "BOOT_COUNT was not detected"
+            if (findWallClockReferences(listOf(inDiBoot)).isNotEmpty()) {
+                failures += "the DI package was not exempted for SystemClock and BOOT_COUNT"
+            }
             if (findWallClockReferences(listOf(system)).size != 1) failures += "Clock.System was not detected"
             if (findWallClockReferences(listOf(millis)).size !=
                 1
@@ -563,6 +581,30 @@ val permissionAllowlist =
         "uses-permission|android.permission.SCHEDULE_EXACT_ALARM|maxSdkVersion=32",
         "uses-permission|android.permission.USE_FULL_SCREEN_INTENT|",
         "uses-permission|android.permission.POST_NOTIFICATIONS|",
+        // From androidx.work:work-runtime 2.12.0 (ADR 0057), each read from its AndroidManifest.xml:
+        // WAKE_LOCK keeps the CPU awake while a job runs (normal permission, install time).
+        "uses-permission|android.permission.WAKE_LOCK|",
+        // ACCESS_NETWORK_STATE is for WorkManager's network constraints, which the app does not use.
+        "uses-permission|android.permission.ACCESS_NETWORK_STATE|",
+        // RECEIVE_BOOT_COMPLETED lets WorkManager's reschedule receiver hear the boot; the app's own boot
+        // handling (PR 6) needs it too.
+        "uses-permission|android.permission.RECEIVE_BOOT_COMPLETED|",
+        // FOREGROUND_SERVICE is for WorkManager's expedited and long running jobs, which the app does not
+        // use; the ringer (PR 5) needs it too.
+        "uses-permission|android.permission.FOREGROUND_SERVICE|",
+        // The signature level permission androidx.core declares for itself so that a dynamically registered
+        // receiver can be kept unexported on older releases. It is the app's own permission, not a platform
+        // one, and appears in no Play declaration.
+        "uses-permission|com.momtime.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION|",
+    )
+
+/** What the permission check's self-test fixtures are checked against: fixed, so the real list can grow. */
+val fixtureAllowlist =
+    setOf(
+        "uses-permission|android.permission.USE_EXACT_ALARM|",
+        "uses-permission|android.permission.SCHEDULE_EXACT_ALARM|maxSdkVersion=32",
+        "uses-permission|android.permission.USE_FULL_SCREEN_INTENT|",
+        "uses-permission|android.permission.POST_NOTIFICATIONS|",
     )
 
 /** Every `uses-permission*` element as `element|name|attributes`, attributes sorted and without the name. */
@@ -649,10 +691,10 @@ val selfTestVerifyManifestPermissions =
             val all = listOf(exact, schedule, fullScreen, notifications)
 
             val failures = mutableListOf<String>()
-            val clean = permissionProblems(manifest("clean", all.joinToString("\n")), permissionAllowlist)
+            val clean = permissionProblems(manifest("clean", all.joinToString("\n")), fixtureAllowlist)
             if (clean.isNotEmpty()) failures += "the exact list was flagged: $clean"
             val reordered =
-                permissionProblems(manifest("reordered", all.reversed().joinToString("\n")), permissionAllowlist)
+                permissionProblems(manifest("reordered", all.reversed().joinToString("\n")), fixtureAllowlist)
             if (reordered.isNotEmpty()) failures += "a reordered list was flagged: $reordered"
 
             val mustBeFlagged =
@@ -684,7 +726,7 @@ val selfTestVerifyManifestPermissions =
                 )
             for ((what, body) in mustBeFlagged) {
                 val found =
-                    permissionProblems(manifest(what.replace(' ', '-'), body.joinToString("\n")), permissionAllowlist)
+                    permissionProblems(manifest(what.replace(' ', '-'), body.joinToString("\n")), fixtureAllowlist)
                 if (found.isEmpty()) failures += "not detected: $what"
             }
             root.deleteRecursively()

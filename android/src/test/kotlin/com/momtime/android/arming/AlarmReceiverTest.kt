@@ -5,7 +5,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import com.momtime.android.MomTimeApplication
+import androidx.work.WorkManager
+import com.momtime.android.WorkReadyApplication
+import com.momtime.android.work.Work
+import com.momtime.android.work.WorkEntryPoint
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EventType
 import org.junit.After
@@ -163,11 +166,16 @@ class AlarmReceiverTest {
 
     // The real application starts the graph and installs the fire path the receiver reads.
     @Test
-    @Config(application = MomTimeApplication::class, sdk = [36])
-    fun `the application installs the fire path`() {
+    @Config(application = WorkReadyApplication::class, sdk = [36])
+    fun `the application installs the fire path and the work`() {
         try {
             assertNotNull("the application must install the fire path", ArmingEntryPoint.provider)
             assertNotNull(GlobalContext.get().get<AlarmFireHandler>())
+            assertNotNull("the workers must find their passes", WorkEntryPoint.provider)
+            val workManager = WorkManager.getInstance(context)
+            for (name in listOf(Work.WATCHDOG, Work.MATERIALISE_DAILY)) {
+                assertEquals("$name is enqueued at start", 1, workManager.getWorkInfosForUniqueWork(name).get().size)
+            }
         } finally {
             stopKoin()
         }

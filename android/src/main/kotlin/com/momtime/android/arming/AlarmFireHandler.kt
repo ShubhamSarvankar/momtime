@@ -71,10 +71,14 @@ class AlarmFireHandler internal constructor(
         slot: Int,
         rungInstant: Instant,
     ): FireOutcome =
-        try {
-            dispatch(slot, rungInstant)
-        } finally {
-            coordinator.ensureArmed()
+        // Exclusive of the watchdog: between writing `ALARM_FIRED` and arming the next rung the state is half
+        // done, and a watchdog pass must not read it as a lost alarm.
+        coordinator.exclusive {
+            try {
+                dispatch(slot, rungInstant)
+            } finally {
+                coordinator.ensureArmed()
+            }
         }
 
     private fun dispatch(
@@ -93,7 +97,7 @@ class AlarmFireHandler internal constructor(
         occurrence: Occurrence,
         rungInstant: Instant,
     ): FireOutcome {
-        val expected = ArmingSelection.expectedFor(candidates.of(occurrence), DEVICE_CHANNELS)
+        val expected = ArmingSelection.expectedFor(candidates.of(occurrence), DEVICE_CHANNELS, log.now())
         if (expected == null || expected.instant != rungInstant) return FireOutcome.NotExpected
         log.fired(occurrence.id)
         val fired = FiredRung(occurrence.id, occurrence.alarmSlot, expected)

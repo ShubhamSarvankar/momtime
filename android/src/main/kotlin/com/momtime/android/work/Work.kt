@@ -1,0 +1,149 @@
+package com.momtime.android.work
+
+import android.content.Context
+import android.util.Log
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import com.momtime.android.arming.ArmingCoordinator
+import com.momtime.android.arming.Watchdog
+import com.momtime.shared.data.MaterialiseCommand
+import java.util.concurrent.TimeUnit
+import kotlin.time.Instant
+
+/**
+ * One daily materialisation pass: regenerate the rolling window, then make sure the next alarm exists, because
+ * a new occurrence can be earlier than the rung that is armed. Unique work is an efficiency measure only. The
+ * transaction in `materialiseWindow` is what keeps two overlapping runs from leaving a duplicate (ADR 0036).
+ */
+class MaterialisationPass internal constructor(
+    private val materialise: MaterialiseCommand,
+    private val coordinator: ArmingCoordinator,
+    private val now: () -> Instant,
+) {
+    /** Materialises, then ensures armed. Returns how many occurrences were created. */
+    fun run(): Int = materialise.dispatch(now()).also { coordinator.ensureArmed() }
+}
+
+/** What the workers run. A worker is created by `WorkManager` with no arguments, so it cannot be given these. */
+class WorkPasses internal constructor(
+    val watchdog: Watchdog,
+    val materialisation: MaterialisationPass,
+)
+
+/**
+ * Where the workers find the passes. The application sets [provider] when it starts, and a test sets its own,
+ * as it does for the alarm receiver (`ArmingEntryPoint`). `WorkManager` starts with its default initializer
+ * before the application's `onCreate`, but a worker runs only after the process has started, so by then the
+ * provider is set (ADR 0057).
+ */
+object WorkEntryPoint {
+    @Volatile
+    var provider: ((Context) -> WorkPasses)? = null
+
+    internal fun passes(context: Context): WorkPasses =
+        checkNotNull(provider) { "no work passes are installed" }(context)
+}
+
+/**
+ * The watchdog job (ADR 0058). It does the pass and nothing else: it never starts the ringer. A transient
+ * failure asks for a retry and never fails the periodic work, so one bad pass cannot end the watchdog. A store
+ * failure is not an exception here at all (ADR 0054). The log line carries the exception's class only
+ * (invariant 11).
+ */
+class WatchdogWorker(
+    context: Context,
+    params: WorkerParameters,
+) : Worker(context, params) {
+    override fun doWork(): Result =
+        try {
+            WorkEntryPoint.passes(applicationContext).watchdog.run()
+            Result.success()
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: RuntimeException,
+        ) {
+            Log.e(TAG, "watchdog pass failed: ${e.javaClass.simpleName}")
+            Result.retry()
+        }
+
+    private companion object {
+        const val TAG = "MomTimeWork"
+    }
+}
+
+/** The materialisation job, daily and on demand. Like the watchdog it asks for a retry and never fails. */
+class MaterialisationWorker(
+    context: Context,
+    params: WorkerParameters,
+) : Worker(context, params) {
+    override fun doWork(): Result =
+        try {
+            WorkEntryPoint.passes(applicationContext).materialisation.run()
+            Result.success()
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: RuntimeException,
+        ) {
+            Log.e(TAG, "materialisation failed: ${e.javaClass.simpleName}")
+            Result.retry()
+        }
+
+    private companion object {
+        const val TAG = "MomTimeWork"
+    }
+}
+
+/**
+ * Enqueues the work (ADR 0057). Every call is safe to repeat: the periodic jobs are unique and keep the one
+ * that exists, so enqueueing again at every start never resets a timer.
+ */
+object Work {
+    const val WATCHDOG = "momtime.watchdog"
+    const val MATERIALISE_DAILY = "momtime.materialise.daily"
+    const val MATERIALISE_NOW = "momtime.materialise.now"
+
+    /** `WorkManager`'s floor for a periodic job. */
+    const val WATCHDOG_PERIOD_MINUTES = 15L
+    const val MATERIALISE_PERIOD_HOURS = 24L
+
+    /** The watchdog at the 15 minute floor. KEEP: an existing job is left alone, so its timer is not reset. */
+    fun scheduleWatchdog(workManager: WorkManager) {
+        workManager.enqueueUniquePeriodicWork(
+            WATCHDOG,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<WatchdogWorker>(WATCHDOG_PERIOD_MINUTES, TimeUnit.MINUTES).build(),
+        )
+    }
+
+    /** The daily materialisation. KEEP, for the same reason. */
+    fun scheduleDailyMaterialisation(workManager: WorkManager) {
+        workManager.enqueueUniquePeriodicWork(
+            MATERIALISE_DAILY,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<MaterialisationWorker>(MATERIALISE_PERIOD_HOURS, TimeUnit.HOURS).build(),
+        )
+    }
+
+    /**
+     * One materialisation run now. The template edit path (Phase 3) calls this after an edit. A run that is
+     * already going when the edit lands may have read the old template, so a new request is appended after
+     * it, and replaces one that failed or was cancelled. Not REPLACE: that would cancel a run in progress.
+     */
+    fun enqueueMaterialisation(workManager: WorkManager) {
+        workManager.enqueueUniqueWork(
+            MATERIALISE_NOW,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            OneTimeWorkRequestBuilder<MaterialisationWorker>().build(),
+        )
+    }
+
+    /** The two periodic jobs, for the application's start. Each runs once at once when it is first enqueued. */
+    fun scheduleAll(context: Context) {
+        val workManager = WorkManager.getInstance(context)
+        scheduleWatchdog(workManager)
+        scheduleDailyMaterialisation(workManager)
+    }
+}

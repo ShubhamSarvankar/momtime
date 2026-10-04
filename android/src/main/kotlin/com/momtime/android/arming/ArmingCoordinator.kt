@@ -34,11 +34,12 @@ sealed interface EnsureResult {
  *
  * Exactly one alarm is armed at a time, across occurrences (ADR 0017). Request codes are per occurrence, so
  * arming a different occurrence's rung would not replace the alarm already armed; when the head moves to
- * another occurrence the previous alarm is cancelled explicitly, from the armed record.
+ * another occurrence the previous alarm is cancelled explicitly, from the armed record. When nothing is
+ * pending the armed alarm is cancelled and the record cleared.
  *
- * Selection reads the record of rungs that have fired (the count of `ALARM_FIRED` events), never a
- * comparison of rung instants with the time (golden scenario 14), and only the channels the device
- * delivers (decision 14).
+ * Selection reads the record of rungs that have fired (the `ALARM_FIRED` events), never a comparison of rung
+ * instants with the time (golden scenario 14), and only the channels the device delivers (decision 14). A
+ * rung found overdue beyond the catch up window is skipped, not rung (ADR 0056).
  *
  * `ALARM_SCHEDULED` is appended when a rung is first armed or the expected rung changes, and never on a
  * refresh (decision 6). Neither it nor anything here changes an occurrence's state (invariant 3).
@@ -51,11 +52,25 @@ class ArmingCoordinator internal constructor(
     private val resolver: CapabilityResolver,
     private val bootCount: () -> Long,
 ) {
+    /**
+     * The rung the domain says is next as of now: what the armed alarm should be. The watchdog compares what it
+     * finds with this, and [ensureArmed] arms it.
+     */
+    internal fun expected(): RungSelection? = ArmingSelection.next(candidates.pending(), DEVICE_CHANNELS, log.now())
+
+    /**
+     * Runs [block] while no other pass can arm. The fire path and the watchdog run inside it, so a watchdog
+     * pass never reads the half done state of a fire that has written `ALARM_FIRED` and not yet armed the next
+     * rung, and takes that for a lost alarm.
+     */
+    @Synchronized
+    internal fun <T> exclusive(block: () -> T): T = block()
+
     @Synchronized
     fun ensureArmed(): EnsureResult {
         // Capability is resolved at runtime, at the start of every pass, never inferred or remembered.
         resolver.resolve()
-        val selection = ArmingSelection.next(candidates.pending(), DEVICE_CHANNELS)
+        val selection = expected()
         val previous = armed.current()
         // The head moved to another occurrence, or there is none: the alarm already armed is cancelled
         // by its slot, because arming another slot would not replace it.

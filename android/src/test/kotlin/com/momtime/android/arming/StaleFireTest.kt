@@ -87,6 +87,60 @@ class StaleFireTest {
         assertEquals((t0 + 10.minutes).toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
     }
 
+    // The platform may deliver the same alarm twice (a retry, a process restart mid broadcast). The second delivery
+    // must not advance the fired record a second time: a second ALARM_FIRED would skip a rung, and a second
+    // hand over would ring twice.
+    @Test
+    fun `a duplicate fire is absorbed`() {
+        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
+        fixture.clock.now = t0
+        fixture.coordinator.ensureArmed()
+
+        val first = fixture.handler.onFire(31, t0)
+        val armedAfterFirst = fixture.shapes()
+        val second = fixture.handler.onFire(31, t0)
+
+        assertTrue(first is FireOutcome.Fired)
+        assertEquals(FireOutcome.NotExpected, second)
+        assertEquals("exactly one ALARM_FIRED", 1, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
+        assertEquals("handed over once", 1, fixture.delivery.delivered.size)
+        assertEquals("the next rung is unchanged", armedAfterFirst, fixture.shapes())
+        assertEquals((t0 + 10.minutes).toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
+        // And the rung after the duplicate is still the second one: it fires as the second, not the third.
+        fixture.clock.now = t0 + 10.minutes
+        assertTrue(fixture.handler.onFire(31, t0 + 10.minutes) is FireOutcome.Fired)
+        assertEquals(2, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
+    }
+
+    // ADR 0056: the catch up window applies when an alarm fires, too. This one was armed for t0 and fired 31 minutes
+    // late (a Tier 1 alarm that Doze deferred). It is a leftover: nothing is written, nothing is delivered, and the
+    // rung that is still within the window is the one armed next.
+    @Test
+    fun `an alarm that fires beyond the window is a leftover`() {
+        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
+        fixture.clock.now = t0 - 1.hours
+        fixture.coordinator.ensureArmed()
+        fixture.clock.now = t0 + 31.minutes
+        val logBefore = fixture.eventLog("a")
+
+        val outcome = fixture.handler.onFire(31, t0)
+
+        assertEquals(FireOutcome.NotExpected, outcome)
+        assertEquals("no ALARM_FIRED", 0, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
+        // The only thing written is the schedule of the rung that is armed next, because the expected rung changed.
+        assertEquals(
+            listOf(EventType.ALARM_SCHEDULED to "a"),
+            fixture.eventDelta("a", before = logBefore),
+        )
+        assertEquals("nothing delivered", emptyList<FiredRung>(), fixture.delivery.delivered)
+        assertEquals(
+            "the repeat rung, 21 minutes late, is armed for now",
+            fixture.clock.now.toEpochMilliseconds(),
+            fixture.alarms().single().triggerAtMs,
+        )
+        assertEquals(t0 + 10.minutes, fixture.armed.current()?.rungInstant)
+    }
+
     @Test
     fun `a spent ladder writes nothing`() {
         fixture.seed("a", Criticality.GENTLE, t0, slot = 31)

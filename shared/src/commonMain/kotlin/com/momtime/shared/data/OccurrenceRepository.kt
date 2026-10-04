@@ -47,6 +47,9 @@ interface OccurrenceRepository {
 
     fun findPending(): List<Occurrence>
 
+    /** Every occurrence that is not terminal: `PENDING` and `SNOOZED`. What `Reconcile` reads. */
+    fun findOpen(): List<Occurrence>
+
     fun findForTemplate(templateId: String): List<Occurrence>
 
     fun findInWindow(
@@ -137,6 +140,12 @@ class SqlDelightOccurrenceRepository(
     override fun findPending(): List<Occurrence> =
         database.occurrenceQueries
             .selectPendingOccurrences()
+            .executeAsList()
+            .map { it.toDomain() }
+
+    override fun findOpen(): List<Occurrence> =
+        database.occurrenceQueries
+            .selectOpenOccurrences()
             .executeAsList()
             .map { it.toDomain() }
 
