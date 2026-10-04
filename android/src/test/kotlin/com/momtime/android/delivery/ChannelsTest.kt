@@ -48,10 +48,10 @@ class ChannelsTest {
         ShadowSettings.setCanDrawOverlays(false)
     }
 
-    // Split by criticality, never by task type. Critical and Standard are importance high, because a heads up and a
-    // full screen intent need it; Gentle is low, and is where every silent presentation goes.
+    // Split by criticality, never by task type, plus one for what arrives silently (ADR 0064). Critical and Standard
+    // are importance high, because a heads up and a full screen intent need it; Gentle and Quiet notices are low.
     @Test
-    fun `there are three channels, one for each criticality`() {
+    fun `there are four channels, three by criticality and one for silent notices`() {
         NotificationChannels.ensure(context)
 
         fun channel(id: String): NotificationChannel = checkNotNull(manager.getNotificationChannel(id))
@@ -64,7 +64,22 @@ class ChannelsTest {
             AudioAttributes.USAGE_ALARM,
             channel(NotificationChannels.CRITICAL).audioAttributes.usage,
         )
-        assertEquals(3, manager.notificationChannels.size)
+        assertEquals(
+            "Quiet notices is importance low: no sound, no heads up",
+            NotificationManager.IMPORTANCE_LOW,
+            channel(NotificationChannels.QUIET).importance,
+        )
+        assertNull("Quiet notices makes no sound of its own", channel(NotificationChannels.QUIET).sound)
+        assertEquals(4, manager.notificationChannels.size)
+    }
+
+    @Test
+    fun `quiet notices is not gentle`() {
+        assertTrue(NotificationChannels.QUIET != NotificationChannels.GENTLE)
+        assertTrue(
+            "no criticality is presented on the quiet channel",
+            Criticality.entries.none { NotificationChannels.idFor(it) == NotificationChannels.QUIET },
+        )
     }
 
     @Test

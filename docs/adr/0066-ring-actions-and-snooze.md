@@ -1,0 +1,42 @@
+# 0066. Acknowledge, snooze and skip, and a snooze that is not a rung
+
+Date: 2026-10-04
+Status: Accepted
+
+Decided by Claude (technical review) in the PR 5b prompt (the actions go through the domain command API and write exactly their own event; snooze is armed through `ensureArmed` and the watchdog repairs it; the snooze's fire must not consume a ladder rung, and how the two are told apart is left to the implementation). The design below is the implementing session's, for review; the one change to shared vocabulary is called out. It builds on ADR 0053 (`ensureArmed` and the fire path), ADR 0056 (a late rung is presented quietly), ADR 0062 (the ring session) and the snooze rules of `ARCHITECTURE.md` section 4.5.
+
+## Decision
+
+**Her three actions are one command to the domain.** `OccurrenceActionCommand` (in `shared`) takes `ACKNOWLEDGE`, `SNOOZE` or `SKIP` for an occurrence and writes exactly one event and the state change that goes with it, in one transaction (`OccurrenceRepository.transition`, invariant 3): `COMPLETED` and the state `COMPLETED`; `SKIPPED` and `SKIPPED`; `SNOOZED` carrying its number (the first is 1) and `SNOOZED`. Each is a user event with no other payload. Which actions are available is `OccurrenceActions.available`, a pure function in the engine that asks `SnoozePolicy`: a terminal occurrence has none; snooze is not available after the third, or if it would end at or after the next materialised occurrence of the same template (golden scenario 4). An action that is not available is refused with `NotAvailable` and writes nothing, never silently ignored, and the ring screen and the notification stop offering it. The snooze duration is her setting (`snoozeDurationMinutes`, 10 by default). The ring UI package cannot name the command or any repository (`verifyRingUiBoundary`); the screen dispatches to its host, which dispatches here.
+
+**The caller then calls `ensureArmed`, inside the exclusion of the fire path and the watchdog,** so neither reads the half done state. The occurrence leaves the ring session and its notification is cancelled; acting on one leaves the others ringing, and when the last one in the session is acted on the session ends and the ringer, the sound and the vibration stop. Stopping the sound still writes nothing.
+
+**A snoozed occurrence is armed through the same entry point, by the end of its snooze.** Selection now reads the open occurrences (pending and snoozed), and an occurrence with a running snooze has one thing armed for it: the snooze's end, carried as a `RING` rung at that instant (`ArmCandidate.snoozeEnd`, `RungSelection.snoozeWake`). The watchdog therefore repairs a lost snooze alarm like any other, from the same evidence (a missing record, a missing `PendingIntent`, a boot, an update, an overdue instant). Request codes are still the occurrence's slot.
+
+**The snooze's fire is told apart from a rung's by its own event.** This is the one change to shared vocabulary: a new event type, **`SNOOZE_ENDED`**, a system event with no payload, written when a snooze's alarm fires. It is not `ALARM_FIRED`, because the count of `ALARM_FIRED` events is the record of ladder rungs that have fired (ADR 0053) and a snooze is not a rung: counting it would make the next real rung vanish. A snooze is running while the occurrence is `SNOOZED` and fewer `SNOOZE_ENDED` than `SNOOZED` events exist; each snooze ends exactly once, so the two counts are the record, and no instant is compared with the clock (scenario 14's rule). The end of the running snooze is the latest `SNOOZED` event's timestamp plus her snooze duration, read when asked, so no column holds it.
+
+There is **no schema change**: `event_type` is a text column with no `CHECK`, and the new type carries no column (`allowedColumns` gives it none, which the decode guard of ADR 0052 enforces). The server mirror gains nothing to store beyond an event name. `ARCHITECTURE.md` section 3.3 lists the type. Adherence reductions read terminal events only and are unchanged.
+
+While a snooze runs the ladder waits. A rung that comes due during the snooze (the CRITICAL repeat is five minutes in, a snooze is ten) is not armed until the snooze has ended; then the count of rungs that really fired gives it as the next, overdue, and the watchdog and `ensureArmed` arm it for now, as ADR 0056 says for any overdue rung. It fires after the snooze's end and, the occurrence being already ringing, continues that ring by ADR 0062's rule: no second ringer start. Grace still applies while snoozed: `Reconcile` reads snoozed occurrences, so a snooze that would end past the grace finds the occurrence `MISSED` at its fire, which delivers nothing and writes no `SNOOZE_ENDED`.
+
+Judgment: **the snooze's end is delivered like any ring.** It goes through the delivery decision, so it honours quiet hours and the budget, and counts as a ring grade interruption when it rings, because it interrupts her again. A snooze is at most three per occurrence, so it is bounded.
+
+**Notification buttons.** A reminder notification, and the ring notification while exactly one occurrence is ringing, carry that occurrence's offered actions as buttons. Each is a `PendingIntent` that is immutable and explicit, to `RingActionReceiver`, which is not exported; it names the occurrence by `alarmSlot` and not by id, and its request code derives from the slot (`slot * 3 + the action's position`, invariant 10). The receiver works off the main thread, always finishes, and logs only the exception's class. With several occurrences ringing the shared notification has no buttons and the screen has each one's own. **No notification sets a delete intent**: swiping one away writes nothing and the next rung still fires (ARCHITECTURE.md section 4.6).
+
+What an item offers is decided when it joins the session and refreshed whenever the domain refuses an action. A stale button (an action taken elsewhere, a grace that ended) is refused, the offered actions are refreshed on the screen and the notification, and nothing is written.
+
+Limits: only the materialised window (48 hours) is searched for the next occurrence of a template, so a template whose next occurrence is beyond it is not limited by it, and a snooze of minutes cannot reach it. Changing her snooze duration while a snooze is running moves its end when the next pass reads it.
+
+## Alternatives considered
+
+- **Write `ALARM_FIRED` for the snooze's fire and subtract.** Rejected: a snooze fire and a rung that came due during the snooze are both `ALARM_FIRED` after the `SNOOZED`, and nothing in the log would tell them apart.
+- **A payload on `ALARM_FIRED`.** Rejected: payload columns are sparse nullable columns tied to a type by `allowedColumns`; a flag would need a column and a migration for a fact a new event type states directly.
+- **A snooze marker in the android store.** Rejected: the device log is the record of authority, the store is not backed up, and after a restore the marker would be gone while the log said the snooze was running.
+- **A `snoozed_until` column on `occurrence`.** Rejected: a schema change and a second place that the log already answers.
+- **Compare the snooze's end with the clock to learn whether it has fired.** Rejected by scenario 14: a clock set backward would bring a snooze back.
+- **Let the rungs that come due during a snooze fire during it.** Rejected: a snooze is a request not to be interrupted for its length.
+- **Buttons for every occurrence on the shared notification.** Not possible: a notification holds three actions.
+
+## Evidence
+
+Shared: `OccurrenceActionsTest`, `OccurrenceActionCommandTest` (the exact event and state delta of each action, the cap, the collision, the setting, refusal writing nothing, the running snooze read from the log), `ArmingSelectionTest` (a running snooze hides the ladder; after it the count gives the next rung), `AlarmEventsTest`. Android: `RingActionsTest` (the exact delta from the screen and from the buttons, several occurrences, the limit and the collision on the screen and refused, swiping away, the `PendingIntent`s, a stale button, opening the screen with no session), `SnoozeTest` (armed by the snooze's end, repaired by the watchdog, the snooze's fire consuming no rung, the continuation, grace while snoozed), `AndroidStoreMigrationTest`. Mutations are in `phase-2-traceability.md`. Nothing here ran on a device (`MANUAL_CHECKS.md` P2-23 and P2-24).

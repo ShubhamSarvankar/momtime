@@ -3,9 +3,11 @@ package com.momtime.android.delivery
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
+import android.graphics.drawable.Icon
 import com.momtime.android.R
 import com.momtime.android.ring.RingActivity
 import com.momtime.android.ring.RingItem
+import com.momtime.shared.engine.OccurrenceAction
 
 /**
  * The notifications the delivery paths post (ADR 0060). Their text is hers where it is hers: a title, a dosage
@@ -59,6 +61,8 @@ internal object RingNotifications {
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
         if (fullScreenIntent) builder.setFullScreenIntent(screen, true)
         describe(builder, context, items)
+        // One occurrence's buttons fit on its notification. With several the screen has each one's own.
+        if (items.size == 1) addActions(builder, context, items.single())
         return builder.build()
     }
 
@@ -77,6 +81,7 @@ internal object RingNotifications {
                 .setAutoCancel(true)
                 .setContentIntent(ringScreen(context))
         describe(builder, context, listOf(item))
+        addActions(builder, context, item)
         if (late) builder.setSubText(context.getString(R.string.notification_late_text))
         return builder.build()
     }
@@ -92,6 +97,34 @@ internal object RingNotifications {
             .setStyle(Notification.BigTextStyle().bigText(context.getString(R.string.reset_notification_text)))
             .setAutoCancel(true)
             .build()
+
+    /**
+     * The buttons the domain offered for [item] (ADR 0066), each an immutable explicit broadcast to a receiver that
+     * is not exported ([RingActionIntents]). A notification sets no delete intent: swiping it away writes nothing,
+     * because dismissing the alert is not completion.
+     */
+    private fun addActions(
+        builder: Notification.Builder,
+        context: Context,
+        item: RingItem,
+    ) {
+        val icon = Icon.createWithResource(context, R.drawable.ic_notification)
+        for (
+        (action, label) in
+        listOf(
+            OccurrenceAction.ACKNOWLEDGE to R.string.ring_action_acknowledge,
+            OccurrenceAction.SNOOZE to R.string.ring_action_snooze,
+            OccurrenceAction.SKIP to R.string.ring_action_skip,
+        )
+        ) {
+            if (action !in item.actions) continue
+            builder.addAction(
+                Notification.Action
+                    .Builder(icon, context.getString(label), RingActionIntents.pending(context, item.alarmSlot, action))
+                    .build(),
+            )
+        }
+    }
 
     private fun describe(
         builder: Notification.Builder,

@@ -45,6 +45,7 @@ internal fun allowedColumns(type: EventType): Set<EventColumn> =
         EventType.ALARM_FIRED,
         EventType.COMPLETED,
         EventType.COMPLETED_BACKFILLED,
+        EventType.SNOOZE_ENDED,
         EventType.SKIPPED,
         EventType.WATCHDOG_REPAIR,
         -> emptySet()

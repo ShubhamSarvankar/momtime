@@ -2,8 +2,11 @@
 <!--
     Auto Backup and device transfer on API 31 and above (ADR 0034, ADR 0044, ADR 0048).
 
-    An allow-list: only the shared database and its rollback journal are included, so a copy taken
-    while a transaction was hot is still recoverable. Everything else in the database directory is out,
+    An allow-list: the shared database and its rollback journal are included, so a copy taken while a
+    transaction was hot is still recoverable, and so is android's own settings file (momtime_android_settings.xml,
+    ADR 0065): her backup sound interval and per template vibration patterns are hers, android only, and
+    cannot be in the shared schema (invariant 5), so they travel in a file of their own. Everything else is out,
+    including everything else in the database directory,
     which is how the android store (momtime_android.db) stays on the device: it holds what the operating
     system did on this device and the alarm this device armed, and a restored phone has armed nothing.
     Lint rejects an exclude that is not under an include, so the store has no exclude of its own; a test
@@ -17,11 +20,13 @@
     <cloud-backup>
         <include domain="database" path="momtime.db" />
         <include domain="database" path="momtime.db-journal" />
+        <include domain="sharedpref" path="momtime_android_settings.xml" />
         <exclude domain="database" path="momtime.db.corrupt" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="momtime.db" />
         <include domain="database" path="momtime.db-journal" />
+        <include domain="sharedpref" path="momtime_android_settings.xml" />
         <exclude domain="database" path="momtime.db.corrupt" />
     </device-transfer>
 </data-extraction-rules>

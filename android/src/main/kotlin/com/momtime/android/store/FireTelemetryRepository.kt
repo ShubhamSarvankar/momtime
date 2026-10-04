@@ -22,6 +22,8 @@ data class FireTelemetry(
     val deliveryPath: String? = null,
     /** Whether the ringer service started: false when the platform refused it. Null if it was not attempted. */
     val ringerStarted: Boolean? = null,
+    /** Whether the alarm stream was muted (volume zero) at the fire: a ring she could not hear. Null if not read. */
+    val alarmStreamMuted: Boolean? = null,
 )
 
 /**
@@ -67,6 +69,7 @@ class SqlDelightFireTelemetryRepository(
                 boot_count = telemetry.bootCount,
                 delivery_path = telemetry.deliveryPath,
                 ringer_started = telemetry.ringerStarted?.toLong(),
+                alarm_stream_muted = telemetry.alarmStreamMuted?.toLong(),
             )
             true
         }
@@ -95,6 +98,7 @@ class SqlDelightFireTelemetryRepository(
                     bootCount = it.boot_count,
                     deliveryPath = it.delivery_path,
                     ringerStarted = it.ringer_started?.let { value -> value != 0L },
+                    alarmStreamMuted = it.alarm_stream_muted?.let { value -> value != 0L },
                 )
             }
         }

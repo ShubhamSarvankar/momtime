@@ -26,4 +26,13 @@ class AlarmEventsTest {
             AlarmEvents.watchdogRepair("e3", "occ", now),
         )
     }
+
+    // A snooze is not a rung: its end is its own event, so the count of ALARM_FIRED stays the count of rungs.
+    @Test
+    fun `a snooze ending is a system event of its own and not an ALARM_FIRED`() {
+        assertEquals(
+            Event("e4", "occ", EventType.SNOOZE_ENDED, now, null, EventSource.SYSTEM, EventPayload.None),
+            AlarmEvents.snoozeEnded("e4", "occ", now),
+        )
+    }
 }

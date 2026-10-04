@@ -14,6 +14,9 @@ import com.momtime.android.ring.RingItem
 interface RingerHost {
     val sound: AlarmSound
 
+    /** The vibration that goes with the sound, stopped with it. */
+    val vibration: AlarmVibration
+
     /** The occurrences the ring session covers now. */
     fun items(): List<RingItem>
 
@@ -37,8 +40,9 @@ object RingerEntryPoint {
 }
 
 /**
- * The ringer (ADR 0061): a foreground service of type `mediaPlayback`, started from the fire path under the
- * exact alarm exemption, that plays the alarm sound until it is stopped. It is not the alarm: `setAlarmClock` is,
+ * The ringer (ADR 0061, ADR 0065): a foreground service of type `mediaPlayback`, started from the fire path under
+ * the exact alarm exemption, that plays the alarm sound, and vibrates with the template's pattern, until it is
+ * stopped. It is not the alarm: `setAlarmClock` is,
  * and this is what a fired alarm starts. It writes nothing. Stopping the sound is not completion.
  *
  * Boot never starts it (CLAUDE.md): on Android 15 a boot receiver cannot start a `mediaPlayback` foreground
@@ -64,6 +68,8 @@ class RingerService : Service() {
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID).orEmpty()
         val channelId = intent.getStringExtra(EXTRA_CHANNEL).orEmpty()
         val fullScreen = intent.getBooleanExtra(EXTRA_FULL_SCREEN, false)
+        val vibration =
+            intent.getStringExtra(EXTRA_VIBRATION)?.let(VibrationPattern::fromName) ?: VibrationPattern.URGENT
         try {
             startForeground(
                 RingNotifications.RING_ID,
@@ -76,6 +82,7 @@ class RingerService : Service() {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
             )
             host.onSoundStarted(eventId, host.sound.start())
+            host.vibration.start(vibration)
         } catch (e: RuntimeException) {
             Log.e(TAG, "the ringer could not start: ${e.javaClass.simpleName}")
             host.onRingerRefused(eventId, channelId, fullScreen)
@@ -85,10 +92,9 @@ class RingerService : Service() {
     }
 
     override fun onDestroy() {
-        RingerEntryPoint.provider
-            ?.invoke()
-            ?.sound
-            ?.stop()
+        val host = RingerEntryPoint.provider?.invoke()
+        host?.sound?.stop()
+        host?.vibration?.stop()
         super.onDestroy()
     }
 
@@ -97,6 +103,7 @@ class RingerService : Service() {
         private const val EXTRA_CHANNEL = "com.momtime.android.extra.CHANNEL"
         private const val EXTRA_FULL_SCREEN = "com.momtime.android.extra.FULL_SCREEN"
         private const val EXTRA_EVENT_ID = "com.momtime.android.extra.EVENT_ID"
+        private const val EXTRA_VIBRATION = "com.momtime.android.extra.VIBRATION"
         private const val TAG = "MomTimeRinger"
 
         internal fun startIntent(
@@ -108,5 +115,6 @@ class RingerService : Service() {
                 .putExtra(EXTRA_CHANNEL, request.channelId)
                 .putExtra(EXTRA_FULL_SCREEN, request.fullScreenIntent)
                 .putExtra(EXTRA_EVENT_ID, request.eventId)
+                .putExtra(EXTRA_VIBRATION, request.vibration.name)
     }
 }

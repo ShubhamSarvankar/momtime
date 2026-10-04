@@ -28,14 +28,24 @@ import com.momtime.android.delivery.OverlayLauncher
 import com.momtime.android.delivery.PlatformOverlayLauncher
 import com.momtime.android.delivery.PlatformRingerLauncher
 import com.momtime.android.delivery.RingController
+import com.momtime.android.delivery.RingDomain
 import com.momtime.android.delivery.RingerLauncher
 import com.momtime.android.ring.RingSessions
 import com.momtime.android.ringer.AlarmSound
-import com.momtime.android.ringer.MediaPlayerAlarmSound
+import com.momtime.android.ringer.AlarmVibration
+import com.momtime.android.ringer.MainLooperScheduler
+import com.momtime.android.ringer.MediaPlayers
+import com.momtime.android.ringer.PlatformVibration
+import com.momtime.android.ringer.RingSound
+import com.momtime.android.ringer.SoundPlayers
+import com.momtime.android.ringer.SoundScheduler
+import com.momtime.android.ringer.VolumeRamp
+import com.momtime.android.settings.AndroidSettings
 import com.momtime.android.work.MaterialisationPass
 import com.momtime.android.work.WorkPasses
 import com.momtime.shared.data.DeliveryPolicyCommand
 import com.momtime.shared.data.MaterialiseCommand
+import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.ReconcileCommand
 import com.momtime.shared.domain.AlarmScheduler
 import kotlinx.datetime.TimeZone
@@ -53,11 +63,15 @@ internal fun platformBootCount(context: Context) =
  * with [enabled] false the graph hands fired rungs to a [RecordingDeliveryPort], which is what the tests of the
  * fire path itself want.
  */
+@Suppress("LongParameterList")
 internal class DeliveryWiring(
     val enabled: Boolean = false,
     val ringer: RingerLauncher? = null,
     val overlay: OverlayLauncher? = null,
     val sound: AlarmSound? = null,
+    val vibration: AlarmVibration? = null,
+    val players: SoundPlayers? = null,
+    val scheduler: SoundScheduler? = null,
     val zone: () -> TimeZone = { TimeZone.currentSystemDefault() },
     val fullScreenIntentApi: (() -> Boolean)? = null,
 )
@@ -89,11 +103,23 @@ internal fun armingModule(
         single<AlarmScheduler> { AndroidAlarmScheduler(context, get(), get(), get()) }
         single { RecordingDeliveryPort() }
         single { RingSessions() }
-        single<AlarmSound> { delivery.sound ?: MediaPlayerAlarmSound(context) }
+        single { AndroidSettings(context) }
+        single<AlarmSound> {
+            delivery.sound
+                ?: RingSound(
+                    context,
+                    delivery.players ?: MediaPlayers(context),
+                    delivery.scheduler ?: MainLooperScheduler(),
+                    VolumeRamp(),
+                ) { get<AndroidSettings>().backupSoundDelay() }
+        }
+        single<AlarmVibration> { delivery.vibration ?: PlatformVibration(context) }
+        single { OccurrenceActionCommand(get(), get(), get(), newId) }
         single<RingerLauncher> { delivery.ringer ?: PlatformRingerLauncher(context) }
         single<OverlayLauncher> { delivery.overlay ?: PlatformOverlayLauncher(context) }
-        single { RingController(context, get(), get(), get(), get()) }
-        single { DeliveryServices(get(), get(), get(), get()) }
+        single { RingDomain(get(), get(), get(), get()) { get<AlarmLog>().now() } }
+        single { RingController(context, get(), get(), get(), get(), get(), get()) }
+        single { DeliveryServices(get(), get(), get(), get(), get(), get()) { get<AlarmLog>().now() } }
         single<DeliveryPort> {
             if (delivery.enabled) {
                 AndroidDeliveryPort(context, get(), get(), get(), get(), get())
@@ -103,7 +129,7 @@ internal fun armingModule(
         }
         single { DeliveryPolicyCommand(get(), get(), delivery.zone) }
         single { DeliveryDecider(get(), get()) }
-        single { ArmCandidates(get(), get(), get()) }
+        single { ArmCandidates(get(), get(), get(), get()) }
         single { AlarmLog(get(), get(), newId) }
         single { PlatformProbes(probe, bootCount, appVersion) }
         single { ArmingCoordinator(get(), get(), get(), get(), get(), get()) }

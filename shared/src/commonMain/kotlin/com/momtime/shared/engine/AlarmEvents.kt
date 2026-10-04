@@ -28,6 +28,18 @@ object AlarmEvents {
     ): Event = systemEvent(id, occurrenceId, EventType.ALARM_FIRED, now)
 
     /**
+     * A snooze's alarm fired: the snooze is over. It is not `ALARM_FIRED`, whose count is the record of ladder
+     * rungs that have fired, so ending a snooze never consumes a rung. Each snooze ends exactly once, so the
+     * count of these against the count of `SNOOZED` is the record of whether a snooze is still running. It changes
+     * no state: the occurrence stays `SNOOZED` until she acts or its grace ends.
+     */
+    fun snoozeEnded(
+        id: String,
+        occurrenceId: String,
+        now: Instant,
+    ): Event = systemEvent(id, occurrenceId, EventType.SNOOZE_ENDED, now)
+
+    /**
      * The watchdog found positive evidence that the armed alarm was lost and re armed it. Written only on that
      * evidence, never on a pass that found everything correct (golden scenario 17). It names the occurrence whose
      * rung was being armed, and changes no state.

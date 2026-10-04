@@ -173,7 +173,7 @@ class DeliveryTest {
         assertEquals(Presentation.SILENT_NOTICE, outcome.rung.presentation)
         assertEquals("SILENT_NOTICE", path("a"))
         f.assertNothingRang()
-        assertEquals(NotificationChannels.GENTLE, f.channelOf(31))
+        assertEquals(NotificationChannels.QUIET, f.channelOf(31))
         assertEquals(0, f.budget.current().ringCount)
         assertNotNull(f.posted(31))
     }
@@ -188,8 +188,40 @@ class DeliveryTest {
 
         assertEquals("SILENT", path("a"))
         f.assertNothingRang()
-        assertEquals(NotificationChannels.GENTLE, f.channelOf(31))
+        assertEquals(NotificationChannels.QUIET, f.channelOf(31))
         assertEquals("a silent notification does not spend the budget", 0, f.budget.current().ringCount)
+    }
+
+    // ADR 0064: every silent presentation is on the Quiet notices channel, for every criticality, and never on
+    // Gentle, which is hers to mute. A late dose of a critical medicine must not arrive on a channel she may have
+    // muted. The three silent presentations: beyond the catch up window, quiet hours, and the spent budget.
+    @Test
+    fun `every silent presentation is posted on the quiet channel and never on gentle`() {
+        // Beyond the window, for each criticality.
+        for ((index, criticality) in Criticality.entries.withIndex()) {
+            val slot = 41 + index
+            val o = f.due("late-$index", criticality, slot = slot)
+            f.fire(o, now = o.scheduledInstant + 31.minutes)
+            assertEquals("late $criticality", NotificationChannels.QUIET, f.channelOf(slot))
+        }
+        // Quiet hours (STANDARD and GENTLE are silenced; CRITICAL overrides them).
+        f.settings.updateQuietHours(QuietHours(LocalTime(7, 0), LocalTime(9, 0)))
+        for ((index, criticality) in listOf(Criticality.STANDARD, Criticality.GENTLE).withIndex()) {
+            val slot = 51 + index
+            val o = f.due("quiet-$index", criticality, slot = slot)
+            f.fire(o)
+            assertEquals("quiet hours $criticality", NotificationChannels.QUIET, f.channelOf(slot))
+        }
+        // The budget spent: STANDARD is silenced.
+        f.settings.updateQuietHours(null)
+        f.settings.updateRingGradeDailyBudget(1)
+        val first = f.due("first", Criticality.STANDARD, slot = 61)
+        f.fire(first)
+        sessions.end()
+        val over = f.due("over", Criticality.STANDARD, scheduled = first.scheduledInstant + 1.minutes, slot = 62)
+        f.fire(over, now = over.scheduledInstant)
+        assertEquals("budget", "SILENT", path("over"))
+        assertEquals(NotificationChannels.QUIET, f.channelOf(62))
     }
 
     @Test

@@ -89,4 +89,39 @@ class ArmingSelectionTest {
         assertEquals("a", ArmingSelection.next(listOf(a, b), device)?.occurrenceId)
         assertEquals("a", ArmingSelection.next(listOf(b, a), device)?.occurrenceId)
     }
+
+    // A running snooze hides the ladder: the only thing armed for the occurrence is the snooze's end, even though
+    // the next rung (5 minutes in) falls inside the snooze.
+    @Test
+    fun `a running snooze is the only thing armed for its occurrence`() {
+        val snoozed = candidate("a", 1, t0, Criticality.CRITICAL, fired = 1).copy(snoozeEnd = t0 + 11.minutes)
+        val selection = checkNotNull(ArmingSelection.next(listOf(snoozed), device))
+        assertEquals(EscalationRung(t0 + 11.minutes, Channel.RING), selection.rung)
+        assertEquals(true, selection.snoozeWake)
+        assertEquals(EscalationRung(t0 + 11.minutes, Channel.RING), ArmingSelection.expectedFor(snoozed, device))
+    }
+
+    // The snooze consumed no rung: once it has ended the same count of fired rungs gives the same next rung, which
+    // is now overdue and armed for now by the caller.
+    @Test
+    fun `after the snooze has ended the next rung is the one the count says`() {
+        val ended = candidate("a", 1, t0, Criticality.CRITICAL, fired = 1)
+        val selection = checkNotNull(ArmingSelection.next(listOf(ended), device))
+        assertEquals(EscalationRung(t0 + 5.minutes, Channel.RING_REPEAT), selection.rung)
+        assertEquals(false, selection.snoozeWake)
+    }
+
+    // The snooze of one occurrence does not hold back another occurrence's rung that is due earlier.
+    @Test
+    fun `a snooze does not hold back an earlier rung of another occurrence`() {
+        val snoozed = candidate("a", 1, t0, Criticality.STANDARD, fired = 1).copy(snoozeEnd = t0 + 20.minutes)
+        val other = candidate("b", 2, t0 + 3.minutes, Criticality.STANDARD)
+        assertEquals("b", ArmingSelection.next(listOf(snoozed, other), device)?.occurrenceId)
+    }
+
+    @Test
+    fun `a caller that does not deliver RING has no snooze end to arm`() {
+        val snoozed = candidate("a", 1, t0, Criticality.STANDARD).copy(snoozeEnd = t0 + 20.minutes)
+        assertNull(ArmingSelection.next(listOf(snoozed), setOf(Channel.RING_REPEAT)))
+    }
 }

@@ -25,6 +25,7 @@ enum class EventType {
     COMPLETED,
     COMPLETED_BACKFILLED,
     SNOOZED,
+    SNOOZE_ENDED,
     SKIPPED,
     MISSED,
     MISSION_VERIFIED,

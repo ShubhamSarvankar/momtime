@@ -6,6 +6,7 @@ import com.momtime.android.arming.AlarmFireHandler
 import com.momtime.android.arming.AlarmReceiver
 import com.momtime.android.arming.AppStart
 import com.momtime.android.arming.ArmingEntryPoint
+import com.momtime.android.delivery.NotificationActionEntryPoint
 import com.momtime.android.delivery.NotificationChannels
 import com.momtime.android.delivery.RingController
 import com.momtime.android.di.momTimeModules
@@ -35,6 +36,7 @@ open class MomTimeApplication : Application() {
         val controller = koin.get<RingController>()
         RingEntryPoint.provider = { controller }
         RingerEntryPoint.provider = { controller }
+        NotificationActionEntryPoint.provider = { controller }
         WorkEntryPoint.provider = { koin.get<WorkPasses>() }
         startWork()
         AlarmReceiver.executor.execute {

@@ -714,6 +714,10 @@ val permissionAllowlist =
         // background when a full screen intent is not available. A special permission, reviewed by Play, requested
         // only when it is needed (PR 8); never the ringing mechanism.
         "uses-permission|android.permission.SYSTEM_ALERT_WINDOW|",
+        // From the ring's vibration (ADR 0065, PR 5b). VIBRATE lets the ringer vibrate with the template's pattern
+        // while the sound plays, with the alarm usage. A normal permission granted at install; it is not a Play
+        // declaration and it never lets the app vibrate without the ring.
+        "uses-permission|android.permission.VIBRATE|",
     )
 
 /** What the permission check's self-test fixtures are checked against: fixed, so the real list can grow. */

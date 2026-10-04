@@ -4,12 +4,14 @@ import android.content.Context
 import android.content.Intent
 import com.momtime.android.ring.RingActivity
 import com.momtime.android.ringer.RingerService
+import com.momtime.android.ringer.VibrationPattern
 
 /** What the ringer service is asked to do, and with what. */
 internal data class RingerRequest(
     val channelId: String,
     val fullScreenIntent: Boolean,
     val eventId: String,
+    val vibration: VibrationPattern = VibrationPattern.URGENT,
 )
 
 /**
