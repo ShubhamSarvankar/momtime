@@ -48,6 +48,12 @@ class DeliveryTest {
 
     private fun path(occurrenceId: String) = f.telemetryOf(occurrenceId).deliveryPath
 
+    /** The one request the ringer was given, asserting there was one before reading it. */
+    private fun ringRequest(): RingerRequest {
+        assertEquals("the ringer was started once: ${f.ringer.starts}", 1, f.ringer.starts.size)
+        return f.ringer.starts.single()
+    }
+
     // Tier 3: full screen intent effective, exact, battery exempt. The ringer starts, asked to hold a notification
     // that launches the screen, on the channel of the occurrence's criticality.
     @Test
@@ -57,7 +63,7 @@ class DeliveryTest {
         val outcome = f.fire(a)
 
         assertTrue(outcome is FireOutcome.Fired)
-        val request = f.ringer.starts.single()
+        val request = ringRequest()
         assertEquals(NotificationChannels.STANDARD, request.channelId)
         assertTrue("a full screen intent while it is effective", request.fullScreenIntent)
         assertEquals("RING", path("a"))
@@ -76,7 +82,7 @@ class DeliveryTest {
 
         f.fire(a)
 
-        val request = f.ringer.starts.single()
+        val request = ringRequest()
         assertFalse("never a full screen intent while it is not effective", request.fullScreenIntent)
         assertEquals("HEADS_UP", path("a"))
         assertEquals("no overlay while it is not granted", 0, f.overlay.launches)
