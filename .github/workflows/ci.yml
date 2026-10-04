@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # A pull request gets one run, the pull_request one, which is the run the required checks attach to; main gets
+  # its own run when a merge lands. Running on every push as well made every pull request run twice (ADR 0063).
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -113,4 +116,4 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor :android:verifyManifestPermissions :android:selfTestVerifyManifestPermissions
+      - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor :android:verifyManifestPermissions :android:selfTestVerifyManifestPermissions :android:verifyRingUiBoundary :android:selfTestVerifyRingUiBoundary

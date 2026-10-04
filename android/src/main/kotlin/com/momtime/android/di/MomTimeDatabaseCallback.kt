@@ -21,8 +21,10 @@ class MomTimeDatabaseCallback(
     markerFile: File,
     clock: Clock,
     processEnd: ProcessEnd,
+    resetNotifier: ResetNotifier? = null,
 ) : AndroidSqliteDriver.Callback(schema) {
-    private val corruption = CorruptionHandler(markerFile, clock, processEnd = processEnd)
+    private val corruption =
+        CorruptionHandler(markerFile, clock, processEnd = processEnd, resetNotifier = resetNotifier)
 
     override fun onConfigure(db: SupportSQLiteDatabase) {
         super.onConfigure(db)

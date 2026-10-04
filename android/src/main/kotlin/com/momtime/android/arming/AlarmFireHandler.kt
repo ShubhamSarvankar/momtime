@@ -5,39 +5,55 @@ import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.engine.ArmingSelection
 import com.momtime.shared.engine.CatchUp
+import com.momtime.shared.engine.RungDelivery
 import kotlin.time.Instant
 
 /**
- * How a fired rung is to be presented (ADR 0056). [NORMAL] is "as policy says": a ring, or silent under quiet hours
- * or the interruption budget, which PR 5 decides. [SILENT_NOTICE] is a rung that fired beyond the catch up window:
- * a notification with no ring, no vibration and no heads up, so that nothing sounds hours late and nothing is
- * dropped.
+ * How a fired rung is to be presented (ADR 0056). [NORMAL] is "as the domain decided": a ring, or a silent
+ * notification under quiet hours or the interruption budget. [SILENT_NOTICE] is a rung that fired beyond the
+ * catch up window: a notification with no ring, no vibration and no heads up, so that nothing sounds hours
+ * late and nothing is dropped.
  */
 enum class Presentation { NORMAL, SILENT_NOTICE }
 
-/** The rung handed to delivery when an alarm fires, and how it is to be presented. */
+/**
+ * The rung handed to delivery when an alarm fires, and how it is to be presented. [policy] is the domain's
+ * decision for this rung (ring, or silent because of quiet hours or the budget, ADR 0060). [continuing] is true
+ * when the occurrence is already ringing: the ring in progress goes on, with no restart and no second screen
+ * (ADR 0062).
+ */
 data class FiredRung(
     val occurrenceId: String,
     val alarmSlot: Int,
     val rung: EscalationRung,
     val presentation: Presentation = Presentation.NORMAL,
+    val policy: RungDelivery = RungDelivery.RING,
+    val continuing: Boolean = false,
 )
 
 /**
- * Where a fired rung goes to be shown and heard. The ringer service, the notification and the ring screen
- * arrive in PR 5; until then [RecordingDeliveryPort] stands in, so the fire path is complete and testable.
+ * Where a fired rung goes to be shown and heard. [eventId] is the `ALARM_FIRED` event the fire wrote, which the
+ * device telemetry row is keyed by. [AndroidDeliveryPort][com.momtime.android.delivery.AndroidDeliveryPort] is the
+ * implementation in use; [RecordingDeliveryPort] stands in where a test wants to see only what the fire path
+ * handed over.
  */
 fun interface DeliveryPort {
-    fun deliver(rung: FiredRung)
+    fun deliver(
+        rung: FiredRung,
+        eventId: String,
+    )
 }
 
-/** Remembers what it was given. The delivery in use until PR 5. */
+/** Remembers what it was given. */
 class RecordingDeliveryPort : DeliveryPort {
     private val received = mutableListOf<FiredRung>()
 
     val delivered: List<FiredRung> get() = synchronized(received) { received.toList() }
 
-    override fun deliver(rung: FiredRung) {
+    override fun deliver(
+        rung: FiredRung,
+        eventId: String,
+    ) {
         synchronized(received) { received += rung }
     }
 }
@@ -67,8 +83,10 @@ sealed interface FireOutcome {
  *   delivers nothing. These are alarms left over from before a reset, a completion or a re arm, and
  *   ringing for them would ring for a medication she has already taken, or for one that does not exist;
  * - the expected rung writes `ALARM_FIRED` through the domain (the count of these is the record of what has
- *   fired) and is handed to delivery. Within the catch up window it is presented as policy says; beyond the
- *   window, and still within grace, it is presented as a silent notice (ADR 0056). This is the only place
+ *   fired) and is handed to delivery. Within the catch up window it is presented as the domain decides (a ring,
+ *   or silent under quiet hours or the budget, ADR 0060); beyond the window, and still within grace, it is a
+ *   silent notice (ADR 0056); and if its occurrence is already ringing the ring in progress continues
+ *   (ADR 0062). This is the only place
  *   the catch up decision is made: the watchdog and boot arm the earliest rung that has not fired, for now,
  *   and leave it to this.
  *
@@ -84,6 +102,7 @@ class AlarmFireHandler internal constructor(
     private val delivery: DeliveryPort,
     private val coordinator: ArmingCoordinator,
     private val reconcile: ReconcileCommand,
+    private val decider: DeliveryDecider,
 ) {
     fun onFire(
         slot: Int,
@@ -116,13 +135,24 @@ class AlarmFireHandler internal constructor(
         occurrence: Occurrence,
         rungInstant: Instant,
     ): FireOutcome {
-        val expected = ArmingSelection.expectedFor(candidates.of(occurrence), DEVICE_CHANNELS)
+        val candidate = candidates.of(occurrence)
+        val expected = ArmingSelection.expectedFor(candidate, DEVICE_CHANNELS)
         if (expected == null || expected.instant != rungInstant) return FireOutcome.NotExpected
-        log.fired(occurrence.id)
-        val presentation =
-            if (CatchUp.isWithinWindow(expected.instant, log.now())) Presentation.NORMAL else Presentation.SILENT_NOTICE
-        val fired = FiredRung(occurrence.id, occurrence.alarmSlot, expected, presentation)
-        delivery.deliver(fired)
+        val eventId = log.fired(occurrence.id)
+        val now = log.now()
+        val withinWindow = CatchUp.isWithinWindow(expected.instant, now)
+        val presentation = if (withinWindow) Presentation.NORMAL else Presentation.SILENT_NOTICE
+        val decision = decider.decide(occurrence.id, candidate.criticality, now, mayRing = withinWindow)
+        val fired =
+            FiredRung(
+                occurrence.id,
+                occurrence.alarmSlot,
+                expected,
+                presentation,
+                decision.policy,
+                decision.continuing,
+            )
+        delivery.deliver(fired, eventId)
         return FireOutcome.Fired(fired)
     }
 }

@@ -1,0 +1,6 @@
+-- Version 2 to 3 (Phase 2, PR 5): what the delivery did when an alarm fired. delivery_path is which path the
+-- fire took (RING, HEADS_UP, AUDIO_ONLY, PLAIN, SILENT_NOTICE or SILENT) and ringer_started is whether the ringer
+-- service started (0 when the platform refused it, which degrades to a notification). Both are null for a row
+-- written before this version (ADR 0048, ADR 0060).
+ALTER TABLE fire_telemetry ADD COLUMN delivery_path TEXT;
+ALTER TABLE fire_telemetry ADD COLUMN ringer_started INTEGER;

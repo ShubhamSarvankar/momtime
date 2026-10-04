@@ -6,7 +6,11 @@ import com.momtime.android.arming.AlarmFireHandler
 import com.momtime.android.arming.AlarmReceiver
 import com.momtime.android.arming.AppStart
 import com.momtime.android.arming.ArmingEntryPoint
+import com.momtime.android.delivery.NotificationChannels
+import com.momtime.android.delivery.RingController
 import com.momtime.android.di.momTimeModules
+import com.momtime.android.ring.RingEntryPoint
+import com.momtime.android.ringer.RingerEntryPoint
 import com.momtime.android.work.Work
 import com.momtime.android.work.WorkEntryPoint
 import com.momtime.android.work.WorkPasses
@@ -14,7 +18,8 @@ import org.koin.core.context.startKoin
 
 /**
  * Starts the graph once, when the process starts, whatever started it: an alarm, a job or the user. The
- * receiver and the workers find their passes through [ArmingEntryPoint] and [WorkEntryPoint], so an alarm or a
+ * receiver and the workers find their passes through [ArmingEntryPoint] and [WorkEntryPoint], and the ring screen
+ * and the ringer service find theirs through [RingEntryPoint] and [RingerEntryPoint], so an alarm or a
  * job that wakes a dead process finds its database and its coordinator ready.
  *
  * Then the start path: the two periodic jobs are enqueued (unique and kept, so enqueueing again resets
@@ -26,6 +31,10 @@ open class MomTimeApplication : Application() {
         super.onCreate()
         val koin = startKoin { modules(momTimeModules(this@MomTimeApplication)) }.koin
         ArmingEntryPoint.provider = { koin.get<AlarmFireHandler>() }
+        NotificationChannels.ensure(this)
+        val controller = koin.get<RingController>()
+        RingEntryPoint.provider = { controller }
+        RingerEntryPoint.provider = { controller }
         WorkEntryPoint.provider = { koin.get<WorkPasses>() }
         startWork()
         AlarmReceiver.executor.execute {

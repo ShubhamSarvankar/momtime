@@ -5,6 +5,7 @@ import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.EventType
+import com.momtime.shared.engine.RungDelivery
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -131,7 +132,7 @@ class StaleFireTest {
         val rung = EscalationRung(t0, Channel.RING)
         assertEquals(
             "a silent presentation, handed over once",
-            listOf(FiredRung("a", 31, rung, Presentation.SILENT_NOTICE)),
+            listOf(FiredRung("a", 31, rung, Presentation.SILENT_NOTICE, RungDelivery.SILENT_NOTIFICATION)),
             fixture.delivery.delivered,
         )
         assertEquals("ALARM_FIRED consumes the rung", 1, fixture.eventsOf("a", EventType.ALARM_FIRED).size)

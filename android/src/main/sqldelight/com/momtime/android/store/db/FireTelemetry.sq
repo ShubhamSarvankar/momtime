@@ -11,6 +11,8 @@ CREATE TABLE fire_telemetry (
     doze_state TEXT,
     watchdog_repair INTEGER NOT NULL DEFAULT 0,
     boot_count INTEGER,
+    delivery_path TEXT,
+    ringer_started INTEGER,
 
     CHECK (resolved_tier IN ('TIER_1', 'TIER_2', 'TIER_3')),
     CHECK (watchdog_repair IN (0, 1)),
@@ -20,8 +22,11 @@ CREATE TABLE fire_telemetry (
 insertFireTelemetry:
 INSERT INTO fire_telemetry(
     event_id, resolved_tier, screen_on, audio_focus_obtained, battery_pct, doze_state,
-    watchdog_repair, boot_count
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    watchdog_repair, boot_count, delivery_path, ringer_started
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateRinger:
+UPDATE fire_telemetry SET ringer_started = ?, audio_focus_obtained = ? WHERE event_id = ?;
 
 selectFireTelemetryForEvent:
 SELECT * FROM fire_telemetry WHERE event_id = ?;

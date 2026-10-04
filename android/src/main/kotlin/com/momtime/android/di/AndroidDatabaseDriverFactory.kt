@@ -24,6 +24,7 @@ class AndroidDatabaseDriverFactory(
     private val name: String = DatabaseFiles.NAME,
     private val clock: Clock = Clock.System,
     private val processEnd: ProcessEnd = KillOwnProcess,
+    private val resetNotifier: ResetNotifier = PlatformResetNotifier(context),
 ) : DatabaseDriverFactory {
     override fun createDriver(): SqlDriver =
         AndroidSqliteDriver(
@@ -36,6 +37,7 @@ class AndroidDatabaseDriverFactory(
                     markerFile = File(context.noBackupFilesDir, DatabaseFiles.CORRUPTION_MARKER_NAME),
                     clock = clock,
                     processEnd = processEnd,
+                    resetNotifier = resetNotifier,
                 ),
         )
 }

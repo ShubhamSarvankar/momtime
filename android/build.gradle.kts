@@ -446,6 +446,117 @@ val selfTestVerifyNoClockSystem =
         }
     }
 
+// --- The ring screen never touches data (ADR 0062). The ring UI package, com.momtime.android.ring, is what the
+// ring Activity and its state live in. It may not name a repository, a store type, a generated query, either
+// database, or the packages those live in, so the screen can only show what the ring session holds and stop the
+// sound: it cannot read an occurrence, and it cannot write an event, which is what keeps dismissal from being
+// completion and the Activity from mutating state (CLAUDE.md invariant 3).
+
+val ringUiPath = "com/momtime/android/ring"
+
+val ringUiForbidden =
+    Regex(
+        """\b[A-Za-z0-9_]*Repository\b|\b[A-Za-z0-9_]*Queries\b|\bAndroidStoreDatabase\b|\bMomTimeDatabase\b|""" +
+            """\bcom\.momtime\.android\.(store|di)\b|\bcom\.momtime\.shared\.data\b""",
+    )
+
+fun findRingUiViolations(
+    files: Iterable<File>,
+    forbidden: Regex = ringUiForbidden,
+): List<String> {
+    val offenders = mutableListOf<String>()
+    files.filter { isInPackage(it, ringUiPath) }.forEach { file ->
+        file.readLines().forEachIndexed { index, line ->
+            if (forbidden.containsMatchIn(line)) {
+                offenders += "${file.relativeTo(projectDir)}:${index + 1}: ${line.trim()}"
+            }
+        }
+    }
+    return offenders
+}
+
+val verifyRingUiBoundary =
+    tasks.register("verifyRingUiBoundary") {
+        group = "verification"
+        description = "Fails if the ring UI package names a repository, a store type or a database (ADR 0062)"
+        inputs.files(androidKotlinFiles)
+        doLast {
+            // Fail closed: a ring UI package with no source means the check read nothing.
+            if (androidKotlinFiles.none { isInPackage(it, ringUiPath) }) {
+                throw GradleException("verifyRingUiBoundary found no source under $ringUiPath")
+            }
+            val offenders = findRingUiViolations(androidKotlinFiles)
+            if (offenders.isNotEmpty()) {
+                throw GradleException(
+                    "the ring UI package names a repository, a store type or a database (ADR 0062):\n" +
+                        offenders.joinToString("\n"),
+                )
+            }
+        }
+    }
+
+val selfTestVerifyRingUiBoundary =
+    tasks.register("selfTestVerifyRingUiBoundary") {
+        group = "verification"
+        description = "Proves the ring UI boundary check detects each kind of reference and ignores other packages"
+        doLast {
+            val root =
+                layout.buildDirectory
+                    .dir("ring-ui-fixture")
+                    .get()
+                    .asFile
+            root.deleteRecursively()
+
+            fun fixture(
+                path: String,
+                body: String,
+            ): File =
+                File(root, path).also {
+                    it.parentFile.mkdirs()
+                    it.writeText("package fixture\n\n$body\n")
+                }
+
+            val mustBeFlagged =
+                mapOf(
+                    "a repository type" to fixture("$ringUiPath/A.kt", "class A(val r: OccurrenceRepository)"),
+                    "a store repository" to fixture("$ringUiPath/B.kt", "class B(val r: FireTelemetryRepository)"),
+                    "a generated query" to fixture("$ringUiPath/C.kt", "val q: EventQueries? = null"),
+                    "the shared database" to fixture("$ringUiPath/D.kt", "val d: MomTimeDatabase? = null"),
+                    "the android store database" to fixture("$ringUiPath/E.kt", "val d: AndroidStoreDatabase? = null"),
+                    "an import from the store package" to
+                        fixture("$ringUiPath/F.kt", "import com.momtime.android.store.ArmedAlarm"),
+                    "an import from the shared data package" to
+                        fixture("$ringUiPath/G.kt", "import com.momtime.shared.data.EventRepository"),
+                    "an import from the di package" to
+                        fixture("$ringUiPath/H.kt", "import com.momtime.android.di.momTimeModules"),
+                )
+            val mustPass =
+                mapOf(
+                    "the ring session and its item" to
+                        fixture("$ringUiPath/Ok.kt", "class Ok(val sessions: RingSessions, val item: RingItem)"),
+                    "a repository in another package" to
+                        fixture("com/momtime/android/delivery/Other.kt", "class Other(val r: OccurrenceRepository)"),
+                    "the word in lower case" to
+                        fixture("$ringUiPath/Lower.kt", "// it holds no repository and no store type"),
+                )
+
+            val failures = mutableListOf<String>()
+            for ((what, file) in mustBeFlagged) {
+                val found = findRingUiViolations(listOf(file)).size
+                if (found != 1) failures += "not detected exactly once ($found): $what"
+            }
+            for ((what, file) in mustPass) {
+                val found = findRingUiViolations(listOf(file))
+                if (found.isNotEmpty()) failures += "was flagged: $what: $found"
+            }
+            root.deleteRecursively()
+            if (failures.isNotEmpty()) {
+                throw GradleException("verifyRingUiBoundary self-test failed:\n" + failures.joinToString("\n"))
+            }
+            logger.lifecycle("verifyRingUiBoundary self-test passed.")
+        }
+    }
+
 // --- SQLite floor 3.22 for the android store's SQL (ADR 0042, ADR 0048): the same scan as shared.
 extra["sqliteFloorSqlDir"] = layout.projectDirectory.dir("src/main/sqldelight").asFile
 apply(from = rootProject.file("gradle/sqlite-floor.gradle.kts"))
@@ -596,6 +707,13 @@ val permissionAllowlist =
         // receiver can be kept unexported on older releases. It is the app's own permission, not a platform
         // one, and appears in no Play declaration.
         "uses-permission|com.momtime.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION|",
+        // From the ringer (ADR 0061, PR 5). FOREGROUND_SERVICE_MEDIA_PLAYBACK is the type specific permission a
+        // mediaPlayback foreground service needs from Android 14; the service plays the alarm sound of a reminder.
+        "uses-permission|android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK|",
+        // SYSTEM_ALERT_WINDOW is the overlay route (ADR 0061): it lets the app start the ring screen from the
+        // background when a full screen intent is not available. A special permission, reviewed by Play, requested
+        // only when it is needed (PR 8); never the ringing mechanism.
+        "uses-permission|android.permission.SYSTEM_ALERT_WINDOW|",
     )
 
 /** What the permission check's self-test fixtures are checked against: fixed, so the real list can grow. */
@@ -747,5 +865,7 @@ tasks.named("check") {
         selfTestVerifySingleProcess,
         verifyManifestPermissions,
         selfTestVerifyManifestPermissions,
+        verifyRingUiBoundary,
+        selfTestVerifyRingUiBoundary,
     )
 }

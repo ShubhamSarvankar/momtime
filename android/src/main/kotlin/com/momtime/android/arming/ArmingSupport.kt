@@ -45,7 +45,12 @@ internal class AlarmLog(
 
     fun scheduled(occurrenceId: String) = events.insert(AlarmEvents.scheduled(newId(), occurrenceId, clock.now()))
 
-    fun fired(occurrenceId: String) = events.insert(AlarmEvents.fired(newId(), occurrenceId, clock.now()))
+    /** Appends `ALARM_FIRED` and returns the id of the event, which the device telemetry row is keyed by. */
+    fun fired(occurrenceId: String): String {
+        val id = newId()
+        events.insert(AlarmEvents.fired(id, occurrenceId, clock.now()))
+        return id
+    }
 
     fun watchdogRepair(occurrenceId: String) =
         events.insert(AlarmEvents.watchdogRepair(newId(), occurrenceId, clock.now()))

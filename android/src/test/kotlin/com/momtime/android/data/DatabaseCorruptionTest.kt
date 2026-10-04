@@ -209,4 +209,50 @@ class DatabaseCorruptionTest {
         databaseFile.writeBytes(bytes)
         return bytes
     }
+
+    // She is told her reminders were reset (ADR 0051, ADR 0060): a notification on the Critical channel, posted
+    // when the
+    // corruption is found on open and when it is found in the middle of a query.
+    private fun resetNotification() =
+        org.robolectric.Shadows
+            .shadowOf(context.getSystemService(android.app.NotificationManager::class.java))
+            .getNotification(com.momtime.android.delivery.RingNotifications.RESET_ID)
+
+    @Test
+    fun `corruption found on open posts the reset notification`() {
+        assertNull("nothing posted before", resetNotification())
+        corrupt(garbage(5))
+
+        val graph = graph()
+        graph.get<ScheduleTemplateRepository>().findById("x")
+
+        val posted = checkNotNull(resetNotification()) { "no reset notification was posted on the open path" }
+        assertEquals(com.momtime.android.delivery.NotificationChannels.CRITICAL, posted.channelId)
+        assertEquals(
+            context.getString(com.momtime.android.R.string.reset_notification_title),
+            posted.extras.getCharSequence(android.app.Notification.EXTRA_TITLE).toString(),
+        )
+        assertEquals("the process is not ended on open", 0, graph.processEnd.calls)
+    }
+
+    @Test
+    fun `corruption found during a query posts the reset notification before the process ends`() {
+        var postedAtEnd = false
+        val recording = RecordingProcessEnd { postedAtEnd = resetNotification() != null }
+        val graph = TestGraph(context, DatabaseFiles.NAME, processEnd = recording).also { graphs.add(it) }
+        val template = graph.seedTemplate()
+        val occurrences = graph.get<OccurrenceRepository>()
+        var n = 0
+        occurrences.materialiseWindow(template, windowStart, windowStart + 400.days) { "occ-${n++}" }
+        damageLaterPages()
+
+        runCatching { occurrences.findForTemplate(template.id) }
+
+        assertEquals("the process ends once", 1, graph.processEnd.calls)
+        assertTrue("the notification must be posted before the process ends", postedAtEnd)
+        assertEquals(
+            com.momtime.android.delivery.NotificationChannels.CRITICAL,
+            checkNotNull(resetNotification()).channelId,
+        )
+    }
 }

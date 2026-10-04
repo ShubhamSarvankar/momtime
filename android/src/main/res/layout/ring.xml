@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ring screen. Nothing here has a fixed width or a fixed height: at 200 percent font scale every label wraps
+     and nothing is cut off. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/ring_heading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/ring_title"
+            android:textAppearance="@android:style/TextAppearance.Material.Headline" />
+
+        <TextView
+            android:id="@+id/ring_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textAppearance="@android:style/TextAppearance.Material.Subhead" />
+
+        <!-- One block per occurrence that is due. The Activity fills it from the ring session. -->
+        <LinearLayout
+            android:id="@+id/ring_items"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="vertical" />
+
+        <!-- The seam for a mission (ADR 0062, IMPLEMENTATION_PLAN.md Open Items): where a mission's own UI would
+             be shown for an occurrence that has one. Empty, and nothing writes to it. -->
+        <FrameLayout
+            android:id="@+id/ring_mission_slot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/ring_sound_stopped"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/ring_sound_stopped"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/ring_stop_sound"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/ring_stop_sound" />
+    </LinearLayout>
+</ScrollView>

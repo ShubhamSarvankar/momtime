@@ -18,8 +18,25 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        The ringer (ADR 0061). The service is a foreground service of type mediaPlayback, which from Android 14
+        needs the type specific permission as well as FOREGROUND_SERVICE (declared by WorkManager, ADR 0057). Play
+        asks for a declaration of what a foreground service type is used for: playing the alarm sound of a reminder
+        the user set. Both are normal permissions, granted at install.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!--
+        The overlay route (ADR 0061): with this granted the app may start the ring screen from the background when a
+        full screen intent is not available. It is a secondary route to showing the screen and never the way the alarm
+        rings. It is a special permission the user grants in settings, and Play reviews it, so it is requested only
+        when full screen intent is not available (PR 8).
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <application
         android:name=".MomTimeApplication"
+        android:label="@string/app_name"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules">
@@ -31,6 +48,25 @@
         <receiver
             android:name=".arming.AlarmReceiver"
             android:exported="false" />
+
+        <!--
+            The ring screen (ADR 0062). Not exported: it is reached by this app's own PendingIntents (the full
+            screen intent, the notification, the alarm clock's show intent) and by the overlay route. It is shown
+            over the lock screen and turns the screen on.
+        -->
+        <activity
+            android:name=".ring.RingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- The ringer (ADR 0061). Not exported. A foreground service of type mediaPlayback, never started by boot. -->
+        <service
+            android:name=".ringer.RingerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>
