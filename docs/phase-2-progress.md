@@ -337,25 +337,34 @@ Not verified: everything in `MANUAL_CHECKS.md` P2-26 to P2-30. The tests call th
 
 Branched from `main` at `b93e1f05644950807993ef824e03eff58df0047e` (the merge of PR #21).
 
-Scope: the timezone decision (decision 70, answered by Claude (technical review) in the review of PR #21; ADR 0068), built: the zone change command in `shared`, the receiver acting on `ACTION_TIMEZONE_CHANGED`, the `DeviceZone` seam and the extended clock check in both modules, golden scenario 8 tested in both directions, one queue for the system passes with its real thread test, and the scenario 8 note in the plan and the precedent in `CLAUDE.md`. Mutations are in `phase-2-traceability.md` (L1 to L11), run at `ea9908d`.
+Scope: the timezone decision (decision 70, answered by Claude (technical review) in the review of PR #21; ADR 0068), built and then revised in the review of PR #22: the zone change command in `shared`, one transaction around it, schema version 5 (a terminal occurrence immutable in full), the receiver acting on `ACTION_TIMEZONE_CHANGED`, the `DeviceZone` seam and the extended clock check in both modules, golden scenario 8 tested in both directions, one queue for the system passes with a behavioural test on a real thread pool, and the notes on scenarios 1 and 8 in the plan and the precedent in `CLAUDE.md`. Mutations are in `phase-2-traceability.md` (N1 to N3, L1 to L11), run at `00752ab`.
 
-No new CI job; `verify-no-clock-system` runs the extended check in both modules.
+No new CI job; `verify-no-clock-system` runs the extended check in both modules, and `migration-test` verifies the shared schema's fourth migration.
 
-Numbers, measured at `ea9908d`: 202 `shared` tests (186 before) and 801 android tests (776 before), none failing. `shared` line 860/877 (98.1%), branch 287/292 (98.3%): data 158/162 (97.5%, the three Phase 1 quiet hours branches and the `checkNotNull` of PR 5b), domain 8/8, engine 121/122 (99.2%), all above their gates. No schema change and no permission added.
+Numbers, measured at `0257611`: 209 `shared` tests (186 before PR 6b) and 806 android tests (776 before), none failing. `shared` line 870/887 (98.1%), branch 285/290 (98.3%): data 156/160 (97.5%, the three Phase 1 quiet hours branches and the `checkNotNull` of PR 5b), domain 8/8, engine 121/122 (99.2%), all above their gates. Shared schema version 5; no permission added.
 
-Findings from this PR:
+**Findings in their own right** (the review of PR #22 asked that a passing item that never tested its subject be flagged as a finding, not as background to another answer):
 
-- **Phase 1 had no template edit path** (the review's STOP condition: replaced pending occurrences would conflict with keeping ids and slots). Neither: `ScheduleTemplateRepository` has `insert` and `setActive`, `OccurrenceRepository` changes state only, and scenario 1's test "edits" by calling `setActive`. Nothing replaces pending occurrences, so the decision stands; two repository methods were added (`updateTimeZone`, `reschedule`) and the clamp is applied on the zone change route only. Phase 3's edit path, when it exists, is not given the clamp.
-- **Scenario 8 was counted on a test that did not reach it.** Recorded in the plan under scenario 8 and its Outcome, and as a fourth precedent in `CLAUDE.md`'s testing section. The Phase 1 count of 16 scenarios that tested what their name says was 15.
-- **The system passes had one unique name per event** (PR 6), so a boot pass and a clock pass could run on two threads, ordered only by the coordinator's lock. They now share one queue, `momtime.system`, appended in arrival order. PR 6's policy was already `APPEND_OR_REPLACE`; the test with a real executor is new, and KEEP fails it.
-- **A rung armed for now follows the clock.** A second zone change broadcast with a later clock re arms an overdue first rung for the new "now", so the alarm's trigger moves while the occurrence and its rung do not; the test asserts the latter.
+- **Golden scenario 1 was counted among Phase 1's 16 without being asserted.** Phase 1 has no template edit path at all, and scenario 1's test "edits" a template with `setActive` and never changes `timeOfDay`. That makes **three** golden scenarios counted without testing their subject: 5 (its second case), 8 (travel) and 1 (an edit that changes `timeOfDay`). The count of scenarios that tested what their name says was 14, not 16. Recorded in the plan under scenario 1 and in its Outcome, as a named Phase 3 exit criterion with the schedule builder's edit path (which must also decide what deactivating a template does to its open occurrences, which today keep ringing), and in `CLAUDE.md`'s precedent.
+- **The first draft of the zone change command had a race** (found in review): occurrences were moved and then the templates' zones updated with no transaction across the two, so a daily materialisation run between them read the old zone and inserted new dates at the wrong instants, which the idempotence guard then kept from being repaired. Fixed: one transaction (`Transactor`), with `TimeZoneRaceTest` holding the command on a latch.
+- **The schema let a terminal row's instant change.** The version 2 trigger refused only a change of state, and `reschedule` was the first path that changes instants. Schema version 5 closes it for every column.
+- **A mutation survived until the Android migration half was tested:** reverting `4.sqm` left the Android test green because its migrated database was only tested against a change of state. Fixed and recorded in the traceability file.
+
+Other findings:
+
+- **Phase 1 had no template edit path** (the review's STOP condition for PR 6b): nothing replaces pending occurrences, so keeping ids and slots conflicts with nothing. Two repository methods were added (`updateTimeZone`, `reschedule`); the clamp is applied on the zone change route only.
+- **The system passes had one unique name per event** (PR 6); they now share one queue, `momtime.system`, appended in arrival order. `SystemQueueTest` counts how many passes run at once on a real executor: with a queue per event a boot pass and a clock pass overlap, with the single queue they never do.
+- **A rung armed for now follows the clock.** A second zone change broadcast with a later clock re arms an overdue first rung for the new "now", so the alarm's trigger moves while the occurrence and its rung do not.
 
 Decisions of this PR:
 71. **Templates follow the device zone; open occurrences move to `max(new wall clock time, the change)`; terminal ones, `snoozedUntil`, ids and slots do not move; then materialise and `ensureArmed`** (decision of Claude (technical review), ADR 0068; decision 70's questions answered).
-72. **Inactive templates, and the open occurrences of inactive templates, are left alone** (judgment, from "every active template", for review).
-73. **The command is resumable but not one transaction across the two repositories** (judgment): occurrences move before their templates take the zone, so an interrupted run is finished by the next.
-74. **A moved occurrence writes no event** (judgment): an instant recomputed from a wall clock intent is derived, like a materialised one. Recorded as an alternative in ADR 0068.
-75. **All system broadcasts append to one queue** (the review's question on the unique work policy; ADR 0068).
+72. **Every template follows the device zone, active or not, and an inactive template's open occurrences move too** (decision of Claude (technical review), correcting the first draft, which followed the review's wording "every active template" and was wrong: inactive templates' open occurrences can still ring, and a template reactivated later must already be in her zone).
+73. **The command is one transaction** (decision of Claude (technical review), ADR 0068, correcting the first draft's "resumable but not atomic").
+74. **A terminal occurrence is immutable in full, in the schema** (decision of Claude (technical review), schema version 5, ADR 0068): any update to a row whose OLD state is terminal aborts, whatever column.
+75. **A moved occurrence writes no event** (judgment): an instant recomputed from a wall clock intent is derived, like a materialised one. Phase 4 note below.
+76. **All system broadcasts append to one queue** (the review's question on the unique work policy; ADR 0068).
+
+**Phase 4 note (decision of Claude (technical review)):** because a zone change moves occurrences and writes no event, the expected occurrence upload must resend an occurrence that a zone change moved. The server mirrors events and the occurrence table only as the upload sends it, so nothing else would tell it the instant changed.
 
 Not verified: `MANUAL_CHECKS.md` P2-30 (a real zone change). The tests move the fixture's zone seam and call the receiver; nothing changed a phone's zone. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
