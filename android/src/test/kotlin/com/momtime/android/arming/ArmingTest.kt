@@ -239,9 +239,10 @@ class ArmingTest {
         fixture.recordFired("a", 1)
         fixture.clock.now = t0 - 3.hours
 
-        val result = fixture.coordinator.ensureArmed() as EnsureResult.Armed
+        val result = fixture.coordinator.ensureArmed()
 
-        assertEquals(t0 + 10.minutes, result.selection.rung.instant)
+        assertTrue("the fired rung came back or nothing was armed: $result", result is EnsureResult.Armed)
+        assertEquals(t0 + 10.minutes, (result as EnsureResult.Armed).selection.rung.instant)
         assertEquals((t0 + 10.minutes).toEpochMilliseconds(), single().triggerAtMs)
     }
 
