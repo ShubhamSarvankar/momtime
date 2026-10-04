@@ -32,7 +32,8 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | 4 | `phase-2/workers` | Merged (PR #18, merge commit `6ef4909`) |
 | 5 | `phase-2/delivery` | Merged (PR #19, merge commit `48738c9`) |
 | 5b | `phase-2/ring-actions` | Merged (PR #20, merge commit `f266621`). The progress file named this branch `phase-2/actions`; the PR 5b prompt named it `phase-2/ring-actions`, and the prompt is the later instruction |
-| 6 | `phase-2/system-broadcasts` | Open for review (see "PR 6" below). One item open: the timezone broadcast (decision 70) |
+| 6 | `phase-2/system-broadcasts` | Merged (PR #21, merge commit `b93e1f0`). The timezone broadcast was left open (decision 70) and is PR 6b |
+| 6b | `phase-2/timezone` | Open for review (see "PR 6b" below) |
 | 7 | `phase-2/canary-telemetry` | Not started |
 | 8 | `phase-2/permission-onboarding` | Not started |
 | 9 | `docs/phase-2-close` | Not started |
@@ -332,6 +333,32 @@ Decisions of this PR (the implementing session's, for review, unless noted):
 
 Not verified: everything in `MANUAL_CHECKS.md` P2-26 to P2-30. The tests call the receiver with the intent the system would send and run the work with `WorkManager`'s test driver; nothing rebooted a phone, updated an app, changed a clock or sent a real broadcast. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 6b: `phase-2/timezone`
+
+Branched from `main` at `b93e1f05644950807993ef824e03eff58df0047e` (the merge of PR #21).
+
+Scope: the timezone decision (decision 70, answered by Claude (technical review) in the review of PR #21; ADR 0068), built: the zone change command in `shared`, the receiver acting on `ACTION_TIMEZONE_CHANGED`, the `DeviceZone` seam and the extended clock check in both modules, golden scenario 8 tested in both directions, one queue for the system passes with its real thread test, and the scenario 8 note in the plan and the precedent in `CLAUDE.md`. Mutations are in `phase-2-traceability.md` (L1 to L11), run at `ea9908d`.
+
+No new CI job; `verify-no-clock-system` runs the extended check in both modules.
+
+Numbers, measured at `ea9908d`: 202 `shared` tests (186 before) and 801 android tests (776 before), none failing. `shared` line 860/877 (98.1%), branch 287/292 (98.3%): data 158/162 (97.5%, the three Phase 1 quiet hours branches and the `checkNotNull` of PR 5b), domain 8/8, engine 121/122 (99.2%), all above their gates. No schema change and no permission added.
+
+Findings from this PR:
+
+- **Phase 1 had no template edit path** (the review's STOP condition: replaced pending occurrences would conflict with keeping ids and slots). Neither: `ScheduleTemplateRepository` has `insert` and `setActive`, `OccurrenceRepository` changes state only, and scenario 1's test "edits" by calling `setActive`. Nothing replaces pending occurrences, so the decision stands; two repository methods were added (`updateTimeZone`, `reschedule`) and the clamp is applied on the zone change route only. Phase 3's edit path, when it exists, is not given the clamp.
+- **Scenario 8 was counted on a test that did not reach it.** Recorded in the plan under scenario 8 and its Outcome, and as a fourth precedent in `CLAUDE.md`'s testing section. The Phase 1 count of 16 scenarios that tested what their name says was 15.
+- **The system passes had one unique name per event** (PR 6), so a boot pass and a clock pass could run on two threads, ordered only by the coordinator's lock. They now share one queue, `momtime.system`, appended in arrival order. PR 6's policy was already `APPEND_OR_REPLACE`; the test with a real executor is new, and KEEP fails it.
+- **A rung armed for now follows the clock.** A second zone change broadcast with a later clock re arms an overdue first rung for the new "now", so the alarm's trigger moves while the occurrence and its rung do not; the test asserts the latter.
+
+Decisions of this PR:
+71. **Templates follow the device zone; open occurrences move to `max(new wall clock time, the change)`; terminal ones, `snoozedUntil`, ids and slots do not move; then materialise and `ensureArmed`** (decision of Claude (technical review), ADR 0068; decision 70's questions answered).
+72. **Inactive templates, and the open occurrences of inactive templates, are left alone** (judgment, from "every active template", for review).
+73. **The command is resumable but not one transaction across the two repositories** (judgment): occurrences move before their templates take the zone, so an interrupted run is finished by the next.
+74. **A moved occurrence writes no event** (judgment): an instant recomputed from a wall clock intent is derived, like a materialised one. Recorded as an alternative in ADR 0068.
+75. **All system broadcasts append to one queue** (the review's question on the unique work policy; ADR 0068).
+
+Not verified: `MANUAL_CHECKS.md` P2-30 (a real zone change). The tests move the fixture's zone seam and call the receiver; nothing changed a phone's zone. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 6 is merged and reviewed, and decision 70 is settled (the timezone handler may be a PR of its own): PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
+After PR 6b is merged and reviewed: PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
