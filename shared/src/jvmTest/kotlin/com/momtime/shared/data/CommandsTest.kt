@@ -142,6 +142,21 @@ class CommandsTest {
         assertTrue(events.findByOccurrenceAndType("a", EventType.MISSED).isEmpty())
     }
 
+    // With foreign keys enforced a template cannot be missing under an occurrence, so this stands in for a read that
+    // fails to find it: the pass must carry on with the others and not stop, because it runs every 15 minutes.
+    @Test
+    fun `an occurrence whose template cannot be read is left alone`() {
+        seed("a")
+        val blind =
+            object : ScheduleTemplateRepository by templates {
+                override fun findById(id: String): ScheduleTemplate? = null
+            }
+        val command = ReconcileCommand(occurrences, blind, events) { "blind-${ids++}" }
+
+        assertEquals(0, command.dispatch(scheduled + 5.hours))
+        assertEquals(OccurrenceState.PENDING, occurrences.findById("a")?.state)
+    }
+
     @Test
     fun `a terminal occurrence is never touched`() {
         seed("a", state = OccurrenceState.COMPLETED)
