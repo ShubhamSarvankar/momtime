@@ -338,20 +338,45 @@ class WatchdogTest {
     }
 
     // A fire writes ALARM_FIRED and then arms the next rung. A watchdog pass that read the state between the two
-    // would see a record that does not match and call a healthy chain lost, so each waits for the other.
+    // would see a record that does not match and call a healthy chain lost, so each waits for the other. Both end
+    // in ensureArmed, which is synchronized anyway, so waiting at the end proves nothing: what is observed is what
+    // each has done while the other holds the coordinator, which must be nothing yet.
     @Test
-    fun `the watchdog and the fire path wait for each other`() {
-        armedAndCorrect()
-        fixture.clock.now = t0
-        assertTrue("the watchdog waits while a fire holds the coordinator", blockedWhileHeld { fixture.watchdog.run() })
-        assertTrue(
-            "the fire path waits while the watchdog holds it",
-            blockedWhileHeld { fixture.handler.onFire(31, t0) },
-        )
+    fun `the watchdog waits while a fire holds the coordinator`() {
+        fixture.seed("b", Criticality.STANDARD, t0, slot = 32)
+        fixture.clock.now = t0 + 5.hours
+
+        val untouched =
+            observedWhileHeld(work = { fixture.watchdog.run() }) {
+                fixture.occurrences.findById("b")?.state == OccurrenceState.PENDING
+            }
+
+        assertTrue("the watchdog reconciled while the coordinator was held", untouched)
+        assertEquals("and it finished once released", OccurrenceState.MISSED, fixture.occurrences.findById("b")?.state)
     }
 
-    /** True if [work], started while another thread holds the coordinator, does not finish until it is released. */
-    private fun blockedWhileHeld(work: () -> Unit): Boolean {
+    @Test
+    fun `the fire path waits while the watchdog holds the coordinator`() {
+        armedAndCorrect()
+        fixture.clock.now = t0
+
+        val untouched =
+            observedWhileHeld(work = { fixture.handler.onFire(31, t0) }) {
+                fixture.count(EventType.ALARM_FIRED, "a") == 0
+            }
+
+        assertTrue("the fire path wrote ALARM_FIRED while the coordinator was held", untouched)
+        assertEquals("and it fired once released", 1, fixture.count(EventType.ALARM_FIRED, "a"))
+    }
+
+    /**
+     * Starts [work] on another thread while this one holds the coordinator, and returns what [observe] says
+     * after a moment. Releases the coordinator and waits for [work] to finish before it returns.
+     */
+    private fun observedWhileHeld(
+        work: () -> Unit,
+        observe: () -> Boolean,
+    ): Boolean {
         val holding = CountDownLatch(1)
         val release = CountDownLatch(1)
         val holder =
@@ -369,12 +394,12 @@ class WatchdogTest {
                 finished.set(true)
             }
         Thread.sleep(OBSERVE_MILLIS)
-        val waited = !finished.get()
+        val observed = observe()
         release.countDown()
         worker.join(WAIT_SECONDS * MILLIS)
         holder.join(WAIT_SECONDS * MILLIS)
         assertTrue("it finishes once released", finished.get())
-        return waited
+        return observed
     }
 
     private companion object {

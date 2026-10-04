@@ -20,7 +20,6 @@ import com.momtime.shared.domain.EventType
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -145,17 +144,19 @@ class WorkTest {
         assertEquals(fixture.clock.now.toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
     }
 
-    // A transient failure asks for a retry. It never fails the periodic work, which would end the watchdog.
+    // A transient failure asks WorkManager to try again after its backoff, and the periodic job goes on. A failed
+    // result would also leave the job enqueued (WorkManager 2.12 reschedules a periodic job either way), so what
+    // tells the two apart is that a retry counts an attempt and a failure does not.
     @Test
-    fun `a failing pass does not fail the periodic work`() {
+    fun `a failing pass asks for a retry and the job goes on`() {
         WorkEntryPoint.provider = { throw IllegalStateException("transient") }
         Work.scheduleWatchdog(workManager)
 
         runPeriodic(Work.WATCHDOG)
 
-        val state = info(Work.WATCHDOG).state
-        assertNotEquals("a failed periodic job never runs again", WorkInfo.State.FAILED, state)
-        assertEquals(WorkInfo.State.ENQUEUED, state)
+        val info = info(Work.WATCHDOG)
+        assertEquals("the job goes on", WorkInfo.State.ENQUEUED, info.state)
+        assertTrue("WorkManager was asked to try again: ${info.runAttemptCount} attempts", info.runAttemptCount > 0)
     }
 
     // Golden scenario 3 end to end through the worker. Arm with exact allowed, take exact capability away,

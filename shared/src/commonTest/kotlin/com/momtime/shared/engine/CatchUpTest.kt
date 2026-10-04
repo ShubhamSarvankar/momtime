@@ -75,6 +75,14 @@ class CatchUpTest {
         assertEquals(listOf(ladder[2]), CatchUp.remaining(ladder, listOf(fired), fired + 1.seconds))
     }
 
+    // A fire on time consumed the rung it fired for, and how late it is now does not change that: the walk reads
+    // the instant of the fire, not the current time. Fifty minutes on, the first rung fired and is not offered
+    // again, the second is too late, and the third is exactly at the boundary.
+    @Test
+    fun `a fire on time consumed its rung however late it is now`() {
+        assertEquals(listOf(ladder[2]), CatchUp.remaining(ladder, listOf(t0 + 1.seconds), t0 + 50.minutes))
+    }
+
     // Golden scenario 14: a fired rung never comes back, however far back the clock is set.
     @Test
     fun `a fired rung does not come back when now moves backward`() {

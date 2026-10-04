@@ -51,9 +51,10 @@ object WorkEntryPoint {
 
 /**
  * The watchdog job (ADR 0058). It does the pass and nothing else: it never starts the ringer. A transient
- * failure asks for a retry and never fails the periodic work, so one bad pass cannot end the watchdog. A store
- * failure is not an exception here at all (ADR 0054). The log line carries the exception's class only
- * (invariant 11).
+ * failure asks for a retry, so `WorkManager` tries the pass again after its backoff and not a whole period later;
+ * the periodic job goes on either way (a failed result does not end a periodic job in 2.12, which `WorkTest`
+ * shows). A store failure is not an exception here at all (ADR 0054). The log line carries the exception's
+ * class only (invariant 11).
  */
 class WatchdogWorker(
     context: Context,
@@ -75,7 +76,7 @@ class WatchdogWorker(
     }
 }
 
-/** The materialisation job, daily and on demand. Like the watchdog it asks for a retry and never fails. */
+/** The materialisation job, daily and on demand. Like the watchdog it asks for a retry when a pass fails. */
 class MaterialisationWorker(
     context: Context,
     params: WorkerParameters,
