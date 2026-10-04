@@ -192,14 +192,16 @@ val selfTestVerifyNoAndroidImports =
         }
     }
 
-// --- CLAUDE.md invariant 8: no Clock.System call outside the DI module. ---
+// --- CLAUDE.md invariant 8: no Clock.System call outside the DI module, and (ADR 0068) no read of the device's
+// time zone either: TimeZone.currentSystemDefault() and java.util.TimeZone.getDefault() are the same kind of hidden
+// input, so a test cannot set the zone a command ran in. The zone is read only in the DI package and passed in. ---
 // The DI module is com.momtime.shared.di — the only place allowed to construct a real Clock;
 // everything else takes one injected. Exempted in every source set, not just commonMain: a
 // test verifying clockModule genuinely provides Clock.System legitimately needs to reference it
 // too, and that test belongs in di's own package in whichever source set exercises it.
 
 fun findClockSystemReferences(files: Iterable<File>): List<String> {
-    val pattern = Regex("""Clock\.System""")
+    val pattern = Regex("""Clock\.System|\bTimeZone\.currentSystemDefault\b|\bTimeZone\.getDefault\b""")
     val offenders = mutableListOf<String>()
     files.forEach { file ->
         file.readLines().forEachIndexed { index, line ->
@@ -222,7 +224,7 @@ val clockCheckedSourceDirs =
 val verifyNoClockSystem =
     tasks.register("verifyNoClockSystem") {
         group = "verification"
-        description = "Fails the build if Clock.System is referenced outside the DI module (CLAUDE.md invariant 8)"
+        description = "Fails the build if Clock.System or the device zone is read outside the DI module (invariant 8)"
         val ktFiles =
             clockCheckedSourceDirs
                 .flatMap { dir -> fileTree(dir) { include("**/*.kt") }.files }
@@ -260,6 +262,24 @@ val selfTestVerifyNoClockSystem =
                 throw GradleException(
                     "verifyNoClockSystem failed to detect a deliberately bad fixture file - the check is broken.",
                 )
+            }
+            // The zone reads (ADR 0068): each is detected on its own, and a fixed zone is not.
+            val zoneFixtures =
+                mapOf(
+                    "Zone1.kt" to "val z = kotlinx.datetime.TimeZone.currentSystemDefault()",
+                    "Zone2.kt" to "val z = java.util.TimeZone.getDefault()",
+                )
+            for ((name, body) in zoneFixtures) {
+                val zoneFile = File(fixtureDir, name)
+                zoneFile.writeText("package fixture\n\n$body\n")
+                if (findClockSystemReferences(listOf(zoneFile)).size != 1) {
+                    throw GradleException("verifyNoClockSystem failed to detect the device zone in $name - broken.")
+                }
+            }
+            val fixedZone = File(fixtureDir, "Fixed.kt")
+            fixedZone.writeText("package fixture\n\nval z = kotlinx.datetime.TimeZone.UTC\n")
+            if (findClockSystemReferences(listOf(fixedZone)).isNotEmpty()) {
+                throw GradleException("verifyNoClockSystem flagged a fixed zone - the check is too wide.")
             }
             fixtureDir.deleteRecursively()
             logger.lifecycle(

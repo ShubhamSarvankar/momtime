@@ -42,16 +42,28 @@ import com.momtime.android.ringer.SoundScheduler
 import com.momtime.android.ringer.VolumeRamp
 import com.momtime.android.settings.AndroidSettings
 import com.momtime.android.work.MaterialisationPass
+import com.momtime.android.work.Pass
+import com.momtime.android.work.TimeZonePass
 import com.momtime.android.work.WorkPasses
 import com.momtime.shared.data.DeliveryPolicyCommand
 import com.momtime.shared.data.MaterialiseCommand
 import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.ReconcileCommand
+import com.momtime.shared.data.TimeZoneChangeCommand
 import com.momtime.shared.domain.AlarmScheduler
 import kotlinx.datetime.TimeZone
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import java.util.UUID
+
+/**
+ * The device's current time zone, read only here (invariant 8's companion: no `TimeZone.currentSystemDefault()` and no
+ * `java.util.TimeZone.getDefault()` outside the DI packages, enforced by `verifyNoClockSystem`). The time zone change
+ * pass asks it; a test supplies the zone it wants.
+ */
+internal fun interface DeviceZone {
+    fun current(): TimeZone
+}
 
 internal fun platformBootCount(context: Context) =
     BootCount {
@@ -138,5 +150,15 @@ internal fun armingModule(
         single { MaterialiseCommand(get(), get(), newId) }
         single { Watchdog(get(), get(), get(), get(), get(), get()) }
         single { AppStart(get(), get(), get()) }
-        single { WorkPasses(get(), MaterialisationPass(get(), get()) { get<AlarmLog>().now() }, get()) }
+        single<DeviceZone> { DeviceZone(delivery.zone) }
+        single { TimeZoneChangeCommand(get(), get()) }
+        single { TimeZonePass(get(), get(), get(), get(), get(), get()) }
+        single {
+            WorkPasses(
+                get(),
+                MaterialisationPass(get(), get()) { get<AlarmLog>().now() },
+                system = Pass { get<AppStart>().run() },
+                timezone = get<TimeZonePass>(),
+            )
+        }
     }

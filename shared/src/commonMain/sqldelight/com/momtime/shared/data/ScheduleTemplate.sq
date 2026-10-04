@@ -57,6 +57,9 @@ INSERT INTO schedule_template(
 updateScheduleTemplateActive:
 UPDATE schedule_template SET active = ? WHERE id = ?;
 
+updateScheduleTemplateTimeZone:
+UPDATE schedule_template SET time_zone_id = ? WHERE id = ?;
+
 selectScheduleTemplateById:
 SELECT * FROM schedule_template WHERE id = ?;
 

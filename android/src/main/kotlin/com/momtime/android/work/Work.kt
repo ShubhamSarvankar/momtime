@@ -11,11 +11,14 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.momtime.android.arming.AppStart
+import com.momtime.android.arming.AlarmLog
 import com.momtime.android.arming.ArmingCoordinator
 import com.momtime.android.arming.Watchdog
+import com.momtime.android.di.DeviceZone
 import com.momtime.android.system.SystemEvent
 import com.momtime.shared.data.MaterialiseCommand
+import com.momtime.shared.data.ReconcileCommand
+import com.momtime.shared.data.TimeZoneChangeCommand
 import java.util.concurrent.TimeUnit
 import kotlin.time.Instant
 
@@ -33,11 +36,17 @@ class MaterialisationPass internal constructor(
     fun run(): Int = materialise.dispatch(now()).also { coordinator.ensureArmed() }
 }
 
+/** One pass a worker runs. A seam, so that a test can hold or count the system passes (ADR 0068). */
+fun interface Pass {
+    fun run()
+}
+
 /** What the workers run. A worker is created by `WorkManager` with no arguments, so it cannot be given these. */
 class WorkPasses internal constructor(
     val watchdog: Watchdog,
     val materialisation: MaterialisationPass,
-    val system: AppStart,
+    val system: Pass,
+    val timezone: Pass,
 )
 
 /**
@@ -103,6 +112,31 @@ class MaterialisationWorker(
 }
 
 /**
+ * The pass a time zone change is answered with (ADR 0068): the zone change command first, so open occurrences and
+ * templates are in the new zone before anything is armed, then the window is materialised (the next dates are
+ * created in the new zone), `Reconcile` runs (an occurrence that moved is judged against its new instant), and
+ * `ensureArmed`. All inside the coordinator's exclusion, so a fire or a watchdog pass never reads the half moved
+ * state. The zone is read only through the [DeviceZone] seam and the time only through the log's clock.
+ */
+class TimeZonePass internal constructor(
+    private val change: TimeZoneChangeCommand,
+    private val materialise: MaterialiseCommand,
+    private val reconcile: ReconcileCommand,
+    private val coordinator: ArmingCoordinator,
+    private val log: AlarmLog,
+    private val zone: DeviceZone,
+) : Pass {
+    override fun run() {
+        coordinator.exclusive {
+            change.dispatch(zone.current(), log.now())
+            materialise.dispatch(log.now())
+            reconcile.dispatch(log.now())
+            coordinator.ensureArmed()
+        }
+    }
+}
+
+/**
  * The system pass (ADR 0067): what a system broadcast is answered with. It dispatches `Reconcile` and calls
  * `ensureArmed`, which is [AppStart.run], whatever the broadcast was: the same two steps, and the same one entry
  * point, as a process start. It never starts the ringer and never starts a foreground service: an overdue rung is
@@ -114,11 +148,18 @@ class SystemEventWorker(
 ) : Worker(context, params) {
     override fun doWork(): Result =
         try {
-            if (SystemEvent.entries.none { it.name == inputData.getString(Work.KEY_EVENT) }) {
-                Result.failure()
-            } else {
-                WorkEntryPoint.passes(applicationContext).system.run()
-                Result.success()
+            val event = SystemEvent.entries.firstOrNull { it.name == inputData.getString(Work.KEY_EVENT) }
+            val passes = WorkEntryPoint.passes(applicationContext)
+            when (event) {
+                null -> Result.failure()
+                SystemEvent.TIMEZONE_CHANGED -> {
+                    passes.timezone.run()
+                    Result.success()
+                }
+                else -> {
+                    passes.system.run()
+                    Result.success()
+                }
             }
         } catch (
             @Suppress("TooGenericExceptionCaught") e: RuntimeException,
@@ -178,13 +219,19 @@ object Work {
 
     const val KEY_EVENT = "event"
 
-    /** The unique name of the system pass for [event]. */
-    fun systemName(event: SystemEvent) = "momtime.system.${event.name.lowercase()}"
+    /**
+     * The one queue the system passes share (ADR 0068). Every broadcast, of whatever kind, is appended to it, so the
+     * passes run one after another in the order the broadcasts arrived: a pass that is running when another broadcast
+     * lands has finished before the next begins, and the next reads the clock and the zone as they are then.
+     */
+    const val SYSTEM_QUEUE = "momtime.system"
 
     /**
-     * One system pass now, for [event] (ADR 0067): unique one time work, appended after one that is running so that a
-     * broadcast that lands during a pass is still answered by a pass that began after it, and replacing one that
-     * failed or was cancelled. Not REPLACE: that would cancel a pass in progress. Returns the operation, whose
+     * One system pass now, for [event] (ADR 0067, ADR 0068): unique one time work on the shared [SYSTEM_QUEUE],
+     * appended after one that is running so that a broadcast that lands during a pass is still answered by a pass that
+     * began after it, and replacing one that failed or was cancelled. Not KEEP: a broadcast that arrived while a pass
+     * was running would be dropped, and that pass may have read the clock or the zone before the change. Not REPLACE:
+     * that would cancel a pass in progress. Returns the operation, whose
      * result completes when the work is written, which is what the receiver waits for before it finishes.
      */
     fun enqueueSystemEvent(
@@ -192,7 +239,7 @@ object Work {
         event: SystemEvent,
     ): Operation =
         WorkManager.getInstance(context).enqueueUniqueWork(
-            systemName(event),
+            SYSTEM_QUEUE,
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             OneTimeWorkRequestBuilder<SystemEventWorker>()
                 .setInputData(Data.Builder().putString(KEY_EVENT, event.name).build())

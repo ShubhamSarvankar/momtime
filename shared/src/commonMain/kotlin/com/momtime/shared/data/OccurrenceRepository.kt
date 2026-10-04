@@ -6,6 +6,7 @@ import com.momtime.shared.domain.OccurrenceState
 import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.engine.OccurrenceMaterialiser
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
 
 interface OccurrenceRepository {
@@ -67,6 +68,18 @@ interface OccurrenceRepository {
         occurrenceId: String,
         to: OccurrenceState,
         event: Event,
+    )
+
+    /**
+     * Moves an occurrence to [scheduledInstant] in [zone] (ADR 0068): the one thing a time zone change does to an
+     * occurrence. Its id, local date, `alarmSlot` and state are untouched, so the armed alarm's request code still
+     * matches and its history is unchanged. It is not a state transition and writes no event. The caller never
+     * passes a terminal occurrence: that is the command's rule, and a terminal occurrence is immutable.
+     */
+    fun reschedule(
+        occurrenceId: String,
+        scheduledInstant: Instant,
+        zone: TimeZone,
     )
 
     /** Allocates the next monotonic alarmSlot, transactionally (ADR 0018/0031). */
@@ -173,6 +186,14 @@ class SqlDelightOccurrenceRepository(
             events.insert(event)
             database.occurrenceQueries.updateOccurrenceState(to.name, occurrenceId)
         }
+    }
+
+    override fun reschedule(
+        occurrenceId: String,
+        scheduledInstant: Instant,
+        zone: TimeZone,
+    ) {
+        database.occurrenceQueries.updateOccurrenceSchedule(scheduledInstant.toDb(), zone.toDb(), occurrenceId)
     }
 
     override fun allocateNextAlarmSlot(): Int =

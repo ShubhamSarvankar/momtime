@@ -29,6 +29,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 updateOccurrenceState:
 UPDATE occurrence SET state = ? WHERE id = ?;
 
+updateOccurrenceSchedule:
+UPDATE occurrence SET scheduled_instant = ?, time_zone_id = ? WHERE id = ?;
+
 selectOccurrenceById:
 SELECT * FROM occurrence WHERE id = ?;
 
