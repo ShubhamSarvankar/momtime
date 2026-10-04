@@ -12,8 +12,9 @@ import kotlin.time.Instant
  * [preserved] is whether the corrupt file was kept as a `.corrupt` copy. If keeping it failed, the
  * database was deleted instead, because reminders must keep working.
  *
- * The write is durable: the bytes are synced to storage before the file is renamed into place, so a
- * process that ends straight afterwards (ADR 0051) leaves the marker behind.
+ * The write is durable: the bytes are synced to storage before the file is renamed into place, and the
+ * directory is synced after, so a process that ends straight afterwards (ADR 0051) leaves the marker
+ * behind, and so does power loss (ADR 0055).
  */
 data class CorruptionMarker(
     val corruptedAt: Instant,
@@ -23,6 +24,7 @@ data class CorruptionMarker(
         fun write(
             file: File,
             marker: CorruptionMarker,
+            directorySync: DirectorySync = OsDirectorySync,
         ) {
             file.parentFile?.mkdirs()
             val temp = File(file.parentFile, file.name + ".tmp")
@@ -37,6 +39,8 @@ data class CorruptionMarker(
                 file.writeBytes(bytes)
                 temp.delete()
             }
+            // The rename is durable only once the directory is (ADR 0055).
+            file.parentFile?.let(directorySync::sync)
         }
 
         fun read(file: File): CorruptionMarker? {

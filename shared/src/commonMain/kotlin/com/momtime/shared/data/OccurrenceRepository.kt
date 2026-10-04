@@ -40,6 +40,9 @@ interface OccurrenceRepository {
         date: LocalDate,
     ): Occurrence?
 
+    /** The occurrence that owns [slot], or null if none does (after a reset or a restore, none may). */
+    fun findByAlarmSlot(slot: Int): Occurrence?
+
     fun datesAlreadyMaterialisedForTemplate(templateId: String): Set<LocalDate>
 
     fun findPending(): List<Occurrence>
@@ -115,6 +118,12 @@ class SqlDelightOccurrenceRepository(
     ): Occurrence? =
         database.occurrenceQueries
             .selectOccurrenceByTemplateAndDate(templateId, date.toDb())
+            .executeAsOneOrNull()
+            ?.toDomain()
+
+    override fun findByAlarmSlot(slot: Int): Occurrence? =
+        database.occurrenceQueries
+            .selectOccurrenceByAlarmSlot(slot.toLong())
             .executeAsOneOrNull()
             ?.toDomain()
 

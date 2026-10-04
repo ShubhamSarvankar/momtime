@@ -7,7 +7,9 @@ import com.momtime.android.di.AndroidDatabaseDriverFactory
 import com.momtime.android.di.AndroidStoreDriverFactory
 import com.momtime.android.di.ProcessEnd
 import com.momtime.android.di.StoreDriverFactory
+import com.momtime.android.di.armingModule
 import com.momtime.android.di.momTimeModules
+import com.momtime.android.store.StoreFailures
 import com.momtime.shared.data.DatabaseDriverFactory
 import com.momtime.shared.data.PregnancyRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
@@ -23,7 +25,9 @@ import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
 import org.koin.core.KoinApplication
+import org.koin.core.module.Module
 import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import org.robolectric.annotation.SQLiteMode
 import org.robolectric.config.ConfigurationRegistry
 import java.util.UUID
@@ -107,12 +111,15 @@ internal class RecordingProcessEnd(
  * A Koin application of the production modules over a shared database file named [name] and an
  * android store file named [storeName]. Ending the process is replaced by [processEnd].
  */
+@Suppress("LongParameterList")
 internal class TestGraph(
     context: Context,
     val name: String = "t-${UUID.randomUUID().toString().take(8)}.db",
     clock: Clock = testClock,
     val storeName: String = "s-${UUID.randomUUID().toString().take(8)}.db",
     val processEnd: RecordingProcessEnd = RecordingProcessEnd(),
+    storeFailures: StoreFailures = StrictStoreFailures,
+    arming: Module? = null,
 ) {
     // Robolectric does not always create the databases directory the way a device does when the
     // framework asks for a database path, so the test makes it.
@@ -123,7 +130,12 @@ internal class TestGraph(
     val factory = TrackingFactory(AndroidDatabaseDriverFactory(context, name, clock, processEnd))
     val storeFactory = TrackingStoreFactory(AndroidStoreDriverFactory(context, storeName, clock))
     private val application: KoinApplication =
-        koinApplication { modules(momTimeModules(context, factory, storeFactory)) }
+        koinApplication {
+            modules(
+                momTimeModules(context, factory, storeFactory, storeFailures, arming ?: armingModule(context)) +
+                    module { single<Clock> { clock } },
+            )
+        }
     val koin get() = application.koin
 
     inline fun <reified T : Any> get(): T = koin.get()
@@ -200,4 +212,16 @@ internal fun TestGraph.seedTemplate(): ScheduleTemplate {
     val template = template()
     get<ScheduleTemplateRepository>().insert(template)
     return template
+}
+
+/**
+ * The store policy tests run under (ADR 0054): a failure in the android store is thrown, as an `Error` so
+ * that nothing on the alarm path catches it, and a store bug fails the suite. Production counts and logs
+ * instead. A test that is about the lenient path says so by passing the production policy.
+ */
+internal object StrictStoreFailures : StoreFailures {
+    override fun onFailure(
+        operation: String,
+        cause: RuntimeException,
+    ): Unit = throw AssertionError("store failure in $operation: ${cause.javaClass.simpleName}", cause)
 }

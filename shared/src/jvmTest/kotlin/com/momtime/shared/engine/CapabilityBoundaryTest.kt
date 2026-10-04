@@ -1,5 +1,6 @@
 package com.momtime.shared.engine
 
+import com.momtime.shared.domain.AlarmScheduler
 import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.DeliveryCapability
 import com.momtime.shared.domain.EscalationRung
@@ -34,6 +35,11 @@ class CapabilityBoundaryTest {
             EscalationPolicy::class.java,
             NextRungResolver::class.java,
             NextRungResolver.PendingLadder::class.java,
+            ArmingSelection::class.java,
+            ArmCandidate::class.java,
+            RungSelection::class.java,
+            AlarmEvents::class.java,
+            AlarmScheduler::class.java,
             Reconcile::class.java,
             OccurrenceMaterialiser::class.java,
             SnoozePolicy::class.java,
@@ -105,6 +111,18 @@ class CapabilityBoundaryTest {
     fun `no escalation engine or rung type mentions DeliveryCapability`() {
         val leaks = engineTypes.flatMap(::capabilityMentions)
         assertEquals(emptyList(), leaks, "capability leaked into the shared escalation engine")
+    }
+
+    // The port deals in slots and instants and nothing else: no tier, no mechanism, no platform type.
+    @Test
+    fun `the alarm scheduler port takes only slots and instants`() {
+        val allowed = setOf("int", Instant::class.java.name)
+        val methods = AlarmScheduler::class.java.declaredMethods
+        assertEquals(setOf("arm", "cancel"), methods.map { it.name }.toSet())
+        for (method in methods) {
+            val types = method.parameterTypes.map { it.name } + method.returnType.name
+            assertTrue(allowed.containsAll(types - "void"), "${method.name} mentions ${types - allowed - "void"}")
+        }
     }
 
     @Test

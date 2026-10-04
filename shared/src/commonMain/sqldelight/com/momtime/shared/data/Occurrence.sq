@@ -35,6 +35,9 @@ SELECT * FROM occurrence WHERE id = ?;
 selectOccurrenceByTemplateAndDate:
 SELECT * FROM occurrence WHERE template_id = ? AND local_date = ?;
 
+selectOccurrenceByAlarmSlot:
+SELECT * FROM occurrence WHERE alarm_slot = ?;
+
 selectPendingOccurrences:
 SELECT * FROM occurrence WHERE state = 'PENDING' ORDER BY scheduled_instant ASC;
 

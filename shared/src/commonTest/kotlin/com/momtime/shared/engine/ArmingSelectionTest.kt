@@ -1,0 +1,76 @@
+package com.momtime.shared.engine
+
+import com.momtime.shared.domain.Channel
+import com.momtime.shared.domain.Criticality
+import com.momtime.shared.domain.EscalationRung
+import com.momtime.shared.domain.Occurrence
+import com.momtime.shared.domain.OccurrenceState
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+
+class ArmingSelectionTest {
+    private val t0 = Instant.fromEpochMilliseconds(1_700_000_000_000)
+    private val device = setOf(Channel.RING, Channel.RING_REPEAT)
+
+    private fun candidate(
+        id: String,
+        slot: Int,
+        scheduled: Instant,
+        criticality: Criticality,
+        fired: Int = 0,
+    ) = ArmCandidate(
+        Occurrence(id, "tmpl-$id", LocalDate(2023, 11, 14), scheduled, TimeZone.UTC, OccurrenceState.PENDING, slot),
+        criticality,
+        fired,
+    )
+
+    @Test
+    fun `no candidates selects nothing`() {
+        assertNull(ArmingSelection.next(emptyList(), device))
+    }
+
+    @Test
+    fun `the selection carries the slot of the occurrence the rung belongs to`() {
+        val selection = ArmingSelection.next(listOf(candidate("a", 7, t0, Criticality.STANDARD)), device)
+        assertEquals(RungSelection("a", 7, EscalationRung(t0, Channel.RING)), selection)
+    }
+
+    // The fire count decides what is next. Time is not an input.
+    @Test
+    fun `selection follows the fired count`() {
+        val c = candidate("a", 1, t0, Criticality.STANDARD, fired = 1)
+        assertEquals(t0 + 10.minutes, ArmingSelection.next(listOf(c), device)?.rung?.instant)
+        assertNull(ArmingSelection.next(listOf(c.copy(firedCount = 2)), device))
+    }
+
+    // A caregiver rung of A (10 minutes in) comes before a ring rung of B (12 minutes in).
+    @Test
+    fun `a caregiver rung of one occurrence does not precede a ring rung of another`() {
+        val a = candidate("a", 1, t0, Criticality.CRITICAL, fired = 2)
+        val b = candidate("b", 2, t0 + 12.minutes, Criticality.STANDARD)
+        val selection = checkNotNull(ArmingSelection.next(listOf(a, b), device))
+        assertEquals("b", selection.occurrenceId)
+        assertEquals(2, selection.alarmSlot)
+    }
+
+    @Test
+    fun `expected rung is the first unfired rung of the channels, or null`() {
+        val c = candidate("a", 1, t0, Criticality.CRITICAL)
+        assertEquals(t0, ArmingSelection.expectedFor(c, device)?.instant)
+        assertEquals(t0 + 5.minutes, ArmingSelection.expectedFor(c.copy(firedCount = 1), device)?.instant)
+        assertNull(ArmingSelection.expectedFor(c.copy(firedCount = 2), device))
+    }
+
+    @Test
+    fun `ties between occurrences are broken the same way in either order`() {
+        val a = candidate("a", 1, t0, Criticality.GENTLE)
+        val b = candidate("b", 2, t0, Criticality.GENTLE)
+        assertEquals("a", ArmingSelection.next(listOf(a, b), device)?.occurrenceId)
+        assertEquals("a", ArmingSelection.next(listOf(b, a), device)?.occurrenceId)
+    }
+}

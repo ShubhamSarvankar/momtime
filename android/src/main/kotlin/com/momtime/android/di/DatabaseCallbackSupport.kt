@@ -46,6 +46,7 @@ internal class CorruptionHandler(
     private val clock: Clock,
     private val processEnd: ProcessEnd? = null,
     private val onClosedByCorruption: (() -> Unit)? = null,
+    private val directorySync: DirectorySync = OsDirectorySync,
 ) {
     fun handle(db: SupportSQLiteDatabase) {
         // A database that was open when corruption was found was in use. One still being opened is not.
@@ -55,7 +56,7 @@ internal class CorruptionHandler(
         // An in-memory database has no file to keep, and nothing to replace.
         if (path == null) return
         val preserved = quarantine(File(path))
-        CorruptionMarker.write(markerFile, CorruptionMarker(clock.now(), preserved))
+        CorruptionMarker.write(markerFile, CorruptionMarker(clock.now(), preserved), directorySync)
         if (midUse) {
             onClosedByCorruption?.invoke()
             processEnd?.end()
@@ -69,6 +70,8 @@ internal class CorruptionHandler(
         if (!preserved) database.delete()
         // The sidecar files belong to the corrupt database, never to the fresh one.
         for (suffix in listOf("-journal", "-wal", "-shm")) File(database.path + suffix).delete()
+        // The rename and the deletes are durable only once the directory is (ADR 0055).
+        database.parentFile?.let(directorySync::sync)
         return preserved
     }
 

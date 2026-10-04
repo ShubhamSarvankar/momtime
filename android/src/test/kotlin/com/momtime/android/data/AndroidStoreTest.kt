@@ -4,6 +4,7 @@ import com.momtime.android.di.CorruptionMarker
 import com.momtime.android.di.DatabaseFiles
 import com.momtime.android.store.ArmedAlarm
 import com.momtime.android.store.ArmedAlarmRepository
+import com.momtime.android.store.CountingStoreFailures
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.shared.domain.DeliveryCapability
@@ -39,6 +40,8 @@ import kotlin.time.Instant
 class AndroidStoreTest {
     private val context = RuntimeEnvironment.getApplication()
     private lateinit var graph: TestGraph
+    private val logged = mutableListOf<String>()
+    private val counting = CountingStoreFailures { logged += it }
 
     @Before
     fun setUp() {
@@ -48,6 +51,13 @@ class AndroidStoreTest {
 
     @After
     fun tearDown() = graph.close()
+
+    // The policy tests run under is strict (ADR 0054). A test of the production path swaps in the counting one.
+    private fun lenient(): TestGraph {
+        graph.close()
+        graph = TestGraph(context, storeFailures = counting)
+        return graph
+    }
 
     private fun telemetry(
         id: String,
@@ -103,13 +113,14 @@ class AndroidStoreTest {
     // rejection shows as false and as no row stored.
     @Test
     fun `the schema rejects an unknown tier, a battery over 100 and a second row for one event`() {
-        val repo = graph.get<FireTelemetryRepository>()
+        val repo = lenient().get<FireTelemetryRepository>()
         assertTrue(repo.insert(telemetry("e-1")))
 
         assertFalse("a second row for the same event", repo.insert(telemetry("e-1")))
         assertFalse("a battery of 101", repo.insert(telemetry("e-2").copy(batteryPct = 101)))
         assertFalse("a negative battery", repo.insert(telemetry("e-3").copy(batteryPct = -1)))
         assertEquals(1L, repo.count())
+        assertEquals("each rejection is counted", mapOf("fire_telemetry.insert" to 3L), counting.counts())
     }
 
     private fun armed(slot: Int) =
@@ -155,7 +166,7 @@ class AndroidStoreTest {
     // missing", which sends the watchdog to its repair path, and a failed write returns false (ADR 0051).
     @Test
     fun `a store failure on the alarm path is never fatal`() {
-        val armedRepo = graph.get<ArmedAlarmRepository>()
+        val armedRepo = lenient().get<ArmedAlarmRepository>()
         val fires = graph.get<FireTelemetryRepository>()
         assertTrue(armedRepo.replace(armed(1)))
         // The store's driver is closed underneath the repositories, so every call from here on fails.
@@ -175,6 +186,42 @@ class AndroidStoreTest {
 
         assertTrue("a store failure reached the caller: ${outcome.exceptionOrNull()}", outcome.isSuccess)
         assertEquals(listOf(null, false, false, false, null, 0L), outcome.getOrThrow())
+        // Each failure is counted by operation, so a store that fails every time is visible (ADR 0054).
+        assertEquals(
+            mapOf(
+                "armed_alarm.current" to 1L,
+                "armed_alarm.replace" to 1L,
+                "armed_alarm.clear" to 1L,
+                "fire_telemetry.insert" to 1L,
+                "fire_telemetry.find" to 1L,
+                "fire_telemetry.count" to 1L,
+            ),
+            counting.counts(),
+        )
+    }
+
+    // The test graph is strict (ADR 0054): a failure in the store is thrown as an Error, so a store bug fails
+    // the suite and cannot hide behind the production policy of counting it.
+    @Test
+    fun `the test graph runs the store strict, so a store failure fails the test`() {
+        val armedRepo = graph.get<ArmedAlarmRepository>()
+        assertTrue(armedRepo.replace(armed(1)))
+        graph.storeFactory.closeAll()
+
+        val failure = runCatching { armedRepo.current() }.exceptionOrNull()
+
+        assertTrue("a closed store did not fail the test: $failure", failure is AssertionError)
+        assertTrue(failure?.message.orEmpty(), failure?.message.orEmpty().contains("armed_alarm.current"))
+    }
+
+    // A log line names the operation and the exception's class. A database exception's message can carry
+    // SQL text or values, and no log may hold PII (invariant 11).
+    @Test
+    fun `a store failure is logged with its operation and exception class and nothing else`() {
+        counting.onFailure("armed_alarm.replace", IllegalStateException("iron tablet 65 mg"))
+
+        assertEquals(listOf("store failure in armed_alarm.replace: IllegalStateException"), logged)
+        assertEquals(1L, counting.total)
     }
 
     private val storeFile get() = context.getDatabasePath(graph.storeName)
@@ -196,7 +243,7 @@ class AndroidStoreTest {
     // the call that hit the corruption did not throw (ADR 0051).
     @Test
     fun `the store is reopened after corruption found during a query`() {
-        val fires = graph.get<FireTelemetryRepository>()
+        val fires = lenient().get<FireTelemetryRepository>()
         val armedRepo = graph.get<ArmedAlarmRepository>()
         for (i in 0 until 1500) assertTrue(fires.insert(telemetry("e-$i")))
         assertEquals(1500L, fires.count())
