@@ -56,6 +56,25 @@
             android:exported="false" />
 
         <!--
+            The system broadcasts (ADR 0067): boot, an app update, a clock change and a grant of exact alarm access.
+            Not exported: the system sends them as the system uid, which may reach an unexported component, as
+            WorkManager's own boot receiver is declared. Each is answered by unique work that dispatches Reconcile
+            and calls ensureArmed, and nothing rings. BOOT_COMPLETED only, never LOCKED_BOOT_COMPLETED, so nothing
+            runs before the first unlock. The timezone broadcast is not declared: what it should do is an open
+            question (ADR 0067). A Robolectric test pins this action list exactly.
+        -->
+        <receiver
+            android:name=".system.SystemBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
             The notification buttons' receiver (ADR 0066). Not exported: only an explicit, immutable PendingIntent
             that this app posted can reach it. A Robolectric test reads the merged manifest and fails if it is
             exported.

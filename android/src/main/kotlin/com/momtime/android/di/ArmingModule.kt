@@ -138,5 +138,5 @@ internal fun armingModule(
         single { MaterialiseCommand(get(), get(), newId) }
         single { Watchdog(get(), get(), get(), get(), get(), get()) }
         single { AppStart(get(), get(), get()) }
-        single { WorkPasses(get(), MaterialisationPass(get(), get()) { get<AlarmLog>().now() }) }
+        single { WorkPasses(get(), MaterialisationPass(get(), get()) { get<AlarmLog>().now() }, get()) }
     }
