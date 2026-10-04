@@ -182,6 +182,11 @@ class RingerAndScreenTest {
                         stopped[0] = true
                         sessions.end()
                     }
+
+                    override fun act(
+                        occurrenceId: String,
+                        action: com.momtime.shared.engine.OccurrenceAction,
+                    ) = Unit
                 }
             }
         return Robolectric

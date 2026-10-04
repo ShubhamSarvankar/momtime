@@ -166,6 +166,11 @@ class AndroidSchemaTest {
             "INSERT INTO alarm_delivery_telemetry(event_id, canary_scheduled_at, canary_actual_at, resolved_tier) " +
                 "VALUES ('canary', 100, 150, 'TIER_2')",
         )
+        // A snooze recorded before version 4 has no end; the migration gives it ten minutes (3.sqm).
+        db.execSQL(
+            "INSERT INTO event(id, occurrence_id, event_type, device_timestamp, source, snooze_number) " +
+                "VALUES ('snooze', 'occ-1', 'SNOOZED', 2000, 'USER', 1)",
+        )
         // Equal bounds cannot satisfy the version 2 CHECK; the migration clears both.
         db.execSQL(
             "INSERT INTO app_settings(id, quiet_hours_start, quiet_hours_end, ring_grade_daily_budget) " +
@@ -174,7 +179,7 @@ class AndroidSchemaTest {
     }
 
     @Test
-    fun `a v1 database migrates to v3 with foreign keys on and keeps its rows`() {
+    fun `a v1 database migrates to v4 with foreign keys on and keeps its rows`() {
         val name = "m-v1a.db"
         v1Database(name) { seedV1Rows(it) }
 
@@ -191,8 +196,14 @@ class AndroidSchemaTest {
             graph.get<EventRepository>().findById("canary")?.payload,
         )
 
+        assertEquals(
+            "a snooze from before the column ends ten minutes after it was taken",
+            EventPayload.Snooze(1, Instant.fromEpochMilliseconds(2000 + 600_000)),
+            graph.get<EventRepository>().findById("snooze")?.payload,
+        )
+
         val driver = graph.factory.createDriver()
-        assertEquals("3", driver.pragma("user_version"))
+        assertEquals("4", driver.pragma("user_version"))
         assertEquals("1", driver.pragma("foreign_keys"))
         assertEquals(emptyList<String>(), driver.foreignKeyViolations())
     }

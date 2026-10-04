@@ -1,0 +1,5 @@
+-- Version 3 to 4 (Phase 2, PR 5b): whether the alarm stream was muted (volume zero) when the alarm fired. The
+-- ringer plays on the alarm stream and the app never changes the system stream volume, so a muted stream is a
+-- ring she cannot hear, and the reliability banner (PR 7) reads this. Null for a row written before this version
+-- or one where the platform did not say (ADR 0048, ADR 0065).
+ALTER TABLE fire_telemetry ADD COLUMN alarm_stream_muted INTEGER;

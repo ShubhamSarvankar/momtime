@@ -20,7 +20,7 @@ enum class Presentation { NORMAL, SILENT_NOTICE }
  * The rung handed to delivery when an alarm fires, and how it is to be presented. [policy] is the domain's
  * decision for this rung (ring, or silent because of quiet hours or the budget, ADR 0060). [continuing] is true
  * when the occurrence is already ringing: the ring in progress goes on, with no restart and no second screen
- * (ADR 0062).
+ * (ADR 0062). [afterSnooze] is true when this is not a ladder rung but the end of a snooze (ADR 0066).
  */
 data class FiredRung(
     val occurrenceId: String,
@@ -29,6 +29,7 @@ data class FiredRung(
     val presentation: Presentation = Presentation.NORMAL,
     val policy: RungDelivery = RungDelivery.RING,
     val continuing: Boolean = false,
+    val afterSnooze: Boolean = false,
 )
 
 /**
@@ -83,10 +84,12 @@ sealed interface FireOutcome {
  *   delivers nothing. These are alarms left over from before a reset, a completion or a re arm, and
  *   ringing for them would ring for a medication she has already taken, or for one that does not exist;
  * - the expected rung writes `ALARM_FIRED` through the domain (the count of these is the record of what has
- *   fired) and is handed to delivery. Within the catch up window it is presented as the domain decides (a ring,
- *   or silent under quiet hours or the budget, ADR 0060); beyond the window, and still within grace, it is a
- *   silent notice (ADR 0056); and if its occurrence is already ringing the ring in progress continues
- *   (ADR 0062). This is the only place
+ *   fired) and is handed to delivery. While a snooze is running the expected "rung" is the snooze's end, and that
+ *   writes `SNOOZE_ENDED` instead: a snooze is not a rung, so it must not be counted as one (ADR 0066), and the
+ *   rungs that came due during it are armed once it has ended, by the count of rungs that really fired. Within
+ *   the catch up window it is presented as the domain decides (a ring, or silent under quiet hours or the
+ *   budget, ADR 0060); beyond the window, and still within grace, it is a silent notice (ADR 0056); and if its
+ *   occurrence is already ringing the ring in progress continues (ADR 0062). This is the only place
  *   the catch up decision is made: the watchdog and boot arm the earliest rung that has not fired, for now,
  *   and leave it to this.
  *
@@ -138,7 +141,8 @@ class AlarmFireHandler internal constructor(
         val candidate = candidates.of(occurrence)
         val expected = ArmingSelection.expectedFor(candidate, DEVICE_CHANNELS)
         if (expected == null || expected.instant != rungInstant) return FireOutcome.NotExpected
-        val eventId = log.fired(occurrence.id)
+        val afterSnooze = candidate.snoozeEnd != null
+        val eventId = if (afterSnooze) log.snoozeEnded(occurrence.id) else log.fired(occurrence.id)
         val now = log.now()
         val withinWindow = CatchUp.isWithinWindow(expected.instant, now)
         val presentation = if (withinWindow) Presentation.NORMAL else Presentation.SILENT_NOTICE
@@ -151,6 +155,7 @@ class AlarmFireHandler internal constructor(
                 presentation,
                 decision.policy,
                 decision.continuing,
+                afterSnooze,
             )
         delivery.deliver(fired, eventId)
         return FireOutcome.Fired(fired)

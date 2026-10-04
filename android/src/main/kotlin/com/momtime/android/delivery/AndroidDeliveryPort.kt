@@ -2,6 +2,7 @@ package com.momtime.android.delivery
 
 import android.app.NotificationManager
 import android.content.Context
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.PowerManager
 import com.momtime.android.arming.CapabilityResolver
@@ -12,11 +13,15 @@ import com.momtime.android.arming.Presentation
 import com.momtime.android.ring.RingItem
 import com.momtime.android.ring.RingJoin
 import com.momtime.android.ring.RingSessions
+import com.momtime.android.ring.RingStyle
+import com.momtime.android.settings.AndroidSettings
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
+import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.OccurrenceRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.ScheduleTemplate
+import kotlin.time.Instant
 
 /**
  * Delivery: everything from a fire to what she sees and hears (ADR 0060, ADR 0061, ADR 0062). The fire path has
@@ -31,10 +36,11 @@ import com.momtime.shared.domain.ScheduleTemplate
  *   tries again, and the refusal is recorded. Never a crash. Without a full screen intent, and with the overlay
  *   permission, the ring screen is opened through the overlay route.
  * - **PLAIN**: Tier 1. A notification on the criticality channel, replacing the one for the same occurrence.
- * - **SILENT_NOTICE**, **SILENT**: a silent notification on the Gentle channel.
+ * - **SILENT_NOTICE**, **SILENT**: a silent notification on the Quiet notices channel (ADR 0064).
  *
  * A row of device telemetry is written first (the android store, never fatal), then updated by what the ringer
- * did. Nothing here writes to the event log or changes an occurrence.
+ * did, and records whether the alarm stream was muted. Every notification carries the actions the domain offered
+ * for its occurrence (ADR 0066). Nothing here writes to the event log or changes an occurrence.
  */
 internal class AndroidDeliveryPort(
     private val context: Context,
@@ -53,7 +59,15 @@ internal class AndroidDeliveryPort(
         val path = DeliveryPath.choose(rung, resolution)
         val occurrence = occurrences.findById(rung.occurrenceId) ?: return
         val template = templates.findById(occurrence.templateId) ?: return
-        val item = RingItem(occurrence.id, template.title, template.dosage, template.doctorInstructions)
+        val item =
+            RingItem(
+                occurrence.id,
+                template.title,
+                template.dosage,
+                template.doctorInstructions,
+                occurrence.alarmSlot,
+                services.actions.available(occurrence.id, services.now()),
+            )
         services.telemetry.insert(telemetryRow(eventId, resolution.capability, path))
         val manager = context.getSystemService(NotificationManager::class.java)
         when (path) {
@@ -73,7 +87,7 @@ internal class AndroidDeliveryPort(
                     RingNotifications.reminder(
                         context,
                         item,
-                        NotificationChannels.GENTLE,
+                        NotificationChannels.QUIET,
                         late = rung.presentation == Presentation.SILENT_NOTICE,
                     ),
                 )
@@ -91,6 +105,7 @@ internal class AndroidDeliveryPort(
     ) {
         val channel = NotificationChannels.idFor(template.criticality)
         val fullScreen = path == DeliveryPath.RING
+        sessions.style = RingStyle(channel, fullScreen)
         when (sessions.join(item)) {
             RingJoin.CONTINUED -> Unit
             RingJoin.JOINED ->
@@ -98,7 +113,10 @@ internal class AndroidDeliveryPort(
                     RingNotifications.RING_ID,
                     RingNotifications.ring(context, sessions.items(), channel, fullScreen),
                 )
-            RingJoin.STARTED -> startRinger(RingerRequest(channel, fullScreen, eventId), path, overlayAvailable)
+            RingJoin.STARTED -> {
+                val vibration = services.settings.vibrationFor(template.id, template.criticality)
+                startRinger(RingerRequest(channel, fullScreen, eventId, vibration), path, overlayAvailable)
+            }
         }
     }
 
@@ -133,6 +151,9 @@ internal class AndroidDeliveryPort(
         val power = context.getSystemService(PowerManager::class.java)
         val battery = context.getSystemService(BatteryManager::class.java)
         val level = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        // The alarm stream's volume is hers and is never changed here. At zero the ring cannot be heard, and that
+        // is recorded for the reliability banner (PR 7); nothing is done about it.
+        val muted = context.getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_ALARM) == 0
         return FireTelemetry(
             eventId = eventId,
             resolvedTier = capability,
@@ -147,6 +168,7 @@ internal class AndroidDeliveryPort(
                     .takeIf { it >= 0 },
             deliveryPath = path.name,
             ringerStarted = null,
+            alarmStreamMuted = muted,
         )
     }
 
@@ -156,9 +178,13 @@ internal class AndroidDeliveryPort(
 }
 
 /** What the port reaches the platform and the store through, each replaceable by a test. */
+@Suppress("LongParameterList")
 internal class DeliveryServices(
     val ringer: RingerLauncher,
     val overlay: OverlayLauncher,
     val telemetry: FireTelemetryRepository,
     val probes: PlatformProbes,
+    val actions: OccurrenceActionCommand,
+    val settings: AndroidSettings,
+    val now: () -> Instant,
 )

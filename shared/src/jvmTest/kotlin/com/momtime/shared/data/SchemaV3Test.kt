@@ -143,6 +143,9 @@ class SchemaV3Test {
             ).value
 
     private fun assertV3(driver: SqlDriver) {
+        // The repository decodes the current schema, so the database is taken the one step further first
+        // (3 to 4, `3.sqm`, which SchemaV4Test covers); what is asserted below is what version 3 did.
+        migrate(driver, 3, 4)
         val events = SqlDelightEventRepository(MomTimeDatabase(driver))
         assertTrue("alarm_delivery_telemetry" !in tables(driver), "the telemetry table must be gone")
         assertEquals(

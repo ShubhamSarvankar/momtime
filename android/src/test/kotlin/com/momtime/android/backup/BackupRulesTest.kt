@@ -1,16 +1,22 @@
 package com.momtime.android.backup
 
+import android.content.Context
 import com.momtime.android.di.DatabaseFiles
+import com.momtime.android.settings.AndroidSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Auto Backup rules (ADR 0034, ADR 0044). The shared database goes with the backup, whole and with its
- * rollback journal. The quarantined `.corrupt` copy never does. API 31 and above read
+ * Auto Backup rules (ADR 0034, ADR 0044, ADR 0065). The shared database goes with the backup, whole and with its
+ * rollback journal, and so does android's own settings file (her backup sound interval and per template
+ * vibration patterns). The quarantined `.corrupt` copy never does. API 31 and above read
  * `dataExtractionRules`, API 29 and 30 read `fullBackupContent`, so both must say the same thing and
  * the manifest must point at both. The file names come from [DatabaseFiles], so renaming the database
  * without renaming it here fails.
@@ -18,7 +24,12 @@ import javax.xml.parsers.DocumentBuilderFactory
  * This reads the source XML. It shows what the rules say, not what a device's backup agent does with
  * them (MANUAL_CHECKS, backup and restore on a device).
  */
+@RunWith(RobolectricTestRunner::class)
 class BackupRulesTest {
+    private companion object {
+        const val SHARED_PREFS = "sharedpref"
+    }
+
     private fun xml(path: String) =
         DocumentBuilderFactory
             .newInstance()
@@ -44,8 +55,12 @@ class BackupRulesTest {
     ) {
         val database = "database"
         assertEquals(
-            "$label: the includes must be exactly the database and its journal",
-            setOf(database to DatabaseFiles.NAME, database to DatabaseFiles.JOURNAL_NAME),
+            "$label: the includes must be exactly the database, its journal and the settings file",
+            setOf(
+                database to DatabaseFiles.NAME,
+                database to DatabaseFiles.JOURNAL_NAME,
+                SHARED_PREFS to AndroidSettings.BACKUP_PATH,
+            ),
             children(section, "include").toSet(),
         )
         assertTrue(
@@ -67,6 +82,24 @@ class BackupRulesTest {
             assertTrue(
                 "$label: an include is a prefix of $file: ${includedPaths.filter { file.startsWith(it) }}",
                 includedPaths.none { file.startsWith(it) },
+            )
+        }
+    }
+
+    // ADR 0065: her android only choices live in one SharedPreferences file, and the backup rules name that file.
+    // The name is checked against the file the code really writes, so renaming one without the other fails.
+    @Test
+    fun `the settings file the code writes is the file the rules include`() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        AndroidSettings(context).setBackupSoundDelay(null)
+        val directory = java.io.File(context.applicationInfo.dataDir, "shared_prefs")
+        val written = directory.listFiles().orEmpty().map { it.name }
+        assertTrue("the settings file was not written: $written", AndroidSettings.BACKUP_PATH in written)
+        for (rules in listOf("data_extraction_rules.xml", "backup_rules.xml")) {
+            val root = xml("src/main/res/xml/$rules")
+            assertTrue(
+                "$rules must include the settings file",
+                (SHARED_PREFS to AndroidSettings.BACKUP_PATH) in children(root, "include"),
             )
         }
     }

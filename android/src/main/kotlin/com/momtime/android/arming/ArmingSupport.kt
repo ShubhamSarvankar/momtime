@@ -1,6 +1,7 @@
 package com.momtime.android.arming
 
 import com.momtime.shared.data.EventRepository
+import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.OccurrenceRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.EventType
@@ -11,15 +12,18 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * What selection reads: the occurrences that are pending, each with the criticality that decides its ladder
- * and the count of its `ALARM_FIRED` events, which is the record of the rungs that have fired.
+ * What selection reads: the occurrences that are open (pending, or snoozed), each with the criticality that decides
+ * its ladder, the count of its `ALARM_FIRED` events, which is the record of the rungs that have fired, and the end
+ * of the snooze that is running, if one is (ADR 0066). A snoozed occurrence is selected by its snooze's end, which
+ * is how the one `ensureArmed` entry point arms a snooze and the watchdog repairs a lost one.
  */
 internal class ArmCandidates(
     private val occurrences: OccurrenceRepository,
     private val templates: ScheduleTemplateRepository,
     private val events: EventRepository,
+    private val actions: OccurrenceActionCommand,
 ) {
-    fun pending(): List<ArmCandidate> = occurrences.findPending().map(::of)
+    fun pending(): List<ArmCandidate> = occurrences.findOpen().map(::of)
 
     /** The occurrence that owns [slot], or null if none does. */
     fun owning(slot: Int): Occurrence? = occurrences.findByAlarmSlot(slot)
@@ -32,6 +36,7 @@ internal class ArmCandidates(
                     "occurrence ${occurrence.id} has no template"
                 }.criticality,
             firedCount = events.countByOccurrenceAndType(occurrence.id, EventType.ALARM_FIRED).toInt(),
+            snoozeEnd = actions.runningSnoozeEnd(occurrence),
         )
 }
 
@@ -49,6 +54,16 @@ internal class AlarmLog(
     fun fired(occurrenceId: String): String {
         val id = newId()
         events.insert(AlarmEvents.fired(id, occurrenceId, clock.now()))
+        return id
+    }
+
+    /**
+     * Appends `SNOOZE_ENDED` and returns the id of the event. A snooze's alarm fired: it is not a ladder rung, so it
+     * is not `ALARM_FIRED` and consumes none (ADR 0066).
+     */
+    fun snoozeEnded(occurrenceId: String): String {
+        val id = newId()
+        events.insert(AlarmEvents.snoozeEnded(id, occurrenceId, clock.now()))
         return id
     }
 

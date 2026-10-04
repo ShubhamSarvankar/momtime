@@ -9,6 +9,8 @@ import com.momtime.android.arming.FireOutcome
 import com.momtime.android.arming.t0
 import com.momtime.android.di.DeliveryWiring
 import com.momtime.android.ringer.AlarmSound
+import com.momtime.android.ringer.AlarmVibration
+import com.momtime.android.ringer.VibrationPattern
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.shared.data.AppSettingsRepository
@@ -73,6 +75,21 @@ internal class FakeSound : AlarmSound {
     }
 }
 
+/** A vibration that records what it was asked, with no motor. */
+internal class FakeVibration : AlarmVibration {
+    val starts = mutableListOf<VibrationPattern>()
+    var stops = 0
+        private set
+
+    override fun start(pattern: VibrationPattern) {
+        starts += pattern
+    }
+
+    override fun stop() {
+        stops++
+    }
+}
+
 /**
  * The production graph with the real delivery port over a real database, the shadowed platform, and fakes for the
  * three things a test cannot have (the ringer service launch, the overlay, the speaker). The capability inputs are
@@ -85,6 +102,7 @@ internal class DeliveryFixture(
     val ringer = FakeRinger()
     val overlay = FakeOverlay()
     val sound = FakeSound()
+    val vibration = FakeVibration()
     private var fullScreen = fullScreenIntent
 
     val arming =
@@ -96,6 +114,7 @@ internal class DeliveryFixture(
                     ringer = ringer,
                     overlay = overlay,
                     sound = sound,
+                    vibration = vibration,
                     zone = { TimeZone.UTC },
                     fullScreenIntentApi = { fullScreen },
                 ),

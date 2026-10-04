@@ -179,7 +179,8 @@ The critical path. Built and verified on the JVM via Robolectric. Device verific
 - Water: one tap glass logging, goal configuration, progress display, optional nudge schedule.
 - Nutrition aggregation view: tag counts per day and per week. Counts only. No targets, no colour coding for good or bad.
 - Dashboard: today's completed, missed, skipped as three figures, water progress, gestational week, days to due date, 30 day critical completion metric.
-- Settings: quiet hours, interruption budget, snooze duration, per channel preferences, locale override, telemetry opt in.
+- Settings: quiet hours, interruption budget, snooze duration, per channel preferences, locale override, telemetry opt in; and the Android only settings that live in `momtime_android_settings` (the backup sound interval and the per template vibration patterns, ADR 0065).
+- Notification UX for several occurrences due at once: each occurrence gets its own actions. Phase 2 puts buttons only on a notification for one occurrence (ADR 0066), because a notification holds three actions; several due at once is likely her ordinary morning, so in Tier 2 the common case gets a heads up with no buttons. Phase 3 owns notification UX and gives each occurrence its own acknowledge, snooze and skip (per occurrence notifications in a group, or a design that fits the three action limit). Added in the review of PR #20 by Claude (technical review).
 - Reliability view surfacing canary results and the device fix path banner.
 - Dark mode.
 - Home screen widget and quick settings tile for one tap water logging.

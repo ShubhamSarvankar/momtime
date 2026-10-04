@@ -33,7 +33,11 @@ class EventPayloadRoundTripTest {
     fun `none payload round trips`() = assertRoundTrip(EventPayload.None, EventType.COMPLETED)
 
     @Test
-    fun `snooze payload round trips`() = assertRoundTrip(EventPayload.Snooze(snoozeNumber = 2), EventType.SNOOZED)
+    fun `snooze payload round trips`() =
+        assertRoundTrip(
+            EventPayload.Snooze(snoozeNumber = 2, snoozedUntil = kotlin.time.Instant.fromEpochMilliseconds(600_000)),
+            EventType.SNOOZED,
+        )
 
     @Test
     fun `mission result payload round trips for both mission types`() {

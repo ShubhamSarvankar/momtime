@@ -10,8 +10,10 @@
     <string name="channel_critical_description">Medicines and routines you must not miss. This is the channel not to mute.</string>
     <string name="channel_standard_name">Standard reminders</string>
     <string name="channel_standard_description">Everyday reminders.</string>
-    <string name="channel_gentle_name">Gentle and quiet reminders</string>
-    <string name="channel_gentle_description">Reminders that arrive quietly: gentle ones, late ones, and any held back by quiet hours or the daily limit.</string>
+    <string name="channel_gentle_name">Gentle reminders</string>
+    <string name="channel_gentle_description">Reminders you chose to be gentle.</string>
+    <string name="channel_quiet_name">Quiet notices</string>
+    <string name="channel_quiet_description">Reminders that arrive without a sound: late ones, and any held back by quiet hours or the daily limit. A late reminder for a medicine you must not miss can arrive here, so keep this channel on.</string>
 
     <!-- A reminder in the notification shade. The title and the text of a reminder are hers, shown verbatim. -->
     <string name="notification_reminder_fallback_title">Reminder</string>
@@ -28,6 +30,10 @@
     <string name="ring_dosage_label">Dosage</string>
     <string name="ring_instructions_label">Doctor\'s instructions</string>
     <string name="ring_stop_sound">Stop the sound</string>
+    <string name="ring_action_acknowledge">Done</string>
+    <string name="ring_action_snooze">Snooze</string>
+    <string name="ring_action_skip">Skip</string>
+    <string name="ring_snooze_unavailable">Snooze is not available for this reminder.</string>
     <string name="ring_sound_stopped">The sound is off. Your reminder is still waiting for you.</string>
     <plurals name="ring_due_count">
         <item quantity="one">%d reminder is due</item>
