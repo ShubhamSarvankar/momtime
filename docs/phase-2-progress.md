@@ -29,8 +29,9 @@ Roles: "Claude (technical review)" is the reviewing Claude in Shubham's chat; Ph
 | B | `phase-2/telemetry-split` | Merged (PR #15, merge commit `397ae01`) |
 | 2 | `phase-2/capability` | Merged (PR #16, merge commit `77aa203`) |
 | 3 | `phase-2/arming` | Merged (PR #17, merge commit `8720d03`) |
-| 4 | `phase-2/workers` | Open for review (see "PR 4" below) |
-| 5 | `phase-2/ringer` | Not started |
+| 4 | `phase-2/workers` | Merged (PR #18, merge commit `6ef4909`) |
+| 5 | `phase-2/delivery` | Open for review (see "PR 5" below) |
+| 5b | `phase-2/actions` | Not started: her actions, snooze, the audio ramp and backup sound, vibration patterns |
 | 6 | `phase-2/system-broadcasts` | Not started |
 | 7 | `phase-2/canary-telemetry` | Not started |
 | 8 | `phase-2/permission-onboarding` | Not started |
@@ -229,6 +230,42 @@ Also done: the nothing pending follow up (`ArmingTest`: `nothing pending cancels
 
 Not verified: everything in `MANUAL_CHECKS.md` P2-13 to P2-15. The tests read what was armed from `ShadowAlarmManager` and run the workers through `WorkManager`'s test driver; nothing ran on a device and no Doze cadence was observed. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 5: `phase-2/delivery`
+
+Branched from `main` at `6ef49094bb0603b4a7f87084280063bb58abf6fb` (the merge of PR #18). The progress file named this PR `phase-2/ringer`; the PR 5 prompt named it `phase-2/delivery` and moved her actions, snooze, the audio ramp and backup sound and the vibration patterns to a PR 5b.
+
+Scope: the delivery port's real implementation, one path per presentation (ADR 0060); policy at fire time through the domain, with the budget spent through it (`DeliveryPolicyCommand`); the three notification channels and the Critical channel input to capability resolution; the ringer, a `mediaPlayback` foreground service with `USAGE_ALARM` audio and transient audio focus, its refusal degrading to a notification (ADR 0061); the ring screen and the ring session (ADR 0062); the overlay route; the alarm clock's show intent; the reset notification on both corruption paths; the android store's migration 2 to 3 for the delivery telemetry row; `verifyRingUiBoundary`; placeholder sounds from a committed script; CI that runs once per pull request (ADR 0063). Mutations are in `phase-2-traceability.md` (P-1 to P-27), run at `948a7b9`.
+
+New CI step: `verify-android-structure` also runs `verifyRingUiBoundary` and its self test. The `push` trigger is restricted to `main` (ADR 0063), so a pull request gets one run; the ten check names are unchanged. **Shubham: please confirm that the required checks still attach to the pull request run and report.**
+
+Numbers, measured at `948a7b9` (the head differs from it only in documentation): 157 `shared` tests (149 before) and 544 android tests (372 before), none failing. `shared` line coverage 747/764 (97.8%), branch coverage 238/242 (98.3%): data 129/132 (97.7%, the three Phase 1 quiet hours branches), domain 8/8, engine 101/102 (99.0%), all above their gates.
+
+The merged manifest's permissions after this PR (eleven): `USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM` (maxSdkVersion 32), `USE_FULL_SCREEN_INTENT`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (new), `SYSTEM_ALERT_WINDOW` (new), `WAKE_LOCK`, `ACCESS_NETWORK_STATE`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, and `androidx.core`'s own `com.momtime.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Components added to the app's own: `RingActivity` and `RingerService`, both not exported.
+
+Findings from this PR:
+
+- **There is no per notification silence on the supported releases** (`Notification.Builder.setSilent` does not exist in the platform), and a notification cannot be made silent on a channel that sounds. So every silent presentation goes to the Gentle channel, whatever the criticality (ADR 0060).
+- **On the ring paths the notification's channel has a sound and the ringer plays its own**, so the two overlap for a moment at the start. Only a device shows whether it is audible; recorded in P2-17.
+- **From API 34 `canUseFullScreenIntent()` cannot be changed in Robolectric**, so the tests drive it through the seam; below 34 the input is the declared permission, which the tests edit as PR 2's did. Both are in `DeliveryFixture.fullScreenIntent`.
+- **A `PendingIntent` for the ring screen has request code 0**: it names one activity and no slot, slots start at 1 and the alarm's `PendingIntent` names the receiver, so the two can never be the same `PendingIntent`. The alarm clock's show intent uses the slot (invariant 10).
+- **`ForegroundServiceStartNotAllowedException` is an `IllegalStateException`**, so the refusal tests throw that and a `SecurityException`.
+- **The heredoc tool trouble recurred twice and cost two aborted mutation runs** (patterns that no longer matched after a reformat); the runner reported both and they were rerun.
+- **The ring screen is plain framework views**, no new dependency: a `ScrollView` layout with no fixed width or height, and `plurals` for the counts.
+
+Decisions of this PR (the implementing session's, for review, unless noted):
+48. **Every ring grade interruption spends the budget, `CRITICAL` included** (judgment, ADR 0060). `CRITICAL` is exempt from being limited, not from being counted. The change, if the review prefers otherwise, is one condition in `DeliveryDecider`.
+49. **Every silent presentation goes to the Gentle channel** (judgment, ADR 0060): the silent notice and the quiet hours and budget silences, for any criticality.
+50. **A fire for an occurrence already ringing continues the ring; a fire for another joins the session** (decision of Claude (technical review), ADR 0062). The session ends when the sound is stopped, or in PR 5b when nothing in it is left unacknowledged. A session whose ringer was refused ends at once so that the next rung tries again (judgment).
+51. **The show intent opens the ring screen** (judgment, ADR 0061). The prompt said "it opens the app"; until Phase 3 the ring screen is the app's only screen and says so when nothing is ringing.
+52. **Placeholder sounds are generated by `scripts/sounds/GenerateSounds.java`** (ADR 0061): a deterministic, dependency free tone, 2.0 seconds, loopable, with no author or licence to credit. Shubham chooses the final sounds. Only the primary sound exists; the backup sound is PR 5b.
+53. **CI runs once per pull request** (decision of Claude (technical review), ADR 0063).
+54. **The android store's schema is version 3**: `fire_telemetry` gains `delivery_path` and `ringer_started` (`migrations/2.sqm`), with forward migration tests from version 1 and from version 2. The telemetry row is written at every delivery, never fatally, and the ringer updates it (decision 34 is now done).
+55. **Missions are not built** (decision of Claude (technical review)): they need ML Kit, a dependency nobody has approved (invariant 7), and no phase schedules them. The ring layout has an empty seam. `IMPLEMENTATION_PLAN.md` Open Items has a row asking which phase owns missions; the owner is Claude.
+
+Earlier decisions this PR completes: decision 15 (policy at fire time, through the domain); decision 26 (the Critical channel input is wired and its table rows are real); decisions 20, 27 and 33 (the reset notification, on both corruption paths, before the process ends on the second); decision 34 (the `fire_telemetry` row); decision 35 and `MANUAL_CHECKS.md` P2-11's null show intent; decision 9 (Tier 1 is a plain notification on the criticality channel; the honest UI about Tier 1 timing is Phase 3 and PR 8). Decision 18 is partly done: stopping the sound writes nothing and the next rung still fires; acknowledge, snooze and skip are PR 5b.
+
+Not verified: everything in `MANUAL_CHECKS.md` P2-16 to P2-19. The tests use a fake sound, a fake ringer launch and a fake overlay, and read notifications from Robolectric's shadow; nothing ran on a device, no sound was heard and no screen turned on from locked. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 4 is merged and reviewed: PR 5 `phase-2/ringer`: the ringer foreground service, the notification channels (and the Critical channel input, decision 26), the ring screen and its three actions (acknowledge, snooze, skip: decision 18), the corruption reset notification (decisions 20, 27 and 33), the `fire_telemetry` row (decision 34), and the snooze work of decision 36: `SNOOZED` in the selection by its expiry, with a test that the watchdog repairs a lost snooze alarm. the silent notice presentation (`Presentation.SILENT_NOTICE`: no ring, no vibration, no heads up) that the fire path hands to delivery for a rung beyond the catch up window (decision 40), and it implements `Presentation.NORMAL` as policy says (decision 15). Boot (PR 6) arms the earliest unconsumed rung through the same `ensureArmed`; the fire path decides (ADR 0056).
+After PR 5 is merged and reviewed: PR 5b: her actions on the ring screen (acknowledge, snooze, skip, each through the domain with the exact event and state delta; decision 18), snooze through `ensureArmed` (decision 36), the audio volume ramp and the louder backup sound, per template vibration patterns, and the end of the ring session when nothing in it is left unacknowledged (ADR 0062). Then PR 6 `phase-2/system-broadcasts` (boot, which arms and never rings, and the other broadcasts), PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
