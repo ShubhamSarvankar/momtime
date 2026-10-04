@@ -12,7 +12,7 @@ import kotlin.time.Instant
 
 /**
  * What selection reads: the occurrences that are pending, each with the criticality that decides its ladder
- * and when its `ALARM_FIRED` events were written, which is the record of the rungs that have fired.
+ * and the count of its `ALARM_FIRED` events, which is the record of the rungs that have fired.
  */
 internal class ArmCandidates(
     private val occurrences: OccurrenceRepository,
@@ -31,11 +31,7 @@ internal class ArmCandidates(
                 checkNotNull(templates.findById(occurrence.templateId)) {
                     "occurrence ${occurrence.id} has no template"
                 }.criticality,
-            firedAt =
-                events
-                    .findByOccurrenceAndType(occurrence.id, EventType.ALARM_FIRED)
-                    .map { it.deviceTimestamp }
-                    .sorted(),
+            firedCount = events.countByOccurrenceAndType(occurrence.id, EventType.ALARM_FIRED).toInt(),
         )
 }
 

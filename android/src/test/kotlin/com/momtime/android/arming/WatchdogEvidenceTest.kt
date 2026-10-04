@@ -5,10 +5,8 @@ import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.engine.RungSelection
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
@@ -31,13 +29,14 @@ class WatchdogEvidenceTest {
                 armedAt = rung - 10.minutes,
                 bootCount = 7,
                 exactAllowed = true,
+                versionCode = 100,
             ),
         alarmPresent: Boolean = true,
         bootCountNow: Long = 7,
         exactAllowedNow: Boolean = true,
-        appUpdatedAt: kotlin.time.Instant? = rung - 1.hours,
+        appVersionNow: Long = 100,
         late: Duration = Duration.ZERO,
-    ) = WatchdogObservation(expected, armed, alarmPresent, bootCountNow, exactAllowedNow, appUpdatedAt, rung + late)
+    ) = WatchdogObservation(expected, armed, alarmPresent, bootCountNow, exactAllowedNow, appVersionNow, rung + late)
 
     private fun evidence(observation: WatchdogObservation) = WatchdogEvidence.of(observation)
 
@@ -92,14 +91,19 @@ class WatchdogEvidenceTest {
     }
 
     @Test
-    fun `an update after the alarm was armed is evidence by itself`() {
-        val armedAt = checkNotNull(correct().armed).armedAt
-        assertEquals(
-            setOf(RepairEvidence.APP_UPDATED),
-            evidence(correct(appUpdatedAt = armedAt + 1.milliseconds)),
-        )
-        assertEquals(emptySet<RepairEvidence>(), evidence(correct(appUpdatedAt = armedAt)))
-        assertEquals(emptySet<RepairEvidence>(), evidence(correct(appUpdatedAt = null)))
+    fun `a different version code is evidence by itself`() {
+        assertEquals(setOf(RepairEvidence.APP_UPDATED), evidence(correct(appVersionNow = 101)))
+        // A downgrade is a different version too, and so is a record from before the version was kept (0).
+        assertEquals(setOf(RepairEvidence.APP_UPDATED), evidence(correct(appVersionNow = 99)))
+        val migrated = checkNotNull(correct().armed).copy(versionCode = 0)
+        assertEquals(setOf(RepairEvidence.APP_UPDATED), evidence(correct(armed = migrated)))
+    }
+
+    @Test
+    fun `an unreported version is not evidence`() {
+        assertEquals(emptySet<RepairEvidence>(), evidence(correct(appVersionNow = -1)))
+        val unknownAtArm = checkNotNull(correct().armed).copy(versionCode = -1)
+        assertEquals(emptySet<RepairEvidence>(), evidence(correct(armed = unknownAtArm)))
     }
 
     // An exact alarm fires within seconds: more than two minutes late is evidence, two minutes is not.
@@ -141,11 +145,5 @@ class WatchdogEvidenceTest {
             setOf(RepairEvidence.RECORD_MISSING, RepairEvidence.ALARM_ABSENT, RepairEvidence.RUNG_OVERDUE),
             found,
         )
-    }
-
-    @Test
-    fun `the tolerances are inside the catch up window`() {
-        assertTrue(WatchdogEvidence.EXACT_TOLERANCE < WatchdogEvidence.INEXACT_TOLERANCE)
-        assertTrue(WatchdogEvidence.INEXACT_TOLERANCE < com.momtime.shared.engine.CatchUp.WINDOW)
     }
 }

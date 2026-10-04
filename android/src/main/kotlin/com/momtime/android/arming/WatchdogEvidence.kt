@@ -24,7 +24,7 @@ enum class RepairEvidence {
     /** Exact alarm capability differs from what it was when the alarm was armed. */
     EXACT_CAPABILITY_CHANGED,
 
-    /** The app was updated after the alarm was armed, and an update clears the app's alarms. */
+    /** The app's version code differs from the one the alarm was armed under: an update clears the app's alarms. */
     APP_UPDATED,
 
     /** The expected rung is overdue beyond the tolerance for the mechanism that was armed. */
@@ -39,8 +39,8 @@ internal data class WatchdogObservation(
     val alarmPresent: Boolean,
     val bootCountNow: Long,
     val exactAllowedNow: Boolean,
-    /** When the app was last installed or updated, if the platform says. */
-    val appUpdatedAt: Instant?,
+    /** The app's version code now, or [AppVersion.UNKNOWN]. */
+    val appVersionNow: Long,
     val now: Instant,
 )
 
@@ -56,8 +56,8 @@ internal data class WatchdogObservation(
  * alarm (`setAlarmClock`) fires within seconds, so a couple of minutes late means it did not fire. An inexact
  * `setAndAllowWhileIdle` alarm (Tier 1) may legitimately run late: in Doze it is deferred to a maintenance
  * window and limited to about one fire per app per nine minutes, so its tolerance is 15 minutes, which is
- * also the watchdog's own period. Both are inside the 30 minute catch up window (ADR 0056); lateness beyond
- * it is not repaired by ringing, because selection no longer offers that rung.
+ * also the watchdog's own period. A rung overdue beyond the 30 minute catch up window is still armed for now
+ * and delivered as a silent notice by the fire path (ADR 0056), so it is evidence like any other overdue rung.
  */
 internal object WatchdogEvidence {
     val EXACT_TOLERANCE: Duration = 2.minutes
@@ -66,29 +66,43 @@ internal object WatchdogEvidence {
     fun of(observation: WatchdogObservation): Set<RepairEvidence> =
         buildSet {
             val armed = observation.armed
-            val expected = observation.expected
             if (armed == null) {
                 add(RepairEvidence.RECORD_MISSING)
             } else {
-                if (armed.alarmSlot != expected.alarmSlot || armed.rungInstant != expected.rung.instant) {
-                    add(RepairEvidence.RECORD_MISMATCH)
-                }
-                // A boot count the platform did not report, at either end, says nothing about a restart.
-                if (armed.bootCount != BootCount.UNKNOWN &&
-                    observation.bootCountNow != BootCount.UNKNOWN &&
-                    armed.bootCount != observation.bootCountNow
-                ) {
-                    add(RepairEvidence.BOOT_COUNT_CHANGED)
-                }
-                if (armed.exactAllowed != observation.exactAllowedNow) add(RepairEvidence.EXACT_CAPABILITY_CHANGED)
-                val updatedAt = observation.appUpdatedAt
-                if (updatedAt != null && updatedAt > armed.armedAt) add(RepairEvidence.APP_UPDATED)
+                addAll(againstRecord(armed, observation))
             }
             if (!observation.alarmPresent) add(RepairEvidence.ALARM_ABSENT)
             // What was armed decides how late is too late. With no record there is nothing to go by, and the
             // missing record is evidence already, so the capability now stands in.
             val exact = armed?.exactAllowed ?: observation.exactAllowedNow
             val tolerance = if (exact) EXACT_TOLERANCE else INEXACT_TOLERANCE
-            if (observation.now - expected.rung.instant > tolerance) add(RepairEvidence.RUNG_OVERDUE)
+            if (observation.now - observation.expected.rung.instant > tolerance) add(RepairEvidence.RUNG_OVERDUE)
+        }
+
+    /** What the record says against what the platform says now. */
+    private fun againstRecord(
+        armed: ArmedAlarm,
+        observation: WatchdogObservation,
+    ): Set<RepairEvidence> =
+        buildSet {
+            val expected = observation.expected
+            if (armed.alarmSlot != expected.alarmSlot || armed.rungInstant != expected.rung.instant) {
+                add(RepairEvidence.RECORD_MISMATCH)
+            }
+            // A boot count the platform did not report, at either end, says nothing about a restart.
+            if (armed.bootCount != BootCount.UNKNOWN &&
+                observation.bootCountNow != BootCount.UNKNOWN &&
+                armed.bootCount != observation.bootCountNow
+            ) {
+                add(RepairEvidence.BOOT_COUNT_CHANGED)
+            }
+            if (armed.exactAllowed != observation.exactAllowedNow) add(RepairEvidence.EXACT_CAPABILITY_CHANGED)
+            // A version the platform did not report, at either end, says nothing about an update.
+            if (armed.versionCode != AppVersion.UNKNOWN &&
+                observation.appVersionNow != AppVersion.UNKNOWN &&
+                armed.versionCode != observation.appVersionNow
+            ) {
+                add(RepairEvidence.APP_UPDATED)
+            }
         }
 }

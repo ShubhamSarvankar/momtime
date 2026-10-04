@@ -4,18 +4,17 @@ import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.Occurrence
-import kotlin.time.Instant
 
 /**
- * One occurrence as selection sees it: the occurrence, its criticality (which decides its ladder), and when
- * its rungs fired. [firedAt] is the `deviceTimestamp` of each of its `ALARM_FIRED` events, oldest first: the
- * record of rungs that fired, read from the log and never inferred from a comparison of a rung's instant with
- * the current time (golden scenario 14). A device clock set backward must not bring a fired rung back.
+ * One occurrence as selection sees it: the occurrence, its criticality (which decides its ladder), and how
+ * many of its rungs have fired. [firedCount] is the count of `ALARM_FIRED` events in the log, never a
+ * comparison of a rung's instant with the current time (golden scenario 14): a device clock set backward
+ * must not bring a fired rung back.
  */
 data class ArmCandidate(
     val occurrence: Occurrence,
     val criticality: Criticality,
-    val firedAt: List<Instant>,
+    val firedCount: Int,
 )
 
 /** The rung to arm next, and the occurrence and slot it belongs to. */
@@ -27,43 +26,36 @@ data class RungSelection(
 
 /**
  * Which rung is armed next, across every candidate (ADR 0017, ARCHITECTURE.md section 5.3). Pure: it reads
- * no clock (the caller passes `now`) and schedules nothing, and the caller says which channels it delivers
- * (invariant 6). A rung found overdue beyond the catch up window is skipped, not rung (ADR 0056).
+ * no clock and schedules nothing, and the caller says which channels it delivers (invariant 6).
  */
 object ArmingSelection {
-    /** The next rung of [channels] across all [candidates] as of [now], or null if none is pending. */
+    /** The next rung of [channels] across all [candidates], or null if none is pending. */
     fun next(
         candidates: List<ArmCandidate>,
         channels: Set<Channel>,
-        now: Instant,
     ): RungSelection? {
-        val pending =
-            candidates.map { NextRungResolver.PendingLadder(it.occurrence.id, remainingFor(it, channels, now)) }
+        val pending = candidates.map { NextRungResolver.PendingLadder(it.occurrence.id, remainingFor(it, channels)) }
         val (occurrenceId, rung) = NextRungResolver.globalNext(pending, channels) ?: return null
         val slot = candidates.first { it.occurrence.id == occurrenceId }.occurrence.alarmSlot
         return RungSelection(occurrenceId, slot, rung)
     }
 
     /**
-     * The rung that should fire next for one occurrence as of [now]: the one that is expected when an alarm for
-     * it arrives. Null when every rung of [channels] has fired or is too late to ring.
+     * The rung that should fire next for one occurrence: the one that is expected when an alarm for it
+     * arrives. Null when every rung of [channels] has fired.
      */
     fun expectedFor(
         candidate: ArmCandidate,
         channels: Set<Channel>,
-        now: Instant,
-    ): EscalationRung? = remainingFor(candidate, channels, now).firstOrNull()
+    ): EscalationRung? = remainingFor(candidate, channels).firstOrNull()
 
     private fun remainingFor(
         candidate: ArmCandidate,
         channels: Set<Channel>,
-        now: Instant,
     ): List<EscalationRung> =
-        CatchUp.remaining(
-            EscalationLadder.forOccurrence(candidate.occurrence.scheduledInstant, candidate.criticality).filter {
-                it.channel in channels
-            },
-            candidate.firedAt,
-            now,
+        NextRungResolver.remaining(
+            EscalationLadder.forOccurrence(candidate.occurrence.scheduledInstant, candidate.criticality),
+            candidate.firedCount,
+            channels,
         )
 }

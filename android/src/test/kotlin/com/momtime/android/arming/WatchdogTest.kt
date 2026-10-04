@@ -169,12 +169,12 @@ class WatchdogTest {
     }
 
     @Test
-    fun `an update after arming is repaired`() {
+    fun `an update after arming is repaired even with the clock set back`() {
         armedAndCorrect()
-        // The update lands ten minutes after the alarm was armed, and the watchdog runs five minutes after that.
-        fixture.clock.now = fixture.clock.now + 10.minutes
-        fixture.appUpdatedAt = fixture.clock.now
-        fixture.clock.now = fixture.clock.now + 5.minutes
+        // The app is updated after the alarm was armed, and the user sets the clock back a day before the watchdog
+        // runs. The version code does not care what the clock says, which a comparison of times would have.
+        fixture.versionCode = 101
+        fixture.clock.now = fixture.clock.now - 24.hours
 
         val result = fixture.watchdog.run()
 
@@ -261,44 +261,43 @@ class WatchdogTest {
         assertEquals("and writes no ALARM_FIRED", 0, fixture.count(EventType.ALARM_FIRED, "a"))
     }
 
-    // The boundary is inclusive: the second rung is exactly 30 minutes overdue and still rings.
+    // The watchdog makes no catch up decision (ADR 0056): a rung 90 minutes overdue is armed for now exactly like
+    // one 20 minutes overdue, and the fire path decides how it is presented. It does not skip it, drop it or
+    // deliver it.
     @Test
-    fun `a rung exactly at the boundary is armed and one millisecond later it is not`() {
-        fixture.seed("a", Criticality.CRITICAL, t0, slot = 31)
-        fixture.clock.now = t0 + 35.minutes
-
-        val atBoundary = fixture.watchdog.run().ensured
-        assertTrue("armed, not nothing pending: $atBoundary", atBoundary is EnsureResult.Armed)
-        assertEquals(
-            "the first rung is stale, the second is exactly 30 minutes late",
-            t0 + 5.minutes,
-            (atBoundary as EnsureResult.Armed).selection.rung.instant,
-        )
-        assertEquals(1, fixture.alarms().size)
-
-        fixture.clock.now = t0 + 35.minutes + 1.milliseconds
-        val past = fixture.watchdog.run().ensured
-        assertEquals(EnsureResult.NothingPending, past)
-        assertEquals("nothing rings late", 0, fixture.alarms().size)
-        assertEquals(OccurrenceState.PENDING, fixture.occurrences.findById("a")?.state)
-    }
-
-    // Beyond the window nothing rings, and the occurrence is derived to MISSED at the end of its grace.
-    @Test
-    fun `a stale rung is not rung and the occurrence ends MISSED`() {
+    fun `a rung beyond the window is armed for now too and the watchdog decides nothing`() {
         fixture.seed("a", Criticality.CRITICAL, t0, slot = 31)
         fixture.clock.now = t0 + 90.minutes
 
-        val stale = fixture.watchdog.run()
-        assertEquals(EnsureResult.NothingPending, stale.ensured)
-        assertEquals(0, fixture.alarms().size)
-        assertEquals(emptyList<FiredRung>(), fixture.delivery.delivered)
+        val result = fixture.watchdog.run()
+
+        val armed = result.ensured
+        assertTrue("armed, not skipped: $armed", armed is EnsureResult.Armed)
+        assertEquals("the earliest rung that has not fired", t0, (armed as EnsureResult.Armed).selection.rung.instant)
+        assertEquals("armed for now", fixture.clock.now.toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
+        assertEquals("the watchdog delivers nothing", emptyList<FiredRung>(), fixture.delivery.delivered)
+        assertEquals("and writes no ALARM_FIRED", 0, fixture.count(EventType.ALARM_FIRED, "a"))
+        assertEquals(OccurrenceState.PENDING, fixture.occurrences.findById("a")?.state)
+    }
+
+    // Beyond the window means no ring, not an early MISSED: MISSED is derived at the end of grace (ADR 0030),
+    // and until then the occurrence stays pending with its rung armed.
+    @Test
+    fun `MISSED is derived at the end of grace and not before`() {
+        fixture.seed("a", Criticality.CRITICAL, t0, slot = 31)
+        fixture.clock.now = t0 + 2.hours - 1.milliseconds
+
+        val before = fixture.watchdog.run()
+        assertEquals(0, before.missed)
+        assertEquals(OccurrenceState.PENDING, fixture.occurrences.findById("a")?.state)
+        assertEquals(1, fixture.alarms().size)
 
         fixture.clock.now = t0 + 2.hours
         val grace = fixture.watchdog.run()
         assertEquals(1, grace.missed)
         assertEquals(OccurrenceState.MISSED, fixture.occurrences.findById("a")?.state)
-        assertEquals(0, fixture.alarms().size)
+        assertEquals("nothing is left to arm", 0, fixture.alarms().size)
+        assertEquals(emptyList<FiredRung>(), fixture.delivery.delivered)
     }
 
     // A reboot after which the device has been up longer than it had been when the alarm was armed. Uptime at

@@ -5,7 +5,6 @@ import com.momtime.android.capability.DeliveryMechanism
 import com.momtime.android.di.BootCount
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.shared.data.ReconcileCommand
-import kotlin.time.Instant
 
 /** Asks the system whether the alarm for a slot is still armed, without creating one (`FLAG_NO_CREATE`). */
 internal fun interface AlarmProbe {
@@ -19,26 +18,29 @@ internal class PlatformAlarmProbe(
     override fun isArmed(slot: Int): Boolean = AlarmIntents.existing(context, slot) != null
 }
 
-/** When the app was last installed or updated, or null if the platform does not say. */
-internal fun interface AppUpdate {
-    fun lastUpdatedAt(): Instant?
+/** The app's version code, or [AppVersion.UNKNOWN] if the platform does not say. */
+internal fun interface AppVersion {
+    fun versionCode(): Long
+
+    companion object {
+        const val UNKNOWN = -1L
+    }
 }
 
 /**
- * `PackageInfo.lastUpdateTime`. An update replaces the package, which clears the app's alarms, and the armed
- * record does not carry a version, so "updated after the alarm was armed" is read from the time instead.
+ * `PackageInfo.longVersionCode`. An update replaces the package, which clears the app's alarms, and the armed
+ * record carries the version code it was armed under, so an update since is a different number. It does not
+ * depend on the wall clock, which `lastUpdateTime` compared with `armedAt` did (ADR 0058).
  */
-internal class PlatformAppUpdate(
+internal class PlatformAppVersion(
     private val context: Context,
-) : AppUpdate {
+) : AppVersion {
     @Suppress("SwallowedException")
-    override fun lastUpdatedAt(): Instant? =
+    override fun versionCode(): Long =
         try {
-            Instant.fromEpochMilliseconds(
-                context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime,
-            )
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
         } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
-            null
+            AppVersion.UNKNOWN
         }
 }
 
@@ -46,7 +48,7 @@ internal class PlatformAppUpdate(
 internal class PlatformProbes(
     val alarm: AlarmProbe,
     val bootCount: BootCount,
-    val appUpdate: AppUpdate,
+    val appVersion: AppVersion,
 )
 
 /** What one watchdog pass did. */
@@ -99,7 +101,7 @@ class Watchdog internal constructor(
                             alarmPresent = probes.alarm.isArmed(expected.alarmSlot),
                             bootCountNow = probes.bootCount.read(),
                             exactAllowedNow = capability.mechanism == DeliveryMechanism.SET_ALARM_CLOCK,
-                            appUpdatedAt = probes.appUpdate.lastUpdatedAt(),
+                            appVersionNow = probes.appVersion.versionCode(),
                             now = log.now(),
                         ),
                     )

@@ -37,9 +37,10 @@ sealed interface EnsureResult {
  * another occurrence the previous alarm is cancelled explicitly, from the armed record. When nothing is
  * pending the armed alarm is cancelled and the record cleared.
  *
- * Selection reads the record of rungs that have fired (the `ALARM_FIRED` events), never a comparison of rung
- * instants with the time (golden scenario 14), and only the channels the device delivers (decision 14). A
- * rung found overdue beyond the catch up window is skipped, not rung (ADR 0056).
+ * Selection reads the record of rungs that have fired (the count of `ALARM_FIRED` events), never a comparison
+ * of rung instants with the time (golden scenario 14), and only the channels the device delivers (decision 14).
+ * It makes no catch up decision: the earliest rung that has not fired is armed, for now if it is overdue, and
+ * the fire path decides how it is presented (ADR 0056).
  *
  * `ALARM_SCHEDULED` is appended when a rung is first armed or the expected rung changes, and never on a
  * refresh (decision 6). Neither it nor anything here changes an occurrence's state (invariant 3).
@@ -50,13 +51,13 @@ class ArmingCoordinator internal constructor(
     private val scheduler: AlarmScheduler,
     private val armed: ArmedAlarmRepository,
     private val resolver: CapabilityResolver,
-    private val bootCount: () -> Long,
+    private val probes: PlatformProbes,
 ) {
     /**
-     * The rung the domain says is next as of now: what the armed alarm should be. The watchdog compares what it
+     * The rung the domain says is next: what the armed alarm should be. The watchdog compares what it
      * finds with this, and [ensureArmed] arms it.
      */
-    internal fun expected(): RungSelection? = ArmingSelection.next(candidates.pending(), DEVICE_CHANNELS, log.now())
+    internal fun expected(): RungSelection? = ArmingSelection.next(candidates.pending(), DEVICE_CHANNELS)
 
     /**
      * Runs [block] while no other pass can arm. The fire path and the watchdog run inside it, so a watchdog
@@ -91,8 +92,9 @@ class ArmingCoordinator internal constructor(
                 alarmSlot = selection.alarmSlot,
                 rungInstant = selection.rung.instant,
                 armedAt = log.now(),
-                bootCount = bootCount(),
+                bootCount = probes.bootCount.read(),
                 exactAllowed = mechanism == DeliveryMechanism.SET_ALARM_CLOCK,
+                versionCode = probes.appVersion.versionCode(),
             ),
         )
         return EnsureResult.Armed(selection, mechanism, scheduledWritten = changed)

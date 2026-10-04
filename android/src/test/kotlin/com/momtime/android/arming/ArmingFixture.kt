@@ -86,9 +86,9 @@ internal class ArmingFixture(
     val api = SwitchableAlarmApi(PlatformAlarmApi(context.getSystemService(AlarmManager::class.java)))
     private var nextId = 0
 
-    /** What the device reports as its boot count, and when the app was last updated. A test changes them. */
+    /** What the device reports as its boot count and the app's version code. A test changes them. */
     var bootCount = 7L
-    var appUpdatedAt: Instant? = null
+    var versionCode = 100L
     val graph =
         TestGraph(
             context,
@@ -100,7 +100,7 @@ internal class ArmingFixture(
                     api,
                     BootCount { bootCount },
                     newId = { "$idPrefix-${nextId++}" },
-                    appUpdate = AppUpdate { appUpdatedAt },
+                    appVersion = AppVersion { versionCode },
                 ),
         )
 

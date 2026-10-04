@@ -4,11 +4,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.provider.Settings
 import com.momtime.android.arming.AlarmIntents
+import com.momtime.android.arming.AppVersion
 import com.momtime.android.arming.PlatformAlarmProbe
-import com.momtime.android.arming.PlatformAppUpdate
+import com.momtime.android.arming.PlatformAppVersion
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,17 +54,17 @@ class PlatformSeamsTest {
     }
 
     @Test
-    fun `the update time is the package's last update`() {
-        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).lastUpdateTime = 1_234_567L
-        assertEquals(Instant.fromEpochMilliseconds(1_234_567L), PlatformAppUpdate(context).lastUpdatedAt())
+    fun `the version code is the package's`() {
+        shadowOf(context.packageManager).getInternalMutablePackageInfo(context.packageName).setLongVersionCode(4242L)
+        assertEquals(4242L, PlatformAppVersion(context).versionCode())
     }
 
     @Test
-    fun `an unknown package has no update time`() {
+    fun `an unknown package has no version code`() {
         val other =
             object : ContextWrapper(context) {
                 override fun getPackageName() = "com.example.not.installed"
             }
-        assertNull(PlatformAppUpdate(other).lastUpdatedAt())
+        assertEquals(AppVersion.UNKNOWN, PlatformAppVersion(other).versionCode())
     }
 }

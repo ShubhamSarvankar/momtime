@@ -1,7 +1,9 @@
 package com.momtime.android.arming
 
 import android.content.Context
+import com.momtime.shared.domain.Channel
 import com.momtime.shared.domain.Criticality
+import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.EventType
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -13,6 +15,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -112,33 +115,92 @@ class StaleFireTest {
         assertEquals(2, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
     }
 
-    // ADR 0056: the catch up window applies when an alarm fires, too. This one was armed for t0 and fired 31 minutes
-    // late (a Tier 1 alarm that Doze deferred). It is a leftover: nothing is written, nothing is delivered, and the
-    // rung that is still within the window is the one armed next.
+    // ADR 0056: the catch up window decides how a late rung is presented, never whether it is delivered. This one
+    // was armed for t0 and fired 31 minutes late (a Tier 1 alarm that Doze deferred): it is handed to delivery as a
+    // silent notice, with no ring, and it writes ALARM_FIRED, so the rung is consumed and is not offered again.
     @Test
-    fun `an alarm that fires beyond the window is a leftover`() {
+    fun `an alarm that fires beyond the window is a silent notice`() {
         fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
         fixture.clock.now = t0 - 1.hours
         fixture.coordinator.ensureArmed()
         fixture.clock.now = t0 + 31.minutes
-        val logBefore = fixture.eventLog("a")
 
         val outcome = fixture.handler.onFire(31, t0)
 
-        assertEquals(FireOutcome.NotExpected, outcome)
-        assertEquals("no ALARM_FIRED", 0, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
-        // The only thing written is the schedule of the rung that is armed next, because the expected rung changed.
+        assertTrue("a late rung is delivered: $outcome", outcome is FireOutcome.Fired)
+        val rung = EscalationRung(t0, Channel.RING)
         assertEquals(
-            listOf(EventType.ALARM_SCHEDULED to "a"),
-            fixture.eventDelta("a", before = logBefore),
+            "a silent presentation, handed over once",
+            listOf(FiredRung("a", 31, rung, Presentation.SILENT_NOTICE)),
+            fixture.delivery.delivered,
         )
-        assertEquals("nothing delivered", emptyList<FiredRung>(), fixture.delivery.delivered)
+        assertEquals("ALARM_FIRED consumes the rung", 1, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
         assertEquals(
-            "the repeat rung, 21 minutes late, is armed for now",
-            fixture.clock.now.toEpochMilliseconds(),
-            fixture.alarms().single().triggerAtMs,
+            "the next rung is armed for now, not the consumed one",
+            t0 + 10.minutes,
+            fixture.armed.current()?.rungInstant,
         )
-        assertEquals(t0 + 10.minutes, fixture.armed.current()?.rungInstant)
+        assertEquals(fixture.clock.now.toEpochMilliseconds(), fixture.alarms().single().triggerAtMs)
+
+        // The repeat rung is 21 minutes late, which is within the window: it is presented as policy says.
+        val repeat = fixture.handler.onFire(31, t0 + 10.minutes) as FireOutcome.Fired
+        assertEquals(Presentation.NORMAL, repeat.rung.presentation)
+        assertEquals(2, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
+    }
+
+    // The boundary is inclusive for presentation too: exactly 30 minutes late is normal, a millisecond more is not.
+    @Test
+    fun `a rung exactly at the boundary is normal and one millisecond later it is silent`() {
+        fixture.seed("a", Criticality.GENTLE, t0, slot = 31)
+        fixture.seed("b", Criticality.GENTLE, t0 + 1.hours, slot = 32)
+        fixture.clock.now = t0 - 1.hours
+        fixture.coordinator.ensureArmed()
+
+        fixture.clock.now = t0 + 30.minutes
+        val atBoundary = fixture.handler.onFire(31, t0) as FireOutcome.Fired
+        assertEquals(Presentation.NORMAL, atBoundary.rung.presentation)
+
+        fixture.clock.now = t0 + 1.hours + 30.minutes + 1.milliseconds
+        val past = fixture.handler.onFire(32, t0 + 1.hours) as FireOutcome.Fired
+        assertEquals(Presentation.SILENT_NOTICE, past.rung.presentation)
+    }
+
+    // An alarm that fires after the end of grace finds the occurrence MISSED (Reconcile is dispatched first) and
+    // delivers nothing. Beyond the window is not MISSED; the end of grace is (ADR 0030).
+    @Test
+    fun `an alarm that fires after the end of grace delivers nothing`() {
+        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
+        fixture.clock.now = t0 - 1.hours
+        fixture.coordinator.ensureArmed()
+        fixture.clock.now = t0 + 4.hours
+
+        val outcome = fixture.handler.onFire(31, t0)
+
+        assertEquals(FireOutcome.Terminal, outcome)
+        assertEquals(emptyList<FiredRung>(), fixture.delivery.delivered)
+        assertEquals(0, fixture.eventsOf("a", EventType.ALARM_FIRED).size)
+        assertEquals(1, fixture.eventsOf("a", EventType.MISSED).size)
+        assertEquals("and it does not arm itself again", 0, fixture.alarms().size)
+    }
+
+    // A boot after a night with the phone off: several occurrences are overdue at once and each gets its own
+    // silent notice. That is intended (ADR 0056).
+    @Test
+    fun `every overdue occurrence gets its own silent notice`() {
+        fixture.seed("a", Criticality.GENTLE, t0, slot = 31)
+        fixture.seed("b", Criticality.GENTLE, t0 + 1.minutes, slot = 32)
+        fixture.clock.now = t0 + 3.hours
+        fixture.coordinator.ensureArmed()
+
+        val first = fixture.handler.onFire(31, t0) as FireOutcome.Fired
+        val second = fixture.handler.onFire(32, t0 + 1.minutes) as FireOutcome.Fired
+
+        assertEquals(listOf("a", "b"), listOf(first.rung.occurrenceId, second.rung.occurrenceId))
+        assertEquals(
+            listOf(Presentation.SILENT_NOTICE, Presentation.SILENT_NOTICE),
+            fixture.delivery.delivered.map { it.presentation },
+        )
+        assertEquals(0, fixture.alarms().size)
     }
 
     @Test

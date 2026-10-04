@@ -130,6 +130,7 @@ class AndroidStoreTest {
             armedAt = Instant.parse("2026-01-01T07:00:00Z"),
             bootCount = 9,
             exactAllowed = true,
+            versionCode = 100,
         )
 
     @Test
