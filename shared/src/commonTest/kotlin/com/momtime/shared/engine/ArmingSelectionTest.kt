@@ -24,7 +24,16 @@ class ArmingSelectionTest {
         criticality: Criticality,
         fired: Int = 0,
     ) = ArmCandidate(
-        Occurrence(id, "tmpl-$id", LocalDate(2023, 11, 14), scheduled, TimeZone.UTC, OccurrenceState.PENDING, slot),
+        Occurrence(
+            id,
+            "tmpl-$id",
+            LocalDate(2023, 11, 14),
+            scheduled,
+            TimeZone.UTC,
+            OccurrenceState.PENDING,
+            slot,
+            criticality,
+        ),
         criticality,
         fired,
     )

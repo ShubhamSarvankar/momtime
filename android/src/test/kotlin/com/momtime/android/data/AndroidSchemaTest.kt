@@ -1,13 +1,17 @@
 package com.momtime.android.data
 
 import android.database.sqlite.SQLiteDatabase
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import com.momtime.shared.data.AppSettingsRepository
 import com.momtime.shared.data.EventRepository
 import com.momtime.shared.data.OccurrenceRepository
+import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
+import com.momtime.shared.domain.NutritionTag
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
 import kotlinx.datetime.LocalDate
@@ -30,7 +34,8 @@ import kotlin.time.Instant
  * The schema on the Android driver: the terminal trigger (ADR 0037) and the v1 to v2 forward
  * migration with foreign keys on, ending in `foreign_key_check` (ADR 0043). These are the Phase 1
  * checks, rerun on the driver the app ships. They are duplicated from the `shared` tests and not
- * shared with them, because those tests construct a JDBC driver directly.
+ * shared with them, because those tests construct a JDBC driver directly. The five tests of schema
+ * version 6 (ADR 0079, ADR 0086) are the twins of `SchemaV6Test`, under the names they have there.
  *
  * Everything goes through repositories: android sources cannot name a generated query type.
  */
@@ -57,11 +62,12 @@ class AndroidSchemaTest {
     ) = Occurrence(
         id = "occ-$n",
         templateId = "tmpl-1",
-        localDate = LocalDate(2026, 1, n),
+        localDate = LocalDate.fromEpochDays(20_000 + n),
         scheduledInstant = scheduled,
         timeZoneId = testZone,
         state = state,
         alarmSlot = n,
+        criticality = Criticality.CRITICAL,
     )
 
     private fun event(
@@ -136,6 +142,7 @@ class AndroidSchemaTest {
                 "time_zone_id" to "time_zone_id = 'Asia/Tokyo'",
                 "local_date" to "local_date = date(local_date, '+1000 days')",
                 "alarm_slot" to "alarm_slot = alarm_slot + 1000",
+                "criticality" to "criticality = 'GENTLE'",
             )
         var n = 100
         for (state in OccurrenceState.entries) {
@@ -170,7 +177,7 @@ class AndroidSchemaTest {
     private fun distinct(
         n: Int,
         state: OccurrenceState,
-    ) = occurrence(1, state).copy(id = "occ-$n", localDate = LocalDate.fromEpochDays(20_000 + n), alarmSlot = n)
+    ) = occurrence(n, state)
 
     private fun insertOccurrenceSql(
         id: String,
@@ -229,8 +236,36 @@ class AndroidSchemaTest {
         )
     }
 
+    // The twin of SchemaV6Test's test of the same name. A database at each of versions 1 to 5, seeded with a template
+    // of each criticality, an occurrence in every state and an event of each type that has a payload, is migrated
+    // by the framework, with foreign keys on, when the graph opens it: no old row changes in a column it had.
+    // Then the version 1 file this test has always migrated, with the rows only earlier migrations change.
     @Test
-    fun `a v1 database migrates to v5 with foreign keys on and keeps its rows`() {
+    fun `migrates from every prior version`() {
+        for (version in 1..5) {
+            val name = "m6-v$version.db"
+            lateinit var columns: Map<String, List<String>>
+            lateinit var before: Map<String, List<List<String?>>>
+            databaseAt(name, version) { db ->
+                seedAt(db, version)
+                columns =
+                    copiedTables.associateWith { table ->
+                        db.rows("PRAGMA table_info($table)", 2).map { checkNotNull(it[1]) }
+                    }
+                before = columns.mapValues { (table, names) -> db.rows(selectAll(table, names), names.size) }
+            }
+            assertEquals("v$version: the seed is in place", 15, before.getValue("occurrence").size)
+            assertEquals("v$version: the seed is in place", 10, before.getValue("event").size)
+
+            val driver = graph(name).factory.createDriver()
+            val after = columns.mapValues { (table, names) -> driver.rows(selectAll(table, names), names.size) }
+
+            assertEquals("v$version", "6", driver.pragma("user_version"))
+            assertEquals("v$version", "1", driver.pragma("foreign_keys"))
+            assertEquals("v$version", emptyList<String>(), driver.foreignKeyViolations())
+            assertEquals("v$version: an old row changed in a column it had", before, after)
+        }
+
         val name = "m-v1a.db"
         v1Database(name) { seedV1Rows(it) }
 
@@ -254,7 +289,7 @@ class AndroidSchemaTest {
         )
 
         val driver = graph.factory.createDriver()
-        assertEquals("5", driver.pragma("user_version"))
+        assertEquals("6", driver.pragma("user_version"))
         assertEquals("1", driver.pragma("foreign_keys"))
         assertEquals(emptyList<String>(), driver.foreignKeyViolations())
     }
@@ -304,5 +339,342 @@ class AndroidSchemaTest {
             occurrences.reschedule("occ-1", scheduled + kotlin.time.Duration.parse("1h"), testZone)
         }
         assertEquals(before, occurrences.findById("occ-1"))
+    }
+
+    // ---- Schema version 6 (ADR 0079, ADR 0086): what the twins of SchemaV6Test share. ----
+
+    private val states = listOf("PENDING", "SNOOZED", "COMPLETED", "SKIPPED", "MISSED")
+    private val criticalities = listOf("CRITICAL", "STANDARD", "GENTLE")
+    private val copiedTables =
+        listOf("pregnancy", "schedule_template", "schedule_template_nutrition_tag", "occurrence", "event")
+
+    private fun selectAll(
+        table: String,
+        names: List<String>,
+    ) = "SELECT ${names.joinToString()} FROM $table ORDER BY 1, 2"
+
+    private fun SQLiteDatabase.rows(
+        sql: String,
+        columns: Int,
+    ): List<List<String?>> =
+        rawQuery(sql, null).use { cursor ->
+            val out = mutableListOf<List<String?>>()
+            while (cursor.moveToNext()) out += List(columns) { cursor.getString(it) }
+            out
+        }
+
+    private fun SqlDriver.rows(
+        sql: String,
+        columns: Int,
+    ): List<List<String?>> =
+        executeQuery(
+            null,
+            sql,
+            { cursor ->
+                val out = mutableListOf<List<String?>>()
+                while (cursor.next().value) out += List(columns) { cursor.getString(it) }
+                QueryResult.Value(out.toList())
+            },
+            0,
+        ).value
+
+    /**
+     * The statements of a migration file, as written. A trigger's body holds semicolons of its own, so a statement
+     * that starts `CREATE TRIGGER` ends at its `END;` line and not before.
+     */
+    private fun migrationStatements(from: Int): List<String> {
+        val statements = mutableListOf<String>()
+        val current = StringBuilder()
+        var inTrigger = false
+        File("../shared/src/commonMain/sqldelight/migrations/$from.sqm").readLines().forEach { line ->
+            val text = line.trim()
+            if (text.isEmpty() || text.startsWith("--")) return@forEach
+            if (current.isEmpty() && text.startsWith("CREATE TRIGGER")) inTrigger = true
+            current.append(line).append('\n')
+            val ends = if (inTrigger) text == "END;" else text.endsWith(";")
+            if (ends) {
+                statements += current.toString().trim().removeSuffix(";")
+                current.clear()
+                inTrigger = false
+            }
+        }
+        check(current.isBlank()) { "$from.sqm ends inside a statement" }
+        return statements
+    }
+
+    /**
+     * A database file the app at [version] (1 to 5) left behind: the committed version 1 baseline with the
+     * migrations before [version] applied as written, carrying that `user_version`. [seed] runs on it at that
+     * version. The framework migrates it from there when a graph opens it.
+     */
+    private fun databaseAt(
+        name: String,
+        version: Int,
+        seed: (SQLiteDatabase) -> Unit,
+    ) {
+        val file = context.getDatabasePath(name)
+        file.parentFile?.mkdirs()
+        File("../shared/src/commonMain/sqldelight/databases/1.db").copyTo(file, overwrite = true)
+        val db = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            for (from in 1 until version) migrationStatements(from).forEach(db::execSQL)
+            db.version = version
+            seed(db)
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun SQLiteDatabase.event(
+        id: String,
+        occurrenceId: String?,
+        type: String,
+        extra: Map<String, String> = emptyMap(),
+    ) {
+        val occurrence = occurrenceId?.let { "'$it'" } ?: "NULL"
+        val names = extra.keys.joinToString("") { ", $it" }
+        val values = extra.values.joinToString("") { ", $it" }
+        execSQL(
+            "INSERT INTO event(id, occurrence_id, event_type, device_timestamp, source$names) " +
+                "VALUES ('$id', $occurrence, '$type', 2000, 'USER'$values)",
+        )
+    }
+
+    /**
+     * The seed of SchemaV6Test: a template of each criticality (the CRITICAL one with two tags, the STANDARD one
+     * with none, the GENTLE one with one), an occurrence of each in every state the version knows, and one event of
+     * each type that has a payload, with the columns the schema at [version] has. Two completions of the tagged
+     * template and one of the untagged.
+     */
+    private fun seedAt(
+        db: SQLiteDatabase,
+        version: Int,
+    ) {
+        db.execSQL("INSERT INTO pregnancy(id, phase, created_at, phase_changed_at) VALUES ('preg-1', 'PRENATAL', 0, 0)")
+        for ((t, criticality) in criticalities.withIndex()) {
+            db.execSQL(
+                "INSERT INTO schedule_template(id, pregnancy_id, title, task_type, criticality, time_of_day, " +
+                    "time_zone_id, recurrence_type) VALUES ('t-$criticality', 'preg-1', 'Iron tablet', " +
+                    "'SUPPLEMENT', '$criticality', '08:00', 'Asia/Kolkata', 'DAILY')",
+            )
+            for ((s, state) in states.withIndex()) {
+                db.execSQL(
+                    "INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, " +
+                        "alarm_slot) VALUES ('o-$criticality-$state', 't-$criticality', '2026-01-0${s + 1}', " +
+                        "${1000 + s}, 'Asia/Kolkata', '$state', ${t * 10 + s + 1})",
+                )
+            }
+        }
+        for ((template, tag) in listOf("t-CRITICAL" to "IRON", "t-CRITICAL" to "DAIRY", "t-GENTLE" to "FRUIT")) {
+            db.execSQL("INSERT INTO schedule_template_nutrition_tag(template_id, tag) VALUES ('$template', '$tag')")
+        }
+        db.event("e-missed", "o-CRITICAL-MISSED", "MISSED", mapOf("effective_at" to "1500"))
+        val snooze =
+            mapOf("snooze_number" to "1") + if (version >= 4) mapOf("snoozed_until" to "602000") else emptyMap()
+        db.event("e-snoozed", "o-CRITICAL-SNOOZED", "SNOOZED", snooze)
+        db.event("e-mission", "o-CRITICAL-COMPLETED", "MISSION_VERIFIED", mapOf("mission_result_type" to "'BARCODE'"))
+        db.event("e-water", null, "WATER_LOGGED", mapOf("water_ml" to "250"))
+        db.event("e-weight", null, "WEIGHT_LOGGED", mapOf("weight_grams" to "68000"))
+        db.event("e-caregiver", null, "CAREGIVER_LINKED", mapOf("caregiver_link_id" to "'link-1'"))
+        val canary =
+            if (version >= 3) mapOf("canary_scheduled_at" to "100", "canary_actual_at" to "150") else emptyMap()
+        db.event("e-canary", null, "CANARY_RESULT", canary)
+        db.event("e-completed-tagged", "o-CRITICAL-COMPLETED", "COMPLETED")
+        db.event("e-backfilled-tagged", "o-CRITICAL-MISSED", "COMPLETED_BACKFILLED")
+        db.event("e-completed-untagged", "o-STANDARD-COMPLETED", "COMPLETED")
+    }
+
+    /** A graph over a seeded database at [from] (1 to 5), which the framework migrates to version 6 on opening. */
+    private fun migratedGraph(
+        name: String,
+        from: Int,
+    ): TestGraph {
+        databaseAt(name, from) { seedAt(it, from) }
+        return graph(name)
+    }
+
+    /** A graph over a new database, created at version 6, holding the same templates as the seed. */
+    private fun freshGraph(): TestGraph {
+        val graph = graph()
+        val driver = graph.factory.createDriver()
+        driver.execute(
+            null,
+            "INSERT INTO pregnancy(id, phase, created_at, phase_changed_at) VALUES ('preg-1', 'PRENATAL', 0, 0)",
+            0,
+        )
+        for (criticality in criticalities) {
+            driver.execute(
+                null,
+                "INSERT INTO schedule_template(id, pregnancy_id, title, task_type, criticality, time_of_day, " +
+                    "time_zone_id, recurrence_type) VALUES ('t-$criticality', 'preg-1', 'Iron tablet', " +
+                    "'SUPPLEMENT', '$criticality', '08:00', 'Asia/Kolkata', 'DAILY')",
+                0,
+            )
+        }
+        return graph
+    }
+
+    private val v6Updates =
+        listOf(
+            "state" to "state = 'PENDING'",
+            "state, unchanged" to "state = state",
+            "scheduled_instant" to "scheduled_instant = scheduled_instant + 1",
+            "time_zone_id" to "time_zone_id = 'Asia/Tokyo'",
+            "local_date" to "local_date = date(local_date, '+1000 days')",
+            "alarm_slot" to "alarm_slot = alarm_slot + 1000",
+            "criticality" to "criticality = 'GENTLE'",
+            "template_id, unchanged" to "template_id = template_id",
+            "id" to "id = id || 'x'",
+        )
+
+    /** Every update of [id] aborts with the trigger's message and leaves the row as it was. */
+    private fun assertImmutable(
+        driver: SqlDriver,
+        id: String,
+        label: String,
+    ) {
+        val select = "SELECT * FROM occurrence WHERE id = '$id'"
+        val before = driver.rows(select, 8).single()
+        for ((column, set) in v6Updates) {
+            try {
+                driver.execute(null, "UPDATE occurrence SET $set WHERE id = '$id'", 0)
+            } catch (expected: Exception) {
+                assertTrue(
+                    "$label, $column: not the trigger's message: ${expected.message}",
+                    expected.message.orEmpty().contains("terminal occurrence is immutable"),
+                )
+                assertEquals("$label, $column: the row changed anyway", before, driver.rows(select, 8).single())
+                continue
+            }
+            fail("$label, $column: the update went through")
+        }
+    }
+
+    private fun v6Occurrence(
+        id: String,
+        state: OccurrenceState,
+        slot: Int,
+    ) = Occurrence(
+        id = id,
+        templateId = "t-GENTLE",
+        localDate = LocalDate.fromEpochDays(21_000 + slot),
+        scheduledInstant = scheduled,
+        timeZoneId = testZone,
+        state = state,
+        alarmSlot = slot,
+        criticality = Criticality.GENTLE,
+    )
+
+    @Test
+    fun `the migration fills each new column from version 5 data`() {
+        val graph = migratedGraph("m6-fill.db", from = 5)
+        val occurrences = graph.get<OccurrenceRepository>()
+        val events = graph.get<EventRepository>()
+        val driver = graph.factory.createDriver()
+
+        // Open and terminal alike: the fill runs with the terminal trigger dropped.
+        for (criticality in criticalities) {
+            for (state in states) {
+                assertEquals(
+                    "o-$criticality-$state takes its template's criticality",
+                    Criticality.valueOf(criticality),
+                    occurrences.findById("o-$criticality-$state")?.criticality,
+                )
+            }
+        }
+
+        // As sets: the order in which group_concat joined the names is unspecified (ADR 0079).
+        val two = EventPayload.Completion(setOf(NutritionTag.IRON, NutritionTag.DAIRY))
+        assertEquals(two, events.findById("e-completed-tagged")?.payload)
+        assertEquals(two, events.findById("e-backfilled-tagged")?.payload)
+        assertEquals(EventPayload.Completion(emptySet()), events.findById("e-completed-untagged")?.payload)
+        assertEquals(
+            "no tags is null and nothing else",
+            listOf(listOf<String?>(null)),
+            driver.rows("SELECT nutrition_tags FROM event WHERE id = 'e-completed-untagged'", 1),
+        )
+
+        assertEquals(listOf(listOf<String?>(null)), driver.rows("SELECT zone_id FROM event WHERE id = 'e-water'", 1))
+        assertEquals(EventPayload.Water(250, zone = null), events.findById("e-water")?.payload)
+
+        assertEquals(
+            "no other event has tags",
+            listOf(listOf<String?>("e-backfilled-tagged"), listOf<String?>("e-completed-tagged")),
+            driver.rows("SELECT id FROM event WHERE nutrition_tags IS NOT NULL ORDER BY id", 1),
+        )
+        assertEquals(
+            "no event has a zone",
+            emptyList<List<String?>>(),
+            driver.rows("SELECT id FROM event WHERE zone_id IS NOT NULL", 1),
+        )
+        // Every migrated event still decodes: no column landed on a type that may not carry it.
+        for (id in driver.rows("SELECT id FROM event", 1).map { checkNotNull(it[0]) }) {
+            assertEquals(id, events.findById(id)?.id)
+        }
+    }
+
+    @Test
+    fun `a withdrawn row is immutable in full`() {
+        for ((label, graph) in listOf("fresh" to freshGraph(), "migrated from 5" to migratedGraph("m6-w.db", 5))) {
+            val occurrences = graph.get<OccurrenceRepository>()
+            val driver = graph.factory.createDriver()
+            occurrences.insert(v6Occurrence("w", OccurrenceState.WITHDRAWN, slot = 110))
+            assertImmutable(driver, "w", "$label, WITHDRAWN")
+
+            // The control: the same updates go through on an open row, so the aborts above are the trigger's.
+            for ((index, update) in v6Updates.withIndex()) {
+                occurrences.insert(v6Occurrence("open-$index", OccurrenceState.PENDING, slot = 111 + index))
+                driver.execute(null, "UPDATE occurrence SET ${update.second} WHERE id = 'open-$index'", 0)
+            }
+        }
+    }
+
+    @Test
+    fun `the other terminal states are still immutable after the migration`() {
+        for (from in listOf(1, 5)) {
+            val driver = migratedGraph("m6-t$from.db", from).factory.createDriver()
+            for (state in listOf("COMPLETED", "SKIPPED", "MISSED")) {
+                assertImmutable(driver, "o-CRITICAL-$state", "from $from, $state")
+            }
+        }
+    }
+
+    @Test
+    fun `a date can be materialised again after a withdrawal and not otherwise`() {
+        for ((label, graph) in listOf("fresh" to freshGraph(), "migrated from 5" to migratedGraph("m6-d.db", 5))) {
+            val occurrences = graph.get<OccurrenceRepository>()
+            val first = v6Occurrence("first", OccurrenceState.PENDING, slot = 201)
+            occurrences.insert(first)
+            occurrences.transition(
+                "first",
+                OccurrenceState.WITHDRAWN,
+                Event(
+                    "e-withdrawn",
+                    "first",
+                    EventType.WITHDRAWN,
+                    scheduled,
+                    null,
+                    EventSource.USER,
+                    EventPayload.None,
+                ),
+            )
+            assertEquals(label, OccurrenceState.WITHDRAWN, occurrences.findById("first")?.state)
+
+            // The same template and date, a new id and a new slot: the withdrawn row does not stand in its way.
+            occurrences.insert(first.copy(id = "second", alarmSlot = 202))
+            assertEquals(label, OccurrenceState.PENDING, occurrences.findById("second")?.state)
+
+            // A third for the date is a duplicate of the second, and the index refuses it.
+            try {
+                occurrences.insert(first.copy(id = "third", alarmSlot = 203))
+                fail("$label: a second open occurrence for one date was stored")
+            } catch (expected: Exception) {
+                assertTrue(
+                    "$label: not the date index: ${expected.message}",
+                    expected.message.orEmpty().contains("occurrence.local_date"),
+                )
+            }
+            assertNull(label, occurrences.findById("third"))
+        }
     }
 }

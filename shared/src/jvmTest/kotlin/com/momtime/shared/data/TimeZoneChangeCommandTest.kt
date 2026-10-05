@@ -104,7 +104,7 @@ class TimeZoneChangeCommandTest {
         slot: Int,
         state: OccurrenceState = OccurrenceState.PENDING,
         at: Instant = dueInKolkata,
-    ) = Occurrence(id, templateId, date, at, kolkata, state, slot).also(occurrences::insert)
+    ) = Occurrence(id, templateId, date, at, kolkata, state, slot, Criticality.CRITICAL).also(occurrences::insert)
 
     private fun seed(
         id: String,
@@ -203,7 +203,13 @@ class TimeZoneChangeCommandTest {
         withMessage("the occurrence moved", changedAt, scheduled("a"))
         withMessage("no event was written or changed", log, events.findForOccurrence("a"))
         val snoozeEnd =
-            OccurrenceActionCommand(occurrences, events, SqlDelightAppSettingsRepository(MomTimeDatabase(driver))) {
+            OccurrenceActionCommand(
+                occurrences,
+                events,
+                SqlDelightAppSettingsRepository(MomTimeDatabase(driver)),
+                templates,
+                SqlDelightTransactor(MomTimeDatabase(driver)),
+            ) {
                 "x"
             }.runningSnoozeEnd(checkNotNull(occurrences.findById(a.id)))
         withMessage("the snooze still ends where it was decided to end", snoozedUntil, snoozeEnd)
@@ -215,7 +221,16 @@ class TimeZoneChangeCommandTest {
         templates.insert(template("t"))
         states.forEachIndexed { index, state ->
             occurrences.insert(
-                Occurrence("done-$index", "t", LocalDate(2026, 1, 1 + index), dueInKolkata, kolkata, state, 10 + index),
+                Occurrence(
+                    "done-$index",
+                    "t",
+                    LocalDate(2026, 1, 1 + index),
+                    dueInKolkata,
+                    kolkata,
+                    state,
+                    10 + index,
+                    Criticality.CRITICAL,
+                ),
             )
         }
         val before = states.indices.map { occurrences.findById("done-$it") }

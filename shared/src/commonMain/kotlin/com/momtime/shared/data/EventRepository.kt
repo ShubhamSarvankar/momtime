@@ -5,6 +5,7 @@ import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.MissionResultType
+import com.momtime.shared.domain.NutritionTag
 
 interface EventRepository {
     fun insert(event: Event)
@@ -47,6 +48,8 @@ class SqlDelightEventRepository(
             caregiver_link_id = columns.caregiverLinkId,
             canary_scheduled_at = columns.canaryScheduledAt,
             canary_actual_at = columns.canaryActualAt,
+            nutrition_tags = columns.nutritionTags,
+            zone_id = columns.zoneId,
         )
     }
 
@@ -88,6 +91,8 @@ class SqlDelightEventRepository(
         val canaryScheduledAt: Long? = null,
         val canaryActualAt: Long? = null,
         val snoozedUntil: Long? = null,
+        val nutritionTags: String? = null,
+        val zoneId: String? = null,
     )
 
     private fun EventPayload.toColumns(): PayloadColumns =
@@ -96,7 +101,24 @@ class SqlDelightEventRepository(
             is EventPayload.Snooze ->
                 PayloadColumns(snoozeNumber.toLong(), null, null, null, null, snoozedUntil = snoozedUntil.toDb())
             is EventPayload.MissionResult -> PayloadColumns(null, missionType.name, null, null, null)
-            is EventPayload.Water -> PayloadColumns(null, null, waterMl.toLong(), null, null)
+            // The names sorted and joined by commas; the empty set is null, so "no tags" has one representation,
+            // the one the migration's group_concat gives a template with no tags (ADR 0086).
+            is EventPayload.Completion ->
+                PayloadColumns(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    nutritionTags =
+                        nutritionTags
+                            .map { it.name }
+                            .sorted()
+                            .joinToString(",")
+                            .ifEmpty { null },
+                )
+            is EventPayload.Water ->
+                PayloadColumns(null, null, waterMl.toLong(), null, null, zoneId = zone?.toDb())
             is EventPayload.Weight -> PayloadColumns(null, null, null, weightGrams.toLong(), null)
             is EventPayload.CaregiverReference -> PayloadColumns(null, null, null, null, caregiverLinkId)
             is EventPayload.Canary ->
@@ -127,6 +149,8 @@ class SqlDelightEventRepository(
                 if (caregiver_link_id != null) add(EventColumn.CAREGIVER_LINK_ID)
                 if (canary_scheduled_at != null) add(EventColumn.CANARY_SCHEDULED_AT)
                 if (canary_actual_at != null) add(EventColumn.CANARY_ACTUAL_AT)
+                if (nutrition_tags != null) add(EventColumn.NUTRITION_TAGS)
+                if (zone_id != null) add(EventColumn.ZONE_ID)
             }
         val unexpected = set - allowedColumns(type)
         check(unexpected.isEmpty()) { "columns $unexpected are set on a $type event ($id)" }
@@ -137,11 +161,15 @@ class SqlDelightEventRepository(
         }
         val payload: EventPayload =
             when {
+                // A completion is decoded by its type, never as None: every completion carries its tags, and
+                // one with none carries the empty set (ADR 0086).
+                type == EventType.COMPLETED || type == EventType.COMPLETED_BACKFILLED ->
+                    EventPayload.Completion(decodeNutritionTags())
                 snooze_number != null && snoozed_until != null ->
                     EventPayload.Snooze(snooze_number.toInt(), snoozed_until.toInstant())
                 mission_result_type != null ->
                     EventPayload.MissionResult(MissionResultType.valueOf(mission_result_type))
-                water_ml != null -> EventPayload.Water(water_ml.toInt())
+                water_ml != null -> EventPayload.Water(water_ml.toInt(), zone_id?.toTimeZone())
                 weight_grams != null -> EventPayload.Weight(weight_grams.toInt())
                 caregiver_link_id != null -> EventPayload.CaregiverReference(caregiver_link_id)
                 canary_scheduled_at != null ->
@@ -157,5 +185,21 @@ class SqlDelightEventRepository(
             source = EventSource.valueOf(source),
             payload = payload,
         )
+    }
+
+    /**
+     * The tags of a completion row: null is no tags. A column that is set must name at least one tag and only
+     * tags, so an empty string or an unknown name fails loudly, as the column guard does (ADR 0052): "no tags"
+     * is null and nothing else. The order of names carries no meaning (ADR 0079).
+     */
+    private fun com.momtime.shared.data.Event.decodeNutritionTags(): Set<NutritionTag> {
+        val column = nutrition_tags ?: return emptySet()
+        return column
+            .split(",")
+            .map { name ->
+                checkNotNull(NutritionTag.entries.firstOrNull { it.name == name }) {
+                    "nutrition_tags names no tag with '$name' on a $event_type event ($id)"
+                }
+            }.toSet()
     }
 }

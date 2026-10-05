@@ -22,6 +22,8 @@ internal object StateBasedAdherenceOracle {
                 OccurrenceState.MISSED -> missed++
                 OccurrenceState.SKIPPED -> skipped++
                 OccurrenceState.PENDING, OccurrenceState.SNOOZED -> Unit
+                // A withdrawn occurrence is terminal and is not an outcome: it counts nothing (ADR 0079).
+                OccurrenceState.WITHDRAWN -> Unit
             }
         }
         return EventLogReduction.AdherenceFigures(completed, missed, skipped)

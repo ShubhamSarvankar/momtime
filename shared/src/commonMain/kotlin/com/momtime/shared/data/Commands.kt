@@ -45,6 +45,8 @@ class ReconcileCommand(
                 EventType.COMPLETED_BACKFILLED,
                 EventType.SKIPPED,
                 EventType.MISSED,
+                // A withdrawal closes an occurrence as the other four do (ADR 0079): it can never become MISSED.
+                EventType.WITHDRAWN,
             )
     }
 }

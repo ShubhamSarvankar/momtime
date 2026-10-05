@@ -1,0 +1,50 @@
+-- Schema version 5 to 6 (Phase 3, PR 1, ADR 0079 and ADR 0086).
+--
+-- 1. An occurrence keeps its criticality. The column is filled from each occurrence's template, which is exact: no
+--    build before version 6 could change a template's criticality. The fill updates terminal rows too, so the
+--    terminal trigger is dropped first; this is an administrative update inside a migration, outside the domain
+--    layer (invariant 4). An occurrence with no template (possible only where foreign keys were never enforced)
+--    keeps the column's default.
+-- 2. WITHDRAWN is a sixth occurrence state, and terminal. The unique index on (template_id, local_date) becomes
+--    partial, so a date wanted again gets a new occurrence beside the withdrawn one, and the trigger is created again
+--    with WITHDRAWN among the terminal states.
+-- 3. A completion records the nutrition tags its template had (the names joined by commas; null for none), and a
+--    water event the zone it was logged in. Existing completions are filled from their templates' tags, which is
+--    exact as a set for the same reason as the criticality: SQLite 3.22 does not guarantee the order in which
+--    group_concat joins, so the order of names carries no meaning and decoding yields a set. group_concat over no
+--    rows is null, so a template with no tags leaves null. zone_id stays null on an existing water row: the zone it
+--    was logged in was never recorded and cannot be recovered.
+--
+-- DROP and CREATE of a trigger and an index, ADD COLUMN, a partial index and group_concat all work on the SQLite
+-- 3.22 floor (ADR 0042).
+
+DROP TRIGGER occurrence_terminal_immutable;
+
+ALTER TABLE occurrence ADD COLUMN criticality TEXT NOT NULL DEFAULT 'STANDARD';
+
+UPDATE occurrence
+SET criticality = (SELECT t.criticality FROM schedule_template t WHERE t.id = occurrence.template_id)
+WHERE template_id IN (SELECT id FROM schedule_template);
+
+DROP INDEX occurrence_template_date_idx;
+
+CREATE UNIQUE INDEX occurrence_template_date_idx ON occurrence(template_id, local_date) WHERE state <> 'WITHDRAWN';
+
+CREATE TRIGGER occurrence_terminal_immutable
+BEFORE UPDATE ON occurrence
+WHEN old.state IN ('COMPLETED', 'SKIPPED', 'MISSED', 'WITHDRAWN')
+BEGIN
+    SELECT RAISE(ABORT, 'terminal occurrence is immutable');
+END;
+
+ALTER TABLE event ADD COLUMN nutrition_tags TEXT;
+ALTER TABLE event ADD COLUMN zone_id TEXT;
+
+UPDATE event
+SET nutrition_tags = (
+        SELECT group_concat(n.tag)
+        FROM schedule_template_nutrition_tag n
+        JOIN occurrence o ON o.template_id = n.template_id
+        WHERE o.id = event.occurrence_id
+    )
+WHERE event_type IN ('COMPLETED', 'COMPLETED_BACKFILLED');

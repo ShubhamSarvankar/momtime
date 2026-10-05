@@ -1,5 +1,6 @@
 package com.momtime.shared.data
 
+import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
@@ -44,11 +45,18 @@ interface OccurrenceRepository {
     /** The occurrence that owns [slot], or null if none does (after a reset or a restore, none may). */
     fun findByAlarmSlot(slot: Int): Occurrence?
 
+    /**
+     * The dates [templateId] has an occurrence for, withdrawn occurrences aside: a date whose only occurrences are
+     * withdrawn is wanted again and is materialised afresh, with a new id and a new slot (ADR 0079).
+     */
     fun datesAlreadyMaterialisedForTemplate(templateId: String): Set<LocalDate>
 
     fun findPending(): List<Occurrence>
 
-    /** Every occurrence that is not terminal: `PENDING` and `SNOOZED`. What `Reconcile` reads. */
+    /**
+     * Every occurrence that is not terminal: `PENDING` and `SNOOZED`, and so never a withdrawn one. What
+     * `Reconcile` reads.
+     */
     fun findOpen(): List<Occurrence>
 
     fun findForTemplate(templateId: String): List<Occurrence>
@@ -100,6 +108,7 @@ class SqlDelightOccurrenceRepository(
             time_zone_id = occurrence.timeZoneId.toDb(),
             state = occurrence.state.name,
             alarm_slot = occurrence.alarmSlot.toLong(),
+            criticality = occurrence.criticality.name,
         )
     }
 
@@ -148,6 +157,7 @@ class SqlDelightOccurrenceRepository(
         database.occurrenceQueries
             .selectOccurrencesForTemplate(templateId)
             .executeAsList()
+            .filter { it.state != OccurrenceState.WITHDRAWN.name }
             .map { it.local_date.toLocalDate() }
             .toSet()
 
@@ -214,5 +224,6 @@ class SqlDelightOccurrenceRepository(
             timeZoneId = time_zone_id.toTimeZone(),
             state = OccurrenceState.valueOf(state),
             alarmSlot = alarm_slot.toInt(),
+            criticality = Criticality.valueOf(criticality),
         )
 }

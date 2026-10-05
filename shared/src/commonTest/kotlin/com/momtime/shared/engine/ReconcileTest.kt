@@ -27,6 +27,7 @@ class ReconcileTest {
             timeZoneId = zone,
             state = state,
             alarmSlot = 1,
+            criticality = Criticality.CRITICAL,
         )
 
     @Test
@@ -161,6 +162,35 @@ class ReconcileTest {
 
     // A snoozed occurrence that outlives its grace window must still become MISSED. If SNOOZED were
     // treated like a terminal state, a snoozed dose would never be marked missed.
+    // The guard inside evaluate, on its own: no terminal event is reported, so only isTerminal stands between a
+    // withdrawn occurrence well past its grace and a MISSED event (ADR 0079).
+    @Test
+    fun `Reconcile evaluate leaves a withdrawn occurrence alone`() {
+        val result =
+            Reconcile.evaluate(
+                occurrence = occurrence(OccurrenceState.WITHDRAWN),
+                criticality = Criticality.CRITICAL,
+                now = scheduledInstant + 30.hours,
+                hasTerminalEvent = false,
+                generateId = { "evt-1" },
+            )
+        assertNull(result)
+    }
+
+    // The pure half of the test of the same name in CommandsTest, which dispatches the command over a database:
+    // a withdrawn occurrence with its WITHDRAWN event, a day after its grace, produces no MISSED.
+    @Test
+    fun `a withdrawn occurrence is in none of the three figures, even after its grace`() {
+        for (criticality in Criticality.entries) {
+            val withdrawn = occurrence(OccurrenceState.WITHDRAWN)
+            val dayAfterGrace = Reconcile.graceExpiryInstant(withdrawn, criticality) + 24.hours
+            assertNull(
+                Reconcile.evaluate(withdrawn, criticality, dayAfterGrace, hasTerminalEvent = true) { "evt-1" },
+                "$criticality",
+            )
+        }
+    }
+
     @Test
     fun `a SNOOZED occurrence past grace becomes MISSED, and is untouched before it`() {
         val expiry = scheduledInstant + 2.hours

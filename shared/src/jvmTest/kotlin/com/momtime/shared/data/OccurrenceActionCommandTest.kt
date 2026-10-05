@@ -36,6 +36,7 @@ import kotlin.time.Instant
 class OccurrenceActionCommandTest {
     private lateinit var driver: SqlDriver
     private lateinit var occurrences: OccurrenceRepository
+    private lateinit var templates: ScheduleTemplateRepository
     private lateinit var events: EventRepository
     private lateinit var settings: AppSettingsRepository
     private lateinit var command: OccurrenceActionCommand
@@ -49,12 +50,15 @@ class OccurrenceActionCommandTest {
         driver = JvmDatabaseDriverFactory.inMemory().createDriver()
         val database = MomTimeDatabase(driver)
         SqlDelightPregnancyRepository(database).insert(Pregnancy("preg", PregnancyPhase.PRENATAL, epoch, epoch))
-        val templates = SqlDelightScheduleTemplateRepository(database)
+        templates = SqlDelightScheduleTemplateRepository(database)
         events = SqlDelightEventRepository(database)
         occurrences = SqlDelightOccurrenceRepository(database, events)
         settings = SqlDelightAppSettingsRepository(database)
         settings.ensureSeeded()
-        command = OccurrenceActionCommand(occurrences, events, settings) { "id-${ids++}" }
+        command =
+            OccurrenceActionCommand(occurrences, events, settings, templates, SqlDelightTransactor(database)) {
+                "id-${ids++}"
+            }
         templates.insert(template())
     }
 
@@ -88,7 +92,8 @@ class OccurrenceActionCommandTest {
         at: Instant = scheduled,
         slot: Int,
         state: OccurrenceState = OccurrenceState.PENDING,
-    ) = Occurrence(id, "t", LocalDate(2026, 3, slot), at, TimeZone.UTC, state, slot)
+        templateId: String = "t",
+    ) = Occurrence(id, templateId, LocalDate(2026, 3, slot), at, TimeZone.UTC, state, slot, Criticality.CRITICAL)
         .also(occurrences::insert)
 
     private fun log(id: String) = events.findForOccurrence(id).map { Triple(it.eventType, it.source, it.payload) }
@@ -120,12 +125,68 @@ class OccurrenceActionCommandTest {
         assertEquals(ActionResult.Done, command.dispatch("a", OccurrenceAction.ACKNOWLEDGE, now))
 
         assertEquals(
-            before + Triple(EventType.COMPLETED, EventSource.USER, EventPayload.None),
+            // The completion carries the template's tags (ADR 0086): schema version 6 changed this expectation
+            // from no payload, authorised by Claude (technical review).
+            before +
+                Triple(EventType.COMPLETED, EventSource.USER, EventPayload.Completion(setOf(NutritionTag.IRON))),
             log("a"),
             "exactly one new event",
         )
         assertEquals(OccurrenceState.COMPLETED, state("a"))
         assertEquals(now, events.findByOccurrenceAndType("a", EventType.COMPLETED).single().deviceTimestamp)
+    }
+
+    private fun completionTags(occurrenceId: String) =
+        (events.findByOccurrenceAndType(occurrenceId, EventType.COMPLETED).single().payload as EventPayload.Completion)
+            .nutritionTags
+
+    // A completion records the tags the template had when she completed it (ADR 0086). The tags are replaced
+    // directly in the database between two acknowledgements, because no edit path exists yet.
+    @Test
+    fun `acknowledge records the template's tags as they are now`() {
+        val old = setOf(NutritionTag.IRON, NutritionTag.DAIRY)
+        templates.insert(template().copy(id = "two", nutritionTags = old))
+        occurrence("a2", slot = 11, templateId = "two")
+        occurrence("b2", slot = 12, templateId = "two")
+
+        assertEquals(ActionResult.Done, command.dispatch("a2", OccurrenceAction.ACKNOWLEDGE, now))
+
+        driver.execute(null, "DELETE FROM schedule_template_nutrition_tag WHERE template_id = 'two'", 0)
+        driver.execute(
+            null,
+            "INSERT INTO schedule_template_nutrition_tag(template_id, tag) VALUES ('two', 'FRUIT'), ('two', 'PROTEIN')",
+            0,
+        )
+        assertEquals(ActionResult.Done, command.dispatch("b2", OccurrenceAction.ACKNOWLEDGE, now + 1.minutes))
+
+        assertEquals(old, completionTags("a2"), "the first completion keeps the tags it was taken with")
+        assertEquals(setOf(NutritionTag.FRUIT, NutritionTag.PROTEIN), completionTags("b2"))
+    }
+
+    // With foreign keys enforced a template cannot be missing under an occurrence, so this stands in for a read
+    // that fails to find it: her acknowledgement is recorded all the same, with no tags.
+    @Test
+    fun `an acknowledgement whose template cannot be read is recorded with no tags`() {
+        occurrence("a", slot = 1)
+        val blind =
+            object : ScheduleTemplateRepository by templates {
+                override fun findById(id: String): ScheduleTemplate? = null
+            }
+        val command =
+            OccurrenceActionCommand(
+                occurrences,
+                events,
+                settings,
+                blind,
+                SqlDelightTransactor(MomTimeDatabase(driver)),
+            ) {
+                "blind-${ids++}"
+            }
+
+        assertEquals(ActionResult.Done, command.dispatch("a", OccurrenceAction.ACKNOWLEDGE, now))
+
+        assertEquals(emptySet(), completionTags("a"))
+        assertEquals(OccurrenceState.COMPLETED, state("a"))
     }
 
     @Test

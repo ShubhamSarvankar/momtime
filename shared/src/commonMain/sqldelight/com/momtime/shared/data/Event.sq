@@ -13,6 +13,8 @@ CREATE TABLE event (
     canary_scheduled_at INTEGER,
     canary_actual_at INTEGER,
     snoozed_until INTEGER,
+    nutrition_tags TEXT,
+    zone_id TEXT,
 
     CHECK (source IN ('USER', 'SYSTEM'))
 );
@@ -24,8 +26,8 @@ insertEvent:
 INSERT INTO event(
     id, occurrence_id, event_type, device_timestamp, effective_at, source,
     snooze_number, mission_result_type, water_ml, weight_grams, caregiver_link_id,
-    canary_scheduled_at, canary_actual_at, snoozed_until
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    canary_scheduled_at, canary_actual_at, snoozed_until, nutrition_tags, zone_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectEventById:
 SELECT * FROM event WHERE id = ?;

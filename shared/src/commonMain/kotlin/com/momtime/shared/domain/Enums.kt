@@ -8,7 +8,18 @@ enum class PregnancyPhase { PRENATAL, POSTPARTUM }
 
 enum class NutritionTag { FRUIT, VEGETABLE, PROTEIN, IRON, CALCIUM, DAIRY, SUPPLEMENT }
 
-enum class OccurrenceState { PENDING, COMPLETED, SNOOZED, SKIPPED, MISSED }
+enum class OccurrenceState { PENDING, COMPLETED, SNOOZED, SKIPPED, MISSED, WITHDRAWN }
+
+/**
+ * The single definition of a terminal state: `COMPLETED`, `SKIPPED`, `MISSED` and `WITHDRAWN` (ADR 0079). The
+ * schema's trigger refuses any update to such a row, and a test fails if the two drift.
+ */
+val OccurrenceState.isTerminal: Boolean
+    get() =
+        this == OccurrenceState.COMPLETED ||
+            this == OccurrenceState.SKIPPED ||
+            this == OccurrenceState.MISSED ||
+            this == OccurrenceState.WITHDRAWN
 
 enum class EventSource { USER, SYSTEM }
 
@@ -28,6 +39,7 @@ enum class EventType {
     SNOOZE_ENDED,
     SKIPPED,
     MISSED,
+    WITHDRAWN,
     MISSION_VERIFIED,
     MISSION_BYPASSED,
     WATER_LOGGED,

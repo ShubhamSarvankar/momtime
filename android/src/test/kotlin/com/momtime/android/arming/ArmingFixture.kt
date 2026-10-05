@@ -234,6 +234,7 @@ internal class ArmingFixture(
                 timeZoneId = testZone,
                 state = OccurrenceState.PENDING,
                 alarmSlot = slot,
+                criticality = criticality,
             )
         occurrences.insert(occurrence)
         return occurrence

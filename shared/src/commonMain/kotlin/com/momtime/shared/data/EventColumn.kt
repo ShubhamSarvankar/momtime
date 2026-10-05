@@ -15,6 +15,8 @@ internal enum class EventColumn {
     CAREGIVER_LINK_ID,
     CANARY_SCHEDULED_AT,
     CANARY_ACTUAL_AT,
+    NUTRITION_TAGS,
+    ZONE_ID,
 }
 
 /**
@@ -26,13 +28,15 @@ internal enum class EventColumn {
  * It is a list of what is allowed, so an absent column is always fine. The `when` is exhaustive, so a new
  * [EventType] does not compile until it is given a set. `EFFECTIVE_AT` belongs to MISSED alone (ADR 0030).
  * A bypassed mission may name the mission that was bypassed, so it takes the same column as a verified one.
+ * `NUTRITION_TAGS` belongs to the two completions and `ZONE_ID` to WATER_LOGGED (ADR 0086).
  */
 internal fun allowedColumns(type: EventType): Set<EventColumn> =
     when (type) {
         EventType.MISSED -> setOf(EventColumn.EFFECTIVE_AT)
         EventType.SNOOZED -> setOf(EventColumn.SNOOZE_NUMBER, EventColumn.SNOOZED_UNTIL)
         EventType.MISSION_VERIFIED, EventType.MISSION_BYPASSED -> setOf(EventColumn.MISSION_RESULT_TYPE)
-        EventType.WATER_LOGGED -> setOf(EventColumn.WATER_ML)
+        EventType.WATER_LOGGED -> setOf(EventColumn.WATER_ML, EventColumn.ZONE_ID)
+        EventType.COMPLETED, EventType.COMPLETED_BACKFILLED -> setOf(EventColumn.NUTRITION_TAGS)
         EventType.WEIGHT_LOGGED -> setOf(EventColumn.WEIGHT_GRAMS)
         EventType.CAREGIVER_LINKED,
         EventType.CAREGIVER_REVOKED,
@@ -44,10 +48,9 @@ internal fun allowedColumns(type: EventType): Set<EventColumn> =
         EventType.OCCURRENCE_MATERIALISED,
         EventType.ALARM_SCHEDULED,
         EventType.ALARM_FIRED,
-        EventType.COMPLETED,
-        EventType.COMPLETED_BACKFILLED,
         EventType.SNOOZE_ENDED,
         EventType.SKIPPED,
+        EventType.WITHDRAWN,
         EventType.WATCHDOG_REPAIR,
         -> emptySet()
     }

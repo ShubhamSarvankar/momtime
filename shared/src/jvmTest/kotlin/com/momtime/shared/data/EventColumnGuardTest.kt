@@ -54,6 +54,9 @@ class EventColumnGuardTest {
                 ),
             ),
             Triple("canary_scheduled_at", "100", setOf(EventType.CANARY_RESULT)),
+            // Schema version 6 (ADR 0086): the tags belong to the two completions, the zone to water.
+            Triple("nutrition_tags", "'IRON'", setOf(EventType.COMPLETED, EventType.COMPLETED_BACKFILLED)),
+            Triple("zone_id", "'Asia/Kolkata'", setOf(EventType.WATER_LOGGED)),
         )
 
     private fun raw(
@@ -87,6 +90,8 @@ class EventColumnGuardTest {
                             events.findById(id)
                         }
                     assertTrue(failure.message.orEmpty().contains("are set on a $type event"), failure.message)
+                    // The failure names the column: the enum's name is the column's, in capitals.
+                    assertTrue(failure.message.orEmpty().contains(column.uppercase()), failure.message)
                     refusedSeen++
                 }
             }
@@ -103,6 +108,22 @@ class EventColumnGuardTest {
         val failure = assertFailsWith<IllegalStateException> { events.findById("completed") }
 
         assertTrue(failure.message.orEmpty().contains("EFFECTIVE_AT"), failure.message)
+    }
+
+    // "No tags" is null and nothing else (ADR 0086): a tags column that is set and names no tag, or names
+    // something that is not a tag, fails loudly and names the column, on both completion types.
+    @Test
+    fun `a tags column that names no tag fails to decode`() {
+        var n = 0
+        for (type in listOf(EventType.COMPLETED, EventType.COMPLETED_BACKFILLED)) {
+            for (value in listOf("''", "'IRON,'", "'IRON,SUGAR'", "'iron'")) {
+                val id = "bad-${n++}"
+                raw(id, type, "nutrition_tags", value)
+                val failure = assertFailsWith<IllegalStateException>("$value on $type decoded") { events.findById(id) }
+                assertTrue(failure.message.orEmpty().contains("nutrition_tags"), failure.message)
+            }
+        }
+        assertEquals(8, n)
     }
 
     @Test

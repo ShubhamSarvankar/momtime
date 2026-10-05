@@ -21,8 +21,9 @@ import kotlin.time.Instant
 object OccurrenceMaterialiser {
     /**
      * @param alreadyMaterialisedDates dates for which this template already has an occurrence
-     *   row — the UNIQUE(template_id, local_date) index is the schema-level backstop, this is
-     *   the engine-level idempotency check that avoids even trying to insert a duplicate.
+     *   row that is not withdrawn — the UNIQUE(template_id, local_date) index is the schema-level
+     *   backstop, this is the engine-level idempotency check that avoids even trying to insert a
+     *   duplicate. Each occurrence takes the template's criticality as it is now (ADR 0079).
      */
     fun materialise(
         template: ScheduleTemplate,
@@ -57,6 +58,7 @@ object OccurrenceMaterialiser {
                         timeZoneId = zone,
                         state = OccurrenceState.PENDING,
                         alarmSlot = allocateSlot(),
+                        criticality = template.criticality,
                     )
                 }
             }

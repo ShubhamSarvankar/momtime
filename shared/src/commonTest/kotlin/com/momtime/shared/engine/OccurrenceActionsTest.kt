@@ -4,6 +4,7 @@ import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
+import com.momtime.shared.domain.NutritionTag
 import com.momtime.shared.domain.OccurrenceState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,6 +29,13 @@ class OccurrenceActionsTest {
     fun `a pending or snoozed occurrence offers all three`() {
         assertEquals(all, available(OccurrenceState.PENDING))
         assertEquals(all, available(OccurrenceState.SNOOZED, snoozed = 1))
+    }
+
+    // WITHDRAWN is terminal (ADR 0079): the definition is isTerminal, in one place, and not a list kept here.
+    @Test
+    fun `a withdrawn occurrence offers no action`() {
+        assertEquals(emptySet(), available(OccurrenceState.WITHDRAWN))
+        assertEquals(emptySet(), available(OccurrenceState.WITHDRAWN, snoozed = 1, next = now + 5.minutes))
     }
 
     @Test
@@ -67,9 +75,12 @@ class OccurrenceActionsTest {
 
     @Test
     fun `her three actions are user events and the snooze carries its number`() {
+        // The acknowledgement carries the tags it was given (ADR 0086): schema version 6 changed this expectation
+        // from no payload, authorised by Claude (technical review).
+        val tags = setOf(NutritionTag.IRON, NutritionTag.DAIRY)
         assertEquals(
-            Event("e1", "occ", EventType.COMPLETED, now, null, EventSource.USER, EventPayload.None),
-            OccurrenceActions.acknowledged("e1", "occ", now),
+            Event("e1", "occ", EventType.COMPLETED, now, null, EventSource.USER, EventPayload.Completion(tags)),
+            OccurrenceActions.acknowledged("e1", "occ", now, tags),
         )
         assertEquals(
             Event("e2", "occ", EventType.SKIPPED, now, null, EventSource.USER, EventPayload.None),

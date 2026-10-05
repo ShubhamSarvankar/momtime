@@ -43,6 +43,7 @@ class FireTimingTest {
             timeZoneId = TimeZone.UTC,
             state = OccurrenceState.PENDING,
             alarmSlot = 1,
+            criticality = Criticality.CRITICAL,
         )
 
     private fun event(
