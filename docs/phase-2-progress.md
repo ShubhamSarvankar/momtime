@@ -374,6 +374,41 @@ Decisions of this PR:
 
 Not verified: `MANUAL_CHECKS.md` P2-30 (a real zone change). The tests move the fixture's zone seam and call the receiver; nothing changed a phone's zone. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 7: `phase-2/reliability`
+
+Branched from `main` at `e4893015a92a91fd0db9d375ce1ab0397dc14742` (the merge of PR #22).
+
+Scope: the PR 7 design report and the decisions on it (Claude (technical review)), built. **Real fires are the measurement; the daily silent canary is dropped; the check she starts is the one permitted second alarm** (ADR 0069). The fire timing reduction in `shared`, its android join, the persisted store failure counts, the banner state in the data layer, the read only report on the check screen, the export, and the opt in (ADR 0070). Mutations are in `phase-2-traceability.md` (35, run at `2d90742`).
+
+No new CI job and no new dependency. **`kotlinx-serialization` is neither approved nor in the build** (not in `libs.versions.toml`, not a plugin, not used by any module): the export is written with the platform's `org.json`, which is part of Android. No permission added.
+
+Numbers, measured at `2d90742`: 228 `shared` tests (209 before PR 7) and 966 android test cases (807 before), none failing. `shared` line 933/950 (98.2%), branch 326/332 (98.2%): data 156/160, domain 8/8, engine 162/164, all above their gates. **The android store is at schema version 5** (`4.sqm`), from version 4: the request said "the android store at v4"; version 4 was the store as it stood, and this PR adds the step to 5, with forward migration tests from every prior version (1 to 4) and the committed baseline checked by `verifyDebugAndroidStoreDatabaseMigration`. The shared schema is unchanged (version 5, PR 6b).
+
+What was built:
+
+- **The check she starts** (`CanaryRunner`, `CheckIntents`, `CheckReceiver`, `ReliabilityCheckActivity`), reached from the ring screen's idle state. Request code 0 with its own action and receiver; deferred while a reminder is due within 2 minutes; timeout 3 minutes after it was due; one writer of `CANARY_RESULT`; a process that died mid check is settled as missed on the next open.
+- **`FireTiming`** (`shared`, pure, as of an explicit instant): samples (a fire paired with its arming), catch ups counted apart, exclusions as an input, never fired rungs (an occurrence completed or skipped before its first rung is not one).
+- **The android store, version 5:** `reliability_check`, `store_failure` (persisted counts, replacing the in memory map), `arming_context`, `clock_change`, and `fire_telemetry.clock_changes`. The system pass counts a clock change before it arms.
+- **`ReliabilityReader`** (the join), **`Banners`** (state, with a test at every boundary; the banner UI is Phase 3), the text report (English only, plurals), **`ReliabilityExport`** (versioned JSON through `ACTION_CREATE_DOCUMENT`, no identifier, no text she typed, no time of day, the phone model), and the opt in (off by default, gates upload only, records nothing differently).
+
+Findings and judgments:
+
+- **`CLAUDE.md` was edited** (the alarm rules and invariant 10) to carry the narrowed invariant and the request code 0 exception, because the ADR narrows them and the file wins over the ADRs. The decision is Claude (technical review)'s; the edit is the smallest that makes the two agree.
+- **Store failure counts were in memory** (`CountingStoreFailures`, ADR 0054) and are now persisted, with the unpersisted ones added when the store is what is failing. The repository that holds them logs its own failures and never counts them back into itself. The upsert is two statements: `ON CONFLICT ... DO UPDATE` needs SQLite 3.24 and the 3.18 dialect refused it, which is the floor check working (ADR 0042).
+- **The armed record cannot say whether the phone restarted between arming a rung and its fire:** it is replaced at every pass, so after a restart it already holds the new boot count. The boot count and the clock change count at the arming of each rung are kept keyed by the `ALARM_SCHEDULED` event's id (`arming_context`), and the rung's instant with them, so a later time zone change cannot rewrite a measured fire.
+- **P1 alone does not break coexistence** (judgment): the check's component and request code also differ from a reminder's, so only the full collision (P1b) fails the coexistence test, and the identity test is what fails P1. Both are recorded as they happened.
+- **Limits** (ADR 0070): the clock change is counted when the pass runs, not when the broadcast arrives; a fire whose telemetry failed to store is unverifiable; rungs armed before this version have no arming context; only the first rung is checked for never firing.
+- **A banner and a fix path are not built** (Phase 3 and PR 8, by the review). The debug only seed screen is built in PR 8, in a `debug` source set, with the release merged manifest check the review accepted; it is kept past Phase 3 as a debug tool unless Phase 3 decides otherwise (Claude (technical review)).
+
+Decisions of this PR (all Claude (technical review) unless marked):
+77. **Real fires are the measurement; no daily canary; the check she starts is the one permitted second alarm, with request code 0** (ADR 0069).
+78. **Drift is a pure reduction in `shared` with an explicit `asOf`; the boot count and clock change exclusions are inputs; the join with tier and the other telemetry stays in android** (ADR 0070).
+79. **A never fired rung is an occurrence's first rung armed ahead, past a 15 minute tolerance, with no `ALARM_FIRED`, not completed or skipped before it** (ADR 0070); not held against the platform across a restart or a clock change (the implementing session's judgment).
+80. **Banner thresholds are constants, to be tuned from the A15 soak; banner state is computed in the data layer** (ADR 0070).
+81. **The export carries the phone model and no identifier, no text she typed and no time of day; strings are English only in Phase 2** (ADR 0070; the day only is the implementing session's judgment).
+
+Not verified: `MANUAL_CHECKS.md` P2-31 (the check on a device), P2-32 (the picker), P2-33 (drift exclusions and the unobserved days). Nothing here ran on a device. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 6b is merged and reviewed: PR 7 canary and telemetry, PR 8 permission onboarding, and the close.
+After PR 7 is merged and reviewed: PR 8 permission onboarding (with the debug only seed screen), and the close.
