@@ -43,7 +43,7 @@ The model was accepted by Claude (technical review) in the review of the plannin
 
 **"Come due", exactly.** An occurrence has come due when any one of these holds at the edit's `now`: its `scheduledInstant` is at or before `now`; or it has at least one `ALARM_FIRED` event; or its state is `SNOOZED`. A running snooze therefore counts, and so does a snooze that has ended, because its occurrence's instant has passed.
 
-**When the new time for an open, not yet due occurrence today is already past.** It stays at the time it has. It is not clamped to now and it is not withdrawn. Today's reminder rings at the old time and the new time starts with the next date. The editor says so in one line after saving ("Today's reminder stays at 12:00. The new time starts tomorrow."). The test is `TemplateEditScenarioTest`, `an edit to earlier than now keeps today's time`.
+**When the new time for an open, not yet due occurrence today is already past.** It stays at the time it has. It is not clamped to now and it is not withdrawn. Today's reminder rings at the old time and the new time starts with the next date the template wants, which for a weekly or every N days reminder may not be tomorrow. The editor says so in one line after saving, naming that date as the platform formats it in the current locale ("Today's reminder stays at 12:00. The new time starts on 9 October."); the date comes from `EditTemplateCommand.preview`. Accepted by Claude (technical review) in the second review, with the date in place of the first wording's "tomorrow". The test is `TemplateEditScenarioTest`, `an edit to earlier than now keeps today's time`.
 
 **`WITHDRAWN`.**
 
@@ -58,7 +58,7 @@ The model was accepted by Claude (technical review) in the review of the plannin
 ## The migration's fill for each new column (version 5 to 6)
 
 - **`occurrence.criticality`** is filled from each occurrence's template. This is exact and not a guess: no build before version 6 could change a template's criticality, so every existing occurrence was materialised under the criticality its template still has.
-- **`event.nutrition_tags`** on existing `COMPLETED` and `COMPLETED_BACKFILLED` events is filled from the tags of the occurrence's template, and is exact for the same reason: no build before version 6 could edit a template's tags. An event whose template has no tags gets null.
+- **`event.nutrition_tags`** on existing `COMPLETED` and `COMPLETED_BACKFILLED` events is filled from the tags of the occurrence's template, and is exact for the same reason: no build before version 6 could edit a template's tags. An event whose template has no tags gets null. **The fill is exact as a set, not as a sequence:** it uses `group_concat`, and SQLite 3.22 does not guarantee the order in which `group_concat` joins its values, even over an ordered subquery. So the order of names in the column carries no meaning anywhere: decoding yields a set and never depends on order, and the migration test compares migrated tags as sets.
 - **`event.zone_id`** on an existing `WATER_LOGGED` row stays null: the zone it was logged in was never recorded and cannot be recovered. No build wrote such a row, so this is a rule for a case that should not exist; it is handled all the same (ADR 0086).
 
 The forward migration test seeds version 5 rows for all three (occurrences of each criticality, a completion of a tagged template, a water event) and asserts each fill.

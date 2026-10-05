@@ -28,7 +28,20 @@ Fonts and icons are files copied into the repo with their licences (ADR 0085), n
 
 The standing rule (`IMPLEMENTATION_PLAN.md`, Working conventions) applies to every Phase 3 pull request: an artifact whose classes a source file imports is declared in the build, never left to arrive transitively. Each pull request section of the plan lists the androidx packages its code imports and the artifact that declares each.
 
-**One consequence needs Shubham's word before PR 7, and is raised in the plan's open questions.** The approved list names three Compose libraries (`ui`, `foundation`, `material3`), `activity-compose` and `ui-test-junit4`. Compose and Activity are split into more modules than that, and ordinary screen code imports from them: `androidx.compose.runtime` (module `androidx.compose.runtime:runtime`, with `runtime-saveable` for `rememberSaveable`), `androidx.compose.ui.graphics` (`ui-graphics`), `androidx.compose.ui.text` (`ui-text`), `androidx.compose.ui.unit` (`ui-unit`), `androidx.compose.foundation.layout` (`foundation-layout`), `androidx.compose.ui.test` (`ui-test`), and `androidx.activity.ComponentActivity` (`androidx.activity:activity`). All are modules of the approved libraries at the versions the approved BOM and `activity-compose` 1.13.0 already fix, and all are on the classpath today through them. Read strictly, the import rule requires each to be declared, and the rule against anything beyond the approved list forbids declaring them. The plan proposes declaring these seven by name, at the BOM's versions, as part of the approved Compose and Activity libraries and nothing more; PR 7 does not start until that is confirmed or another reading is given.
+**The sub modules, approved by Shubham in the second review.** The approved list names three Compose libraries (`ui`, `foundation`, `material3`), `activity-compose` and `ui-test-junit4`. Compose and Activity are split into more modules than that, and ordinary screen code and tests import from eight of them. They are declared by name, and nothing else is added by this approval:
+
+| Artifact | Version | Scope | Imported as |
+|---|---|---|---|
+| `androidx.compose.runtime:runtime` | by BOM | main | `androidx.compose.runtime.*` |
+| `androidx.compose.runtime:runtime-saveable` | by BOM | main | `androidx.compose.runtime.saveable.*` |
+| `androidx.compose.ui:ui-graphics` | by BOM | main | `androidx.compose.ui.graphics.*` |
+| `androidx.compose.ui:ui-text` | by BOM | main | `androidx.compose.ui.text.*` |
+| `androidx.compose.ui:ui-unit` | by BOM | main | `androidx.compose.ui.unit.*` |
+| `androidx.compose.foundation:foundation-layout` | by BOM | main | `androidx.compose.foundation.layout.*` |
+| `androidx.compose.ui:ui-test` | by BOM | test | `androidx.compose.ui.test.*` |
+| `androidx.activity:activity` | 1.13.0 | main | `androidx.activity.ComponentActivity` |
+
+No version is written by hand where the BOM supplies one. `androidx.activity:activity` has no BOM, so it is written at 1.13.0, the version `activity-compose` 1.13.0 fixes. All eight were already on the classpath through the approved libraries; declaring them changes no resolved version. `DeclaredImportsTest` (plan, PR 7) keeps the rule from then on.
 
 ## Reconsidered and still declined
 
