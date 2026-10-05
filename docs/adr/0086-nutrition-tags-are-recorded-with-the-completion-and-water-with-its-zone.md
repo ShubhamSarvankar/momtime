@@ -1,0 +1,30 @@
+# 0086. The two reductions: nutrition tags are recorded with the completion, and water with the zone it was logged in
+
+Date: 2026-10-05
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
+
+Decided by the Phase 3 planning session, for review. It follows ADR 0040 (attribution, effect time, `asOf`, the outcome of an occurrence) and ADR 0052 (event columns are checked per event type), and it is part of shared schema version 6 (ADR 0079).
+
+## Decision
+
+**Nutrition.**
+
+1. **A completion records the tags the template had when she completed it.** `COMPLETED` and `COMPLETED_BACKFILLED` events carry `EventPayload.Completion(nutritionTags)`, stored in a new sparse column `event.nutrition_tags` (the tag names joined by commas, sorted by name; the order carries no meaning and decoding yields a set; null for none), allowed on those two types alone by the decode guard. `OccurrenceActionCommand` and `BackfillCommand` (ADR 0087) read the template's tags inside the same transaction as the event. Editing a template's tags therefore changes what later completions count as and never what she already did. A backfill records the tags at the time it is entered. **A completion written before version 6 is filled by the migration from its template's tags, which is exact, because no earlier build could edit tags (ADR 0079). The reduction treats a null as "no tags": the completion counts in adherence and under no tag.**
+2. **`NutritionReduction.servings(occurrences, events, asOf)` is pure, in `shared`, and returns the count per tag per scheduled local date.** An occurrence counts if its outcome as of `asOf` is completed under ADR 0040's rule (the counted terminal event with the latest effect time wins, ties prefer completion), and it counts once under each tag of the completion event that won. It is attributed to the occurrence's scheduled `localDate`. Per week figures are sums of days by the caller's week boundaries. Counts only: no quantity, no target, no percentage.
+3. **`COMPLETED_BACKFILLED` counts**, on the scheduled date, from when it is entered, as in ADR 0040. **`MISSION_VERIFIED` and `MISSION_BYPASSED` are not completions** and count nothing by themselves: they are not terminal events and ADR 0040 ignores them. **This holds only on one rule, which Phase 5 carries (Claude (technical review), ADR 0088): a verified completion writes `COMPLETED`, with its tags, as well as `MISSION_VERIFIED`, and a bypassed one writes `COMPLETED` as well as `MISSION_BYPASSED`. Without that rule the nutrition and adherence reductions undercount every dose taken through a mission.** `COMPLETED` is the event this reduction reads. `SKIPPED`, `MISSED` and `WITHDRAWN` count nothing.
+
+**Water.**
+
+4. **`WATER_LOGGED` records the zone it was logged in.** `EventPayload.Water(waterMl, zone)`, stored in a new sparse column `event.zone_id` (an IANA id), allowed on `WATER_LOGGED` alone. `LogWaterCommand` always writes it. This is invariant 9's form: an instant and a zone, never a formatted local time. A row from before version 6 has no zone (ADR 0079: none should exist, and the migration cannot invent one); it decodes with a null zone.
+5. **`WaterReduction.totals(events, asOf, fallbackZone)` is pure, in `shared`, and returns millilitres per local date**, each event attributed to the local date of its `deviceTimestamp` in the zone it was logged in, counted if its `deviceTimestamp` is at or before `asOf`. A row with no zone is attributed in `fallbackZone`, which the caller passes (the device's current zone): a best guess, used only for such rows and said to be one here. A glass she drank at 23:30 in Mumbai belongs to that Mumbai day for ever, wherever she reads the total. "Today" on a screen is the current date in the current zone, which the caller passes.
+
+## Alternatives considered
+
+- **Read the template's current tags in the reduction.** Rejected: editing a tag would rewrite the record of what she did, in a view she may hand to her doctor (Phase 6's report).
+- **Snapshot tags on the occurrence at materialisation.** Rejected: the edit command would have to maintain a child table for open occurrences, and a table has no terminal trigger; the completion is the fact being recorded.
+- **Attribute water by the device's current zone.** Rejected: past days would change when she travels.
+- **A local date column for water.** Rejected: invariant 9.
+
+## Evidence
+
+To be recorded in `docs/phase-3-traceability.md` (PR 5): the reductions' tests and mutations, specified in `docs/phase-3-plan.md`.

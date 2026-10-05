@@ -102,6 +102,21 @@ An informal attempt does **not** close a row. Record it in the row's Status cell
 | P2-40 | A real boot count gap | `ReliabilityReaderTest` and `BootGapsTest` drive the boot counts and the recorded instants in the test's hands: an unseen boot followed by a second restart, the first record after an install, an unknown count. They do not show `Settings.Global.BOOT_COUNT` going up by exactly one per boot, the boot pass not running in a deep slept app, or One UI's deep sleep doing it. | On the A15 with the app in Deep sleeping apps: restart the phone twice without opening the app, open it, and confirm the report counts one unseen restart and the banner state is raised; then take the app out of Deep sleeping apps and repeat. Record the boot counts before and after. | Informal now: seed build, on a Samsung | Not yet run |
 | P2-41 | The debug seed screen on a device | `SeederTest` shows the seed creates the expected occurrences and exactly one armed alarm, and that the screen is in the debug manifest as a launcher entry; `verifyNoDebugComponents` shows a release build has no debug component. They do not show the launcher entry appearing, the seeded reminders ringing at the right time, or the full alarm path on a real phone. | Install the debug build, start "MomTime seed" from the launcher, press "Seed test reminders", lock the phone and wait: the Critical test reminder should ring in three to four minutes. Check that the release build has no such launcher entry. | Informal now: seed build | Not yet run |
 
+## Phase 3 device checks, reserved
+
+Reserved by the Phase 3 plan (`docs/phase-3-plan.md`). Nothing below exists in the app yet: each row is added in full, with its procedure, by the pull request named, and until then it is a number and a question only. None has been run.
+
+| # | Question | Added by | Decision |
+|---|---|---|---|
+| P3-1 | The system's starting window before the app's first frame, on a cold start from the launcher and when the ring screen opens, with an appearance that differs from the device's: on API 33 and above (expected: the chosen palette's background from the second launch after a choice, through `setSplashScreenTheme`), on API 31 and 32 (expected: the system splash on the device's light or dark background), and on API 29 and 30 (expected: a blank window in the device's light or dark background) | PR 7, PR 8 | ADR 0074 |
+| P3-2 | In Tier 2 with two reminders due at once, a heads up appears for each with its three buttons while the ringer sounds | PR 6 | ADR 0080 |
+| P3-3 | With the system's automatic grouping, each bundled notification still shows its actions when expanded, on a Pixel and on One UI | PR 6 | ADR 0080 |
+| P3-4 | The channel's sound on each per occurrence notification against the ringer's sound | PR 6 | ADR 0080 |
+| P3-5 | Android 16's forced grouping of notifications and what it does to per occurrence actions | PR 6 | ADR 0080 |
+| P3-6 | The widget on a real launcher: the tap, the update, and a System appearance widget following the device on API 29 and 30 | PR 14 | ADR 0083 |
+| P3-7 | Editing and deactivating a reminder while it rings, on a device | PR 4 | ADR 0079 |
+| P3-8 | A water nudge's real timing under Doze, and the quick settings tile | PR 14 | ADR 0083 |
+
 ## Remote CI checks
 
 Not device checks. Recorded here because they verify the real GitHub remote rather than a local Gradle run.
