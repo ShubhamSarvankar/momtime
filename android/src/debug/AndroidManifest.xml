@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The debug build only (ADR 0072). Nothing here is in the main manifest, so the release build cannot have it, and
+    `verifyNoDebugComponents` fails the build if any component of com.momtime.android.debug reaches the merged release
+    manifest. The seed screen is a launcher entry so that a debug build can be started from the launcher on a device
+    with nothing else to start it from, before Phase 3's schedule builder exists. It is exported because a launcher
+    entry has to be.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name="com.momtime.android.debug.SeedActivity"
+            android:exported="true"
+            android:label="MomTime seed"
+            android:theme="@android:style/Theme.Material.Light">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

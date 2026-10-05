@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PLACEHOLDER for a screenshot of One UI (Galaxy A15). Replace this file with samsung_step_sleeping_apps.png of the same name, and delete
+     this file: a drawable of the same name in two formats is a build error. The files to supply are listed in the
+     description of the pull request that added this one (PR 8). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFE0E0E0" />
+    <stroke android:width="2dp" android:color="#FF9E9E9E" />
+    <size android:width="360dp" android:height="320dp" />
+</shape>

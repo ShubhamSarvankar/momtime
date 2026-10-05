@@ -47,7 +47,25 @@ sealed interface Banner {
         val failures: Long,
         val corruption: Boolean,
     ) : Banner
+
+    /**
+     * The app did not run after a restart: the boot count jumped, so [unseenBoots] boots passed with neither the boot
+     * pass nor a process start (ADR 0071). Direct evidence of One UI's deep sleep stopping the app. [fix] is where to
+     * send her: the Sleeping apps and Deep sleeping apps steps on Samsung, the battery step elsewhere.
+     */
+    data class NotRunAfterRestart(
+        val unseenBoots: Int,
+        val fix: FixStep,
+    ) : Banner
+
+    /** Android's own unused app restrictions apply to this app (API 30 and above, ADR 0072). */
+    data class UnusedAppRestrictions(
+        val fix: FixStep,
+    ) : Banner
 }
+
+/** Where a banner sends her, as data. The screens are Phase 3's and PR 8's; a banner names the step only. */
+enum class FixStep { SAMSUNG_SLEEPING_STEPS, BATTERY_STEP, UNUSED_APP_STEP }
 
 /** An input whose absence keeps the device below Tier 3, in the order the fix path should take them. */
 enum class MissingInput { EXACT_ALARM, NOTIFICATIONS, CRITICAL_CHANNEL, FULL_SCREEN_INTENT, BATTERY_EXEMPTION }
@@ -63,6 +81,12 @@ data class BannerInputs(
     val mutedFires: Int,
     val storeFailures: Long,
     val corruption: Boolean,
+    /** Boots the app did not run in, in the window (ADR 0071). */
+    val unseenBoots: Int = 0,
+    /** Whether the phone is a Samsung: presentation only, it chooses which fix path a banner names. */
+    val samsung: Boolean = false,
+    /** True if exempt from Android's unused app restrictions, false if they apply, null below API 30. */
+    val unusedAppExempt: Boolean? = null,
 )
 
 object Banners {
@@ -81,6 +105,9 @@ object Banners {
     /** This many fires on a muted alarm stream, or more, raise [Banner.MutedAlarmStream]. */
     const val MUTED_LIMIT = 1
 
+    /** This many boots the app did not run in, or more, raise [Banner.NotRunAfterRestart] (ADR 0071). */
+    const val UNSEEN_BOOT_LIMIT = 1
+
     fun compute(inputs: BannerInputs): List<Banner> =
         buildList {
             val latencies = inputs.exactTierLatencies.sorted()
@@ -98,6 +125,11 @@ object Banners {
             if (inputs.storeFailures >= STORE_FAILURE_LIMIT || inputs.corruption) {
                 add(Banner.StoreTrouble(inputs.storeFailures, inputs.corruption))
             }
+            if (inputs.unseenBoots >= UNSEEN_BOOT_LIMIT) {
+                val fix = if (inputs.samsung) FixStep.SAMSUNG_SLEEPING_STEPS else FixStep.BATTERY_STEP
+                add(Banner.NotRunAfterRestart(inputs.unseenBoots, fix))
+            }
+            if (inputs.unusedAppExempt == false) add(Banner.UnusedAppRestrictions(FixStep.UNUSED_APP_STEP))
         }
 
     /** The inputs that, missing, keep the device from Tier 3 (ADR 0050): exact, notifications, full screen, battery. */

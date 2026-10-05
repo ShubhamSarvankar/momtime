@@ -3,6 +3,7 @@ package com.momtime.android.reliability
 import android.content.Context
 import com.momtime.android.arming.ArmingFixture
 import com.momtime.android.arming.t0
+import com.momtime.android.di.BootCount
 import com.momtime.android.di.CorruptionMarker
 import com.momtime.android.store.ArmingContext
 import com.momtime.android.store.ArmingContextRepository
@@ -277,6 +278,105 @@ class ReliabilityReaderTest {
         }
     }
 
+    // The One UI case the excuse used to miss: the phone restarted once at 3 AM and the app never ran in that boot (it
+    // was asleep), then it restarted again after grace. The boot counts are 7, an unseen 8, and 9, so the app knows it
+    // missed a boot, and the phone may have been running through grace: the rung is a real failure (ADR 0071).
+    @Test
+    fun `an unseen boot followed by a second restart does not excuse a rung that never fired`() {
+        unfiredAtT0()
+        boot(7, t0 - 4.hours)
+        boot(9, t0 + 5.hours)
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+        assertEquals(1, report.unseenBoots)
+    }
+
+    @Test
+    fun `consecutive boot counts leave no gap, so a phone off past grace is still excused`() {
+        unfiredAtT0()
+        boot(7, t0 - 4.hours)
+        boot(8, t0 + 5.hours)
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(0, report.neverFired)
+        assertEquals(mapOf(Exclusion.OFF_THROUGH_GRACE to 1), report.neverFiredExcluded)
+        assertEquals(0, report.unseenBoots)
+    }
+
+    // The first record after an install has no predecessor and no gap: the app cannot know about boots before it was
+    // there, so a phone whose count is already 40 when the app is installed has not "missed" 39 boots.
+    @Test
+    fun `the first record after an install is not a gap`() {
+        unfiredAtT0()
+        boot(40, t0 + 5.hours)
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(0, report.unseenBoots)
+        assertEquals(0, report.neverFired)
+        assertEquals(mapOf(Exclusion.OFF_THROUGH_GRACE to 1), report.neverFiredExcluded)
+        assertEquals(emptyList<Banner>(), report.banners.filterIsInstance<Banner.NotRunAfterRestart>())
+    }
+
+    @Test
+    fun `a boot count the platform does not report never excuses a rung that never fired`() {
+        unfiredAtT0()
+        boot(7, t0 - 4.hours)
+        boot(8, t0 + 5.hours)
+        fixture.bootCount = -1
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+    }
+
+    @Test
+    fun `a gap raises the banner state, naming the sleeping apps steps on a Samsung and the battery step elsewhere`() {
+        unfiredAtT0()
+        boot(7, t0 - 4.hours)
+        boot(9, t0 + 5.hours)
+
+        assertTrue(Banner.NotRunAfterRestart(1, FixStep.BATTERY_STEP) in reader.read(t0 + 6.hours).banners)
+
+        fixture.manufacturer = "samsung"
+        assertTrue(Banner.NotRunAfterRestart(1, FixStep.SAMSUNG_SLEEPING_STEPS) in reader.read(t0 + 6.hours).banners)
+    }
+
+    @Test
+    fun `only gaps that ended inside the window are counted`() {
+        val asOf = t0 + 10.days
+        boot(3, asOf - 20.days)
+        boot(6, asOf - 8.days)
+        boot(7, asOf - 1.days)
+        boot(10, asOf - 1.hours)
+
+        assertEquals(
+            "the gap before 6 ended outside the window; the gap before 10 is two boots",
+            2,
+            reader.read(asOf).unseenBoots,
+        )
+    }
+
+    @Test
+    fun `unused app restrictions are carried into the report and raise their banner only when they apply`() {
+        assertEquals(null, reader.read(t0).unusedAppExempt)
+        assertEquals(emptyList<Banner>(), reader.read(t0).banners.filterIsInstance<Banner.UnusedAppRestrictions>())
+
+        fixture.unusedAppExempt = true
+        assertEquals(true, reader.read(t0).unusedAppExempt)
+        assertEquals(emptyList<Banner>(), reader.read(t0).banners.filterIsInstance<Banner.UnusedAppRestrictions>())
+
+        fixture.unusedAppExempt = false
+        val report = reader.read(t0)
+        assertEquals(false, report.unusedAppExempt)
+        assertTrue(Banner.UnusedAppRestrictions(FixStep.UNUSED_APP_STEP) in report.banners)
+    }
+
     @Test
     fun `with no boot known after the rung the rung that never fired is counted`() {
         unfiredAtT0()
@@ -486,6 +586,9 @@ class ReliabilityReaderTest {
                 contexts,
                 clockChanges,
                 boots,
+                BootCount { 7 },
+                unusedAppExempt = { null },
+                samsung = { false },
                 checks = { emptyList() },
                 failureCounts = { mapOf("fire_telemetry.insert" to 3L) },
                 corruption = { CorruptionMarker(t0, preserved = true) },

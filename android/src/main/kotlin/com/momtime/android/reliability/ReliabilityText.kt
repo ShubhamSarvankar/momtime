@@ -72,6 +72,8 @@ internal object ReliabilityText {
                     .toInt(),
             )
         if (report.corruption != null) lines += resources.getString(R.string.report_corruption)
+        lines += counted(resources, R.plurals.report_unseen_boots, report.unseenBoots)
+        if (report.unusedAppExempt == false) lines += resources.getString(R.string.report_unused_app_restrictions)
         lines += counted(resources, R.plurals.report_unobserved, report.windowDays - report.daysWithFires)
         return lines.joinToString("\n")
     }

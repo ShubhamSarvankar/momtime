@@ -64,7 +64,7 @@
     <string name="check_start_near">A reminder is due at about the same time. Try again after it.</string>
     <string name="check_start_failed">The test could not be started.</string>
     <string name="check_already_running">A test is already running.</string>
-    <string name="ring_open_check">Check my reminders</string>
+    <string name="ring_open_check">Set up and check my reminders</string>
 
     <string name="report_heading">How your reminders have arrived</string>
     <plurals name="report_tier_line">
@@ -88,6 +88,11 @@
         <item quantity="one">%d problem was found saving what this screen reads.</item>
         <item quantity="other">%d problems were found saving what this screen reads.</item>
     </plurals>
+    <plurals name="report_unseen_boots">
+        <item quantity="one">%d restart happened without the app running after it, so reminders may have been lost.</item>
+        <item quantity="other">%d restarts happened without the app running after them, so reminders may have been lost.</item>
+    </plurals>
+    <string name="report_unused_app_restrictions">Your phone may pause this app when it is not opened for a while.</string>
     <string name="report_corruption">The data on this phone was found damaged and had to be replaced.</string>
     <plurals name="report_unobserved">
         <item quantity="one">%d of the last 7 days had no reminder, so nothing was measured on that day.</item>
@@ -100,4 +105,35 @@
     <string name="optin_label">Help fix reminder problems</string>
     <string name="optin_copy">Share how reliably reminders arrive on this phone. This includes your phone\'s model, what the phone was doing when a reminder came, and the hour of the day each reminder was due and arrived, never the minute. It never includes your medicines or your notes. Nothing is shared in this version. Reminders work the same if this is off.</string>
     <string name="export_button">Save a report</string>
+    <!-- The permission screen and the Samsung walkthrough (ADR 0072). English only in Phase 2. -->
+    <string name="setup_title">Set up your reminders</string>
+    <string name="setup_intro">Some phones stop an app from showing reminders unless you allow it here. Allow what is listed, then come back.</string>
+    <string name="setup_tier_1">Right now your reminders may arrive late.</string>
+    <string name="setup_tier_2">Your reminders arrive on time, but may not light up the screen.</string>
+    <string name="setup_tier_3">Your reminders can arrive on time and light up the screen.</string>
+    <string name="setup_notifications">Notifications</string>
+    <string name="setup_exact_alarm">Alarms and reminders</string>
+    <string name="setup_full_screen">Show reminders over the lock screen</string>
+    <string name="setup_battery">Battery: let the app run without limits</string>
+    <string name="setup_overlay">Show over other apps</string>
+    <string name="setup_unused_app">Do not pause the app when it is not used</string>
+    <string name="setup_status_ok">Allowed</string>
+    <string name="setup_status_needed">Needs your permission</string>
+    <string name="setup_status_cannot">Needs your permission, in settings</string>
+    <string name="setup_allow">Allow</string>
+    <string name="setup_continue">Continue</string>
+
+    <string name="samsung_title">Samsung settings</string>
+    <string name="samsung_intro">Samsung phones put apps to sleep to save battery, which can stop a reminder. Check these four settings.</string>
+    <string name="samsung_battery_title">Battery: Unrestricted</string>
+    <string name="samsung_battery_caption">Open the battery settings for this app and choose Unrestricted.</string>
+    <string name="samsung_sleeping_title">Sleeping apps</string>
+    <string name="samsung_sleeping_caption">Make sure MomTime is not in the list of sleeping apps.</string>
+    <string name="samsung_deep_title">Deep sleeping apps</string>
+    <string name="samsung_deep_caption">Make sure MomTime is not in the list of deep sleeping apps.</string>
+    <string name="samsung_unused_title">Put unused apps to sleep</string>
+    <string name="samsung_unused_caption">Turn off Put unused apps to sleep, or remove MomTime from its list.</string>
+    <string name="samsung_open">Open this setting</string>
+    <string name="samsung_fallback_hint">Your phone opened its general settings instead. Follow the picture to find this setting.</string>
+    <string name="samsung_continue">Continue</string>
 </resources>

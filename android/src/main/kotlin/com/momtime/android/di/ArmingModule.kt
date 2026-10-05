@@ -31,6 +31,8 @@ import com.momtime.android.delivery.PlatformRingerLauncher
 import com.momtime.android.delivery.RingController
 import com.momtime.android.delivery.RingDomain
 import com.momtime.android.delivery.RingerLauncher
+import com.momtime.android.onboarding.SetupController
+import com.momtime.android.onboarding.SetupHost
 import com.momtime.android.reliability.CanaryRunner
 import com.momtime.android.reliability.DeviceInfo
 import com.momtime.android.reliability.ReliabilityController
@@ -129,6 +131,8 @@ internal fun armingModule(
     alarmApi: AlarmApi? = null,
     bootCount: BootCount = platformBootCount(context),
     uptime: Uptime = platformUptime(),
+    manufacturer: DeviceManufacturer = platformManufacturer(),
+    unusedAppRestrictions: UnusedAppRestrictions = platformUnusedAppRestrictions(context),
     newId: () -> String = { UUID.randomUUID().toString() },
     probe: AlarmProbe = PlatformAlarmProbe(context),
     appVersion: AppVersion = PlatformAppVersion(context),
@@ -190,6 +194,9 @@ internal fun armingModule(
                 contexts = get(),
                 clockChanges = get(),
                 boots = get(),
+                bootCount = bootCount,
+                unusedAppExempt = { unusedAppRestrictions.isExempt() },
+                samsung = { manufacturer.isSamsung() },
                 checks = { get<ReliabilityCheckRepository>().recent(RECENT_CHECKS) },
                 failureCounts = { (get<StoreFailures>() as? CountingStoreFailures)?.counts().orEmpty() },
                 corruption = {
@@ -197,6 +204,17 @@ internal fun armingModule(
                         .firstNotNullOfOrNull { CorruptionMarker.read(File(context.noBackupFilesDir, it)) }
                 },
                 capability = { get<CapabilityResolver>().also { it.resolve() }.inputs },
+            )
+        }
+        single<SetupHost> {
+            SetupController(
+                context.packageName,
+                Build.VERSION.SDK_INT,
+                get(),
+                get(),
+                get(),
+                unusedAppRestrictions,
+                manufacturer,
             )
         }
         single<ReliabilityHost> {
