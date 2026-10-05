@@ -415,6 +415,43 @@ Revised in the review of PR #23 (decisions of Claude (technical review) unless m
 
 Not verified: `MANUAL_CHECKS.md` P2-31 (the check on a device), P2-32 (the picker), P2-33 (drift exclusions and the unobserved days). Nothing here ran on a device. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
 
+## PR 8: `phase-2/onboarding`
+
+Branched from `main` at `33c7027f00690eb4d079c8b47779e296eac478d5` (the merge of PR #23).
+
+Scope: the PR 8 prompt and the addition on boot count gaps (Claude (technical review)), built. The permission flows, Android's unused app restrictions, the Samsung walkthrough, the flow from the ring screen, the debug seed screen and its release manifest check, and the boot count gap (ADR 0071, ADR 0072). Mutations are in `phase-2-traceability.md` (29, run at `ec1d351`).
+
+No new CI job (the two new tasks join `verify-android-structure`), **no new dependency** (the unused app restrictions are framework calls from API 30: no `androidx.core`) and **no permission added** (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` stays undeclared; `verifyManifestPermissions` fails if it appears). **No schema change:** the gap is read from the boot counts that `boot_instant` already stores, so there is no new android store migration step. The shared schema is unchanged.
+
+Numbers, measured at `ec1d351`: 1156 android test cases (1001 before PR 8), none failing; `shared` is unchanged (229 tests).
+
+What was built:
+
+- **The permission flows** (`PermissionFlows`, `SetupController`, `SetupActivity`): notifications (a runtime request from API 33, the first time; the app's notification settings after it and below 33), exact alarms (`ACTION_REQUEST_SCHEDULE_EXACT_ALARM`, API 31 and 32 only), full screen intent (`ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`, API 34 and above), battery (the general settings screen), overlay (offered only when an effective full screen intent is not available), and unused app restrictions (`ACTION_AUTO_REVOKE_PERMISSIONS`, API 30 and above). Whether a flow is needed comes from the capability inputs as they are, never from the version. On every return the screen asks the host to resolve capability again and then call `ensureArmed`.
+- **Unused app restrictions** (`isAutoRevokeWhitelisted()`): in the report, the export (`unusedAppExempt`: true, false or null below 30) and the banner state.
+- **The Samsung walkthrough** (`SamsungStepsActivity`, `SamsungStep`): four steps, shown when `Build.MANUFACTURER` is Samsung (presentation only), each with a deep link into Device Care that falls back on `ActivityNotFoundException` or `SecurityException` to a general settings screen, a screenshot and a caption. **Every component name is unverified** and has a `MANUAL_CHECKS.md` row. The screenshots are placeholders (listed in the PR description).
+- **The flow:** the ring screen's idle state links to the permission screen, which continues to the Samsung steps on a Samsung and then to the reliability check, or straight to the check elsewhere.
+- **The debug seed** (`debug` source set): a CRITICAL test reminder three to four minutes out and three daily STANDARD reminders, through the repositories and commands, then materialise and `ensureArmed`: exactly one alarm. **`verifyNoDebugComponents`** fails if a debug component reaches the merged release manifest, fails closed twice, and has a fixture self test.
+- **The boot count gap** (`BootGaps`): two recorded boots whose counts differ by more than one have unseen boots between them. A never fired rung is never excused across such a gap, nor when the boot count is unknown; the first record after an install has no predecessor and no gap. A gap is its own banner state (`Banner.NotRunAfterRestart`, with the Sleeping apps steps on a Samsung and the battery step elsewhere as its fix path) and a count (`unseenBoots`, no timestamp) in the report and the export. This closes the limit ADR 0070 recorded.
+
+Findings and judgments:
+
+- **A debug seed needs a pregnancy and a template that is a one off.** The test reminder is a template that is inactive from the start with one materialised occurrence, because a daily template would ring again tomorrow. An inactive template's open occurrence still rings, which is what the earlier finding about deactivation says (Phase 3's edit path owns it).
+- **`verifyNoClockSystem` flagged a comment** that named the boot count setting in a new file outside the DI package (the check bans the token anywhere in non DI sources). The wording was changed, not the check.
+- **Samsung's component names are a guess made to be checked** (the implementing session's judgment): they are what Device Care has been reported to use, they change between One UI versions, and each step has a fallback and a device check. Nothing claims they exist.
+- **The debug manifest's label is a literal** (the implementing session's judgment): a debug tool's name is not user facing text, and the strings rule is for what she reads.
+- **The ring screen's idle link now says "Set up and check my reminders"** and goes to the permission screen; the check is the last step of the flow, not its own button, until Phase 3's onboarding replaces it.
+
+Decisions of this PR (Claude (technical review) unless marked):
+86. **Each permission flow exists at the API levels the platform gives it and each return resolves capability again and calls `ensureArmed`** (ADR 0072).
+87. **The battery flow is the general settings screen; `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is not declared** (the Open Items row, whose fallback this is).
+88. **Android's unused app restrictions are checked, reported and a banner state, from framework calls, with no library** (ADR 0072).
+89. **The Samsung walkthrough is four steps with deep links, fallbacks and placeholder screenshots; its component names are unverified until a device check** (ADR 0072).
+90. **The debug seed is in the `debug` source set, and `verifyNoDebugComponents` keeps it out of the release manifest** (ADR 0072).
+91. **A gap in the boot counts is direct evidence the app did not run; a never fired rung is never excused across one or when the count is unknown; it is a banner state, a count in the report and the export** (ADR 0071). That it needs no schema change is the implementing session's judgment.
+
+Not verified: `MANUAL_CHECKS.md` P2-34 to P2-37 (each Samsung deep link), P2-38 (the permission flows on a device), P2-39 (the unused app restrictions), P2-40 (a real boot count gap), P2-41 (the debug seed on a device). Nothing here ran on a device. The alarm subsystem is not complete: it passes the automated layers so far, with device checks outstanding.
+
 ## Next
 
-After PR 7 is merged and reviewed: PR 8 permission onboarding (with the debug only seed screen), and the close.
+After PR 8 is merged and reviewed: the close.
