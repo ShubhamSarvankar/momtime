@@ -108,7 +108,7 @@ Reserved by the Phase 3 plan (`docs/phase-3-plan.md`). Nothing below exists in t
 
 | # | Question | Added by | Decision |
 |---|---|---|---|
-| P3-1 | What the system's starting window looks like before the app's first frame when the chosen appearance differs from the device's, on a cold start from the launcher and when the ring screen opens | PR 7, PR 8 | ADR 0074 |
+| P3-1 | The system's starting window before the app's first frame, on a cold start from the launcher and when the ring screen opens, with an appearance that differs from the device's: on API 33 and above (expected: the chosen palette's background from the second launch after a choice, through `setSplashScreenTheme`), on API 31 and 32 (expected: the system splash on the device's light or dark background), and on API 29 and 30 (expected: a blank window in the device's light or dark background) | PR 7, PR 8 | ADR 0074 |
 | P3-2 | In Tier 2 with two reminders due at once, a heads up appears for each with its three buttons while the ringer sounds | PR 6 | ADR 0080 |
 | P3-3 | With the system's automatic grouping, each bundled notification still shows its actions when expanded, on a Pixel and on One UI | PR 6 | ADR 0080 |
 | P3-4 | The channel's sound on each per occurrence notification against the ringer's sound | PR 6 | ADR 0080 |

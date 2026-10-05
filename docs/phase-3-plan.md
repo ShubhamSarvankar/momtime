@@ -1,6 +1,6 @@
 # Phase 3 plan: Android UI and localisation
 
-Status: draft, for review. Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
+Status: draft, for review, second revision (after Claude (technical review)'s review of the first: the mockup read, the dependency list approved, late marking added, and the seven fixes of that review). Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
 
 The visual specification is `docs/phase-3-design.md`. The evidence table is `docs/phase-3-traceability.md`.
 
@@ -14,7 +14,7 @@ The visual specification is `docs/phase-3-design.md`. The evidence table is `doc
 
 | # | Finding | What the plan does |
 |---|---|---|
-| C1 | **The mockup's path in the prompt was a placeholder, so the mockup was not read.** | The design spec is written from the prompt's written description. The lavender palette is the session's own choice and is marked provisional (ADR 0075). Shubham supplies the path or corrects the palette in review. Nothing else depends on the image. |
+| C1 | The mockup's path in the first prompt was a placeholder, so the first draft was written without it. | **Closed in this revision:** the mockup was read at the path Shubham gave, its colours were sampled, and the design spec and the lavender palette were revised against it. What was not followed, and why, is the table at the top of `phase-3-design.md`. |
 | C2 | The newest Compose (BOM 2026.09.00, Compose 1.12.1) needs compileSdk 37; the project is on 36. | Compose is pinned to BOM 2026.06.01 (1.11.4), which builds on 36 (ADR 0073). A spike failure that became a pin, not a change of decision. |
 | C3 | "No receiver is exported" is not true of the merged manifest today: WorkManager's `SystemJobService` and `DiagnosticsReceiver` are exported, each behind a system permission, and Compose adds `ProfileInstallReceiver`. | The allowlist of D10 has six entries, not three (ADR 0078). |
 | C4 | The schedule builder's deliverable line lists "mission config"; D7 says no mission control. | The line is corrected in `IMPLEMENTATION_PLAN.md` (ADR 0088). |
@@ -24,7 +24,9 @@ The visual specification is `docs/phase-3-design.md`. The evidence table is `doc
 | C8 | The prompt speaks of five occurrence states. | The model adds a sixth, `WITHDRAWN` (ADR 0079). The Today view still shows four (ADR 0087). |
 | C9 | The roborazzi plugin and version are in the catalog and the README already names the record and verify tasks, but nothing applies the plugin. | PR 7 applies it. |
 | C10 | "It applies before the first frame of every Activity ... with no flash" cannot cover the system's starting window, which is drawn from the manifest theme before app code. | Met for every frame the app draws; the limit is stated (ADR 0074 item 6) and is a device row. |
-| C11 | Phase 3's deliverables do not name marking a missed dose as taken late, though `COMPLETED_BACKFILLED` exists and the Today view makes the gap visible. | Not built. Raised in section 8 for a decision. |
+| C11 | Phase 3's deliverables did not name marking a missed dose as taken late, though `ARCHITECTURE.md` section 4.5 promises it. | **Decided by Claude (technical review): in PR 11.** No command wrote `COMPLETED_BACKFILLED`, so PR 11 adds `BackfillCommand` (ADR 0087 item 7). |
+| C12 | `OccurrenceActions.available` offers snooze on any open occurrence, including one that is not yet due; Today is the first surface to show one. | Snooze is not offered before the occurrence's time; a rule added to the domain in PR 11, for review (ADR 0087 item 6). |
+| C13 | "Anything a pull request imports directly is declared directly" and "nothing beyond the approved list" pull against each other for the sub modules of the approved Compose and Activity libraries. | Raised, not resolved: ADR 0084 and section 8. PR 7 does not start until it is answered. |
 
 ---
 
@@ -43,9 +45,17 @@ All spikes ran in a throwaway clone under the session's scratch directory, never
 | S7 (added) | Mixed Latin and Devanagari in one line uses the bundled fonts for both | **Yes** | `Typeface.CustomFallbackBuilder` (API 29): a Devanagari run measures exactly as the bundled Noto alone (473.0) and not as Robolectric's system fallback (477.0); positive control with another fallback face differs |
 | S8 (added) | Compose changes the merged manifest's permissions or exported components | No permission change; one exported receiver added | ADR 0078 |
 
-**Not spiked, and so a STOP in PR 7:** whether a golden recorded on Windows verifies on Linux CI. The plan assumes it does not and records goldens on Linux only (ADR 0077).
+**The golden recording route, proved (PR #27, a throwaway draft pull request, closed unmerged, its branch deleted).** Neither WSL2 nor Docker is usable on the implementing machine as it stands (the Ubuntu distribution has no JDK and no Android SDK, and the Docker engine is not running), and `gh` is not installed, so the route is a CI job plus the GitHub MCP. On the branch `spike/golden-route`, with only the approved dependencies, a job `android-screenshots` verified the committed golden, recorded what the commit renders on Linux, and uploaded it. Three runs:
 
-**Timing.** Warm captures took about half a second each for a small screen. The matrix is 44 screen states (design spec section 6): 44 by 9 in Light is 396, and 44 by 6 other appearances at English 100 percent is 264, **660 captures**. At half a second to one second each that is 6 to 11 minutes on one SDK level (36), so screenshots run as their own CI job, `android-screenshots`, which Shubham adds to the required checks when PR 7 merges. Goldens are PNG files in the repo, estimated at 20 to 40 MB in total; PR 7 measures and reports the real figure, and a figure above 60 MB is a STOP.
+| Run | Commit | What was pushed | `android-screenshots` |
+|---|---|---|---|
+| 37355818005 | `b2cb5af` | One Compose capture (Latin and Devanagari text and a button, strict comparison) with a golden recorded **on Windows** | **Success.** The golden the job then recorded on Linux was byte for byte the Windows file (same SHA-256, `b2a529b0...`) |
+| 37356335976 | `dacd1ed` | The screen's text changed, the golden not | **Failure**, on the step that fails when verify failed; the artifacts `goldens` and `screenshot-diff` were uploaded |
+| 37356903352 | `bb2f594` | The `goldens` artifact of the second run, downloaded through the MCP and committed unchanged | **Success** |
+
+So the route works end to end, verify is shown able to fail, and a legitimately changed golden is replaced by downloading the job's artifact. One further finding: for this capture, Robolectric's native graphics rendered identically on Windows and Linux. That is one screen with Robolectric's own fonts, not a guarantee for 690 captures with bundled fonts, so the rule stays that only Linux recorded files are committed; but a local Windows recording is a faithful preview. The steps are in PR 7.
+
+**Timing.** Warm captures took about half a second each for a small screen. The matrix is 46 screen states (design spec section 6): 46 by 9 in Light is 414, and 46 by 6 other appearances at English 100 percent is 276, **690 captures**. At half a second to one second each that is 6 to 12 minutes on one SDK level (36), plus the recording pass the job also makes (below), so screenshots run as their own CI job, `android-screenshots`. The throwaway run of that job, with one capture, took 2 minutes 39 seconds end to end, nearly all of it build. Goldens are PNG files in the repo, estimated at 20 to 40 MB in total (the throwaway golden is 12 KB for a small screen); PR 7 measures and reports the real figure, and a figure above 60 MB is a STOP.
 
 ---
 
@@ -56,9 +66,9 @@ All spikes ran in a throwaway clone under the session's scratch directory, never
 | D1 | Compose for new screens; the ring screen stays views; the permission, Samsung and check screens are ported | 0073 |
 | D2, D2b | One appearance setting, four values, five Pastel palettes, one switcher sheet, stored in `momtime_android_settings` | 0074 |
 | D2c | The visual spec | `phase-3-design.md` |
-| D3 | Colour roles in one Kotlin model; contrast is a test; no state by colour alone; no good or bad colour | 0075 |
+| D3 | Colour roles in one Kotlin model, drawn only as declared pairs, enforced by `verifyColourBoundary`; contrast is a test on the unrounded ratio; no state by colour alone; no good or bad colour | 0075 |
 | D4, D6 | Cutesy is visual, never verbal; the starter schedule is structure only | 0076 |
-| D5, D9 | Nine locale and scale combinations in Light plus six appearances at English 100 percent; fixtures until the human strings arrive; a CSV workflow | 0077 |
+| D5, D9 | Nine locale and scale combinations in Light plus six appearances at English 100 percent; goldens recorded on Linux by the `android-screenshots` job; fixtures until the human strings arrive; a CSV workflow | 0077 |
 | D7 | Missions are not in Phase 3; recommended owner Phase 5 | 0088 |
 | D8 | Water nudges are WorkManager work and never an alarm | 0083 |
 | D10 | Exported components are an exact allowlist | 0078 |
@@ -70,19 +80,21 @@ All spikes ran in a throwaway clone under the session's scratch directory, never
 | f | Nunito with the bundled Noto Sans Devanagari as its explicit fallback; per locale line heights; icons copied in | 0085 |
 | g | One source of colour roles for Compose, views and the widget | 0075 |
 | h | Nutrition tags are recorded with the completion; water with its zone; both reductions pure with an explicit `asOf` | 0086 |
-| i | Onboarding in six steps with one gate; Today's four states over the log; banners; the reliability view | 0087 |
+| i | Onboarding in six steps with one gate; Today's four states over the log, its three actions and late marking; banners; the reliability view | 0087 |
 
 ---
 
-## 4. The dependency approval list
+## 4. The dependency list
 
-Nothing enters the build until Shubham approves this list in review. The full table, with what each costs to do without and what was reconsidered and declined, is ADR 0084. In short:
+**Approved by Shubham on 2026-10-05, as reported**, together with Nunito, Noto Sans Devanagari and the 21 Material Symbols icons, with licences and provenance recorded as ADR 0084 and ADR 0085 say. Nothing beyond it may be added.
 
 - **Build:** the Kotlin Compose compiler plugin 2.4.20; the Roborazzi plugin 1.76.0 (in the catalog already).
 - **Main:** `androidx.compose:compose-bom` 2026.06.01 with `ui`, `foundation`, `material3`; `androidx.activity:activity-compose` 1.13.0.
 - **Test:** `androidx.compose.ui:ui-test-junit4` (by BOM); `roborazzi` and `roborazzi-compose` 1.76.0.
 - **Files, not artifacts:** Nunito and Noto Sans Devanagari (SIL OFL 1.1); 21 Material Symbols icons (Apache 2.0).
 - **Still declined:** koin-android, koin-compose, direct androidx.test, ui-test-manifest, coroutines in android, a direct androidx.core, navigation-compose, viewmodel-compose, Glance, appcompat, an icon artifact, ML Kit.
+
+**The rule per pull request:** anything a pull request's code imports directly is declared directly. Each section below ends with "Imports": the androidx packages its code imports and the artifact that declares each. PRs 1 to 6 import no androidx package that is not already declared (`androidx.work` from `work-runtime`, `androidx.sqlite.db` from the SQLDelight android driver, as today). **Open, and blocking PR 7 only:** screen code imports from seven sub modules of the approved libraries that the list does not name one by one (ADR 0084, section 8 below).
 
 ---
 
@@ -106,18 +118,23 @@ Test tables give, for each test, its subject and setup, its assertion, and the m
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
-| `SchemaV6Test` `migrates from every prior version` | Databases at versions 1 to 5, each with a template of each criticality, an occurrence in every state and one event of each type that has a payload, foreign keys on | After migrating: `foreign_key_check` is empty; every occurrence's `criticality` equals its template's; every old row survives unchanged in its other columns | Remove the `UPDATE` that fills `criticality`: the CRITICAL and GENTLE rows read STANDARD |
+| `SchemaV6Test` `migrates from every prior version` | Databases at versions 1 to 5, each with a template of each criticality, an occurrence in every state and one event of each type that has a payload, foreign keys on | After migrating: `foreign_key_check` is empty; every old row survives unchanged in its other columns | Change an unrelated column in the migration |
+| `SchemaV6Test` `the migration fills each new column from version 5 data` | A version 5 database holding: occurrences of a CRITICAL, a STANDARD and a GENTLE template, open and terminal; a `COMPLETED` and a `COMPLETED_BACKFILLED` event of a template with two tags, and a `COMPLETED` event of a template with none; a `WATER_LOGGED` event | After migrating: each occurrence's `criticality` is its template's; the two tagged completions decode to exactly the template's two tags and the untagged one to none; the water row's `zone_id` is null and it decodes as `Water(ml, zone = null)`; no other event has either column set | Remove the criticality `UPDATE` (CRITICAL and GENTLE rows read STANDARD); remove the tags `UPDATE` (the tagged completions decode empty); fill `zone_id` with a constant (the water row has a zone) |
 | `SchemaV6Test` `a withdrawn row is immutable in full` | A `WITHDRAWN` row at version 6 | An update of each updatable column aborts with the trigger's message | Recreate the trigger without `WITHDRAWN` |
 | `SchemaV6Test` `the other terminal states are still immutable after the migration` | Rows `COMPLETED`, `SKIPPED`, `MISSED` in a migrated database | Each update aborts | Delete the `CREATE TRIGGER` from `5.sqm` (the Android twin must fail too, as PR 6b's lesson says) |
 | `SchemaV6Test` `a date can be materialised again after a withdrawal and not otherwise` | Insert an occurrence, set it `WITHDRAWN` with its event, insert another for the same template and date; then a third | The second insert succeeds; the third throws on the unique index | Make the index non partial: the second insert throws. Drop the index: the third succeeds |
 | `AndroidSchemaTest` twins of the three above | The same under `AndroidSqliteDriver` at SDK 29 and 36 | The same | The same mutations, observed in the Android test |
-| `EventColumnGuardTest` additions | A row of every other type with `nutrition_tags` or `zone_id` set; a `WATER_LOGGED` row without `zone_id` | Decoding fails loudly, naming the column | Add the column to another type's allowance; make the zone optional |
-| `EventPayloadRoundTripTest` additions | `Completion` with zero, one and seven tags; `Water` with a zone | Round trip equality; tags in enum order in the column | Join the tags in set order (use a set whose iteration order differs) |
+| `EventColumnGuardTest` additions | A row of every other type with `nutrition_tags` or `zone_id` set | Decoding fails loudly, naming the column | Add the column to another type's allowance |
+| `EventPayloadRoundTripTest` additions | `Completion` with zero, one and seven tags; `Water` with a zone | Round trip equality as sets; the column is the names sorted and joined by commas; `Water` with a null zone round trips | Write the names unsorted (use a set whose iteration order differs) |
 | `OccurrenceActionCommandTest` `acknowledge records the template's tags as they are now` | A template with two tags; acknowledge; replace the template's tags directly in the test database; acknowledge the next occurrence | The first event carries the two old tags, the second the new ones | Pass `emptySet()` to `acknowledged` |
 | `MaterialiserTest` `an occurrence takes its template's criticality` and `withdrawn dates are materialised again` | Materialise templates of each criticality; withdraw one row in the test database and materialise again | Criticality copied; one new row for the withdrawn date with a new id and a slot greater than every earlier slot | Hard code STANDARD; include withdrawn rows in the dates already materialised |
 | `EventLogReductionTest` `a withdrawn occurrence is in none of the three figures` | An occurrence with a `WITHDRAWN` event beside one completed, one skipped, one missed | Figures 1, 1, 1 | Map `WITHDRAWN` to `SKIPPED` in `outcome()` |
 
-**STOP points.** The 3.18 dialect or `verifySqliteFloor` rejects the partial index or any statement of `5.sqm`. `verifySqlDelightMigration` cannot be made to pass with the column declared as the migration leaves it. Any `when` over `OccurrenceState` whose correct treatment of `WITHDRAWN` is not "terminal and uncounted".
+**The fills** are ADR 0079's: `criticality` from the template (exact); `nutrition_tags` on existing completions from the template's tags, by a correlated `group_concat` over the tag rows ordered by name (exact); `zone_id` left null on existing water rows (unknowable), which `WaterReduction` attributes in a fallback zone (PR 5).
+
+**Imports.** None new.
+
+**STOP points.** The 3.18 dialect or `verifySqliteFloor` rejects the partial index, `group_concat` or any other statement of `5.sqm`. `verifySqlDelightMigration` cannot be made to pass with the column declared as the migration leaves it. Any `when` over `OccurrenceState` whose correct treatment of `WITHDRAWN` is not "terminal and uncounted".
 
 **Docs.** `ARCHITECTURE.md` sections 3.2 and 3.3 (the state, the event, the column, the payloads, schema version 6); traceability rows G and H.
 
@@ -225,6 +242,7 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `mission events, skips, misses and withdrawals count nothing` | One of each beside one completion | Only the completion's tags | Add `MISSION_VERIFIED` to the counted set |
 | `nutrition agrees with adherence` (property, seed fixed) | Random logs | For every date, the number of occurrences counted under at least one tag is at most adherence's completed figure, and equal when every completion has a tag | Use a separate outcome rule that prefers the earliest event |
 | `WaterReductionTest` `a glass belongs to the day it was drunk in the zone it was logged in` | Glass 1 logged at 02:00 on day D in Asia/Kolkata (which is day D-1 in New York), with zone Asia/Kolkata; glass 2 logged at 01:00 on day D+1 Kolkata time (15:30 on day D in New York), with zone America/New_York | The totals are exactly `{D: 500}`: each glass on the date it had where she was. Attributing both by Kolkata would give `{D: 250, D+1: 250}` and both by New York `{D-1: 250, D: 250}`, so either single zone fails | Attribute by one zone passed by the caller, tried with each of the two zones |
+| `a row with no zone is attributed in the fallback zone and only such a row is` | One water row with a null zone and one with a zone, either side of midnight in the fallback zone | The null row lands on the fallback zone's date; the other on its own zone's date | Use the fallback zone for every row |
 | `asOf is inclusive and nothing after it counts` | Three events around `asOf` | The boundary event counts | Use a strict bound |
 | `LogWaterCommandTest` | Dispatch with a zone and a fixed clock | One `WATER_LOGGED`, source USER, no occurrence, 250 ml, the zone; nothing else written | Omit the zone (decoding fails) |
 | `GestationalAgeTest` | Due date 280 days ahead, 0 days, 14 days past, 300 days ahead; a revised due date read as of before and after the revision | Weeks 0, 40, 42, null; the earlier `asOf` gives the earlier revision's week | Read the latest revision always |
@@ -251,36 +269,52 @@ After the last step, materialise the whole remaining span and assert **convergen
 
 **Docs.** `ARCHITECTURE.md` section 5.7; `MANUAL_CHECKS.md` P3-2 to P3-5.
 
-### PR 7. `phase-3/ui-foundation` (Sonnet; starts only after the dependency list is approved)
+### PR 7. `phase-3/ui-foundation` (Sonnet; starts only when the question of section 8 item 1 is answered)
 
-**Goal.** Compose and Roborazzi in the build, fonts, colour roles and their tests, the appearance store and state, the theme, the screenshot harness. No screen yet.
+**Goal.** Compose and Roborazzi in the build, fonts, colour roles and their tests, the pair components, the appearance store and state, the theme, the screenshot harness and its CI job. No screen yet.
 
-**Scope.** The catalog and `android/build.gradle.kts` entries of ADR 0084, exactly; `ComponentActivity` in the debug manifest; `res/font` files and `docs/THIRD_PARTY.md` with licences (ADR 0085); the 21 icons; `ui/theme/{ColorRoles,Palettes,RolePairs,Appearance,AppearanceState,MomTimeTheme,Type,Shapes,FontChain}.kt` with the values of the design spec sections 1 to 4, exactly; `AndroidSettings` appearance, palette and locale keys; the component set of design spec section 5 as composables with previews in tests only; `ScreenshotMatrix` (the nine combinations and six appearances, strict comparison, the paused clock, SDK 36, the size `w360dp-h800dp-xhdpi`); the fixture string source (ADR 0077 item 4); the CI job `android-screenshots` and the manually dispatched `record-screenshots` workflow; `verifyNoCoroutinesInAndroid`.
+**Scope.** The catalog and `android/build.gradle.kts` entries of ADR 0084, exactly; `ComponentActivity` in the debug manifest; `res/font` files and `docs/THIRD_PARTY.md` with licences (ADR 0085); the 21 icons; `ui/theme/{ColorRoles,Palettes,RolePair,Appearance,AppearanceState,MomTimeTheme,Type,Shapes,FontChain,RingRoleBinder}.kt` with the values of the design spec sections 1 to 4, exactly; the pair components of ADR 0075 item 3 covering every component of design spec section 5, each taking a `RolePair` and no colour; `verifyColourBoundary` and its fixture self test (ADR 0075 item 4), added to `check` and to the `verify-android-structure` job; `AndroidSettings` appearance, palette and locale keys; the splash styles and the `SplashTheme` seam (ADR 0074 item 6); `ScreenshotMatrix` (the nine combinations and six appearances, strict comparison, the paused clock, SDK 36, the size `w360dp-h800dp-xhdpi`); the fixture resources and their generator, `verifyNoFixtureResources` and its self test (ADR 0077 item 4); the CI job `android-screenshots`; `verifyNoCoroutinesInAndroid`.
+
+**Recording goldens (ADR 0077 item 2; proved in PR #27).** The implementing session is on Windows. Goldens that reach the repo are the ones Linux CI rendered. The job `android-screenshots`, copied from the throwaway branch's `ci.yml`, does this on every pull request: (1) `verifyRoborazziDebug` against the committed goldens, allowed to fail; (2) if it failed, keeps the comparison images; (3) `recordRoborazziDebug`, so the workspace holds what this commit renders on Linux; (4) uploads `android/src/test/snapshots` as the artifact `goldens`, and the comparison images as `screenshot-diff` if step 1 failed; (5) fails if step 1 failed. The steps for the implementer:
+
+1. Write or change the screen and its `ScreenshotTest`. Run `./gradlew :android:recordRoborazziDebug` locally and look at the images to check the screen is right. Do not commit them.
+2. Push. `android-screenshots` goes red, because a golden is missing or differs. That is expected exactly when a screen is new or was changed on purpose.
+3. When the run has finished, list its artifacts and download `goldens` (GitHub MCP: `actions_list` with `list_workflow_run_artifacts` for the run id, then `actions_get` with `download_workflow_run_artifact`; fetch the returned URL with `curl -L -o goldens.zip` and unzip it over `android/src/test/snapshots`). If the job failed on a changed golden, download `screenshot-diff` too.
+4. Look at every new or changed PNG, and at each comparison image. A changed golden is committed only if the change is the one intended; say in the pull request description which goldens changed and why. A golden that changed and was not meant to is a regression: fix the code, not the golden.
+5. Commit the downloaded files unchanged and push. `android-screenshots` must now be green. Never commit an image recorded on Windows.
+6. A red `android-screenshots` on a pull request that did not mean to change a screen is a failure like any other.
+
+`.gitattributes` marks `*.png` as binary so that no line ending conversion touches a golden.
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
-| `ContrastTest` | Every appearance and palette, every pair of `RolePairs` | Ratio at or above the pair's minimum | Lighten one palette's `onMuted` to `#9A9A9A`; lower a minimum is not a mutation |
-| `ContrastTest` `every role is in a pair` and `every pair of the design spec is present` | Reflection over `ColorRoles`; the spec's list written out in the test | No role unused; no listed pair missing | Add a role with no pair; delete a pair |
+| `ContrastTest` `every pair meets its minimum, unrounded` | Every appearance and palette, every `RolePair` | The exact ratio, as a `Double`, is at or above the pair's minimum; no rounding anywhere in the test or the function | Lighten one palette's `onMuted` to `#9A9A9A` |
+| `ContrastTest` `a ratio that only rounds up to its minimum fails` | The fixed control `#777777` on `#FFFFFF`, whose ratio is 4.478, against 4.5; and `#767676` on white, 4.54, as the control that passes | The checker reports the first as failing and the second as passing | Compare the ratio rounded to one decimal: the first control passes and the test fails. (The review asked for a threshold lowered by 0.05 to fail on a real pair within 0.05 of its minimum. No such pair exists, the closest being 4.71 against 4.5, and a lowered threshold can only make a test more lenient, so the fixed control stands in: it is 0.022 under.) |
+| `ContrastTest` `every role is in a pair` and `every pair of the design spec is present` | Reflection over `ColorRoles`; the spec's pair list written out in the test | No role unused; no listed pair missing | Add a role with no pair; delete a pair |
 | `PalettesTest` `values are the specification's` | The table of design spec section 2, written out in the test | Equal | Change one value |
-| `NoColourLiteralTest` | Scan of android main sources and resources | No literal outside `Palettes.kt` and the two allowed files; fails closed if it scans no file | Add `Color(0xFF00FF00)` to a composable |
+| `verifyColourBoundary` self test | Fixtures outside the theme package: `Color(0xFF00FF00)`, `Color.Red`, `android.graphics.Color.RED`, a bare `0xFF112233` literal, `colorResource(...)`, `R.color.x`, `MaterialTheme.colorScheme.primary`, `roles.onSurface`; a resource file with a `<color>` and one with `android:textColor="#123456"`; and the same Kotlin inside the theme package, the notification icon and the splash styles file | Each of the first ten is flagged exactly once; the last three pass; an empty source set fails | Drop one pattern from the check: its fixture is no longer flagged |
+| `PairComponentTest` `a component draws exactly its pair` | Each pair component composed with each `RolePair` in one palette, captured to a bitmap | The background pixel is the pair's background role and the content colour reaching a child is the pair's foreground role; reflection shows no public composable in the theme package has a parameter of type `Color` or `Int` named like a colour | Give `PairText` a `color` parameter; draw the wrong role |
 | `AppearanceStoreTest` `a choice survives process death` (SDK 29, 36) | Choose Pastel and Mint; build a new `AndroidSettings` and `AppearanceState` over the same context | Pastel and Mint | Keep the choice in memory only |
 | `the default is System and an unknown name reads as the default` | Fresh; a stored `"NEON"` | System; System | Default to Light |
+| `SplashThemesTest` (SDK 33, 36) | Each appearance and palette | The style for it exists under its pinned name, and its background resolves to that palette's `background`; choosing an appearance calls the `SplashTheme` seam with that style's id, and System calls it with `ID_NULL`; below API 33 the seam is not called | Change one style's colour; skip the call on change; pass the Light style for System |
 | `BackupRulesTest` addition | The appearance and locale keys | Written to the file the rules include | Write them to another file |
 | `FontChainTest` (SDK 29, 36) | Spike S7's measurements, with its positive control | Devanagari as the bundled Noto; Latin as Nunito; weights differ | Build the chain without the fallback |
 | `ThirdPartyTest` | `res/font`, the icon list, `THIRD_PARTY.md` | Every file recorded, hashes equal | Alter a hash |
-| `ComponentScreenshotTest` | Each component of section 5 in each state, through `ScreenshotMatrix` | Goldens | Change a card's padding by 1 dp: verify fails with a diff image. A golden that is missing fails the verify task |
+| `ComponentScreenshotTest` | Each component of section 5 in each state, through `ScreenshotMatrix` | Goldens | Change a card's padding by 1 dp: `android-screenshots` fails with a comparison image. A missing golden fails it too |
 | `LineHeightTest` | The type table of section 3 written out in the test, per locale | Equal; text she typed uses the hi value in en | Use the en value for her text |
 | `verifyNoCoroutinesInAndroid` self test | Fixtures | An import is flagged; a comment is not | Empty the pattern |
 
-**STOP points.** A golden recorded by the CI workflow does not verify in the CI job, or goldens exceed 60 MB. Any artifact resolving to a version other than ADR 0084's. Lint or detekt needing a rule changed for Compose (function naming): report the rule, do not disable broadly.
+**Imports.** `androidx.compose.ui.*` from `androidx.compose.ui:ui`; `androidx.compose.foundation.*` from `foundation`; `androidx.compose.material3.*` from `material3`; `androidx.activity.compose.*` from `activity-compose`; `androidx.compose.ui.test.junit4.*` from `ui-test-junit4`; `com.github.takahirom.roborazzi.*` from `roborazzi` and `roborazzi-compose`. And, pending section 8 item 1: `androidx.compose.runtime.*` (`runtime`, `runtime-saveable`), `androidx.compose.ui.graphics.*` (`ui-graphics`), `androidx.compose.ui.text.*` (`ui-text`), `androidx.compose.ui.unit.*` (`ui-unit`), `androidx.compose.foundation.layout.*` (`foundation-layout`), `androidx.compose.ui.test.*` (`ui-test`), `androidx.activity.ComponentActivity` (`androidx.activity:activity`).
 
-**Docs.** `ARCHITECTURE.md` section 9 and a new section on the UI layer; `README.md` suites table; `IMPLEMENTATION_PLAN.md` Working conventions (approved dependencies); `MANUAL_CHECKS.md` P3-1.
+**STOP points.** Section 8 item 1 unanswered. The resource compiler rejects the `hi-rXA` or `mr-rXA` qualifier, or a `hi-rXA` request does not resolve the fixture resources under Robolectric. A golden downloaded from the job does not verify in the next run of the job. Goldens exceed 60 MB. Any artifact resolving to a version other than ADR 0084's. Lint or detekt needing a rule changed for Compose (function naming): report the rule, do not disable broadly. A component of the design spec that cannot be expressed as taking one `RolePair`.
+
+**Docs.** `ARCHITECTURE.md` section 9 and a new section on the UI layer; `README.md` suites table and the recording steps; `IMPLEMENTATION_PLAN.md` Working conventions (approved dependencies, the recording rule); `MANUAL_CHECKS.md` P3-1.
 
 ### PR 8. `phase-3/app-shell` (Sonnet)
 
 **Goal.** `MainActivity` as the launcher entry, navigation, the top bar with the appearance control, the sheet, the ring screen taking the appearance, the exported allowlist, `DataChanges`.
 
-**Scope.** `ui/MainActivity`, `ui/nav/{Screen,ScreenRegistry,BackStack}`, `ui/UiGraph`, `UiEntryPoint`; `AppBar`, `AppearanceControl`, `AppearanceSheet`; placeholder bodies for Today, Overview and Settings that show only their title (replaced by later PRs); `shared` `DataChanges` (ADR 0081 item 1); `ring/RingAppearance` binder and the layout of design spec screen 17; the ring screen's idle button opens `MainActivity`; `LocalizedContext` and `attachBaseContext` (ADR 0082 item 3); `verifyExportedComponents` and its self test with the `MainActivity` and library entries; `windowDisablePreview` on `RingActivity`.
+**Scope.** `ui/MainActivity`, `ui/nav/{Screen,ScreenRegistry,BackStack}`, `ui/UiGraph`, `UiEntryPoint`; `AppBar`, `AppearanceControl`, `AppearanceSheet`; placeholder bodies for Today, Overview and Settings that show only their title (replaced by later PRs); `shared` `DataChanges` (ADR 0081 item 1); `ring/RingAppearance` binder and the layout of design spec screen 17; the ring screen's idle button opens `MainActivity`; `LocalizedContext`, `attachBaseContext`, every existing string read outside an Activity moved onto `LocalizedContext` (the notifications of `RingNotifications` and the ringer service, the reset notification, `NotificationChannels.ensure`, which is also called when the override changes), and `verifyLocalizedStrings` with its self test (ADR 0082 item 3); the back stack's saver and `android:enableOnBackInvokedCallback` (ADR 0082 item 4); the call to the `SplashTheme` seam on a change and at process start; `verifyExportedComponents` and its self test with the `MainActivity` and library entries; `windowDisablePreview` on `RingActivity`.
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
@@ -292,11 +326,17 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `ScreenshotTest` for screens 16 and 17 | The matrix | Goldens; at 200 percent in hi and mr every action label is whole | Fix a button's height at 48 dp: the 200 percent captures differ and `NoClipTest` (below) fails |
 | `NoClipTest` | Every text node of a captured screen, by semantics: its laid out text has no visual overflow and no ellipsis | True for every node in all nine combinations | Add `maxLines = 1` to a button label |
 | `DataChangesTest` (shared, and android under `AndroidSqliteDriver`) | Subscribe; write through a repository, through a command in a transaction, and roll one back | One or more calls after each commit, none after the rollback, none after unsubscribing | Notify inside the transaction before commit |
-| `LocaleOverrideTest` (SDK 29, 33, 36) | Override hi with the device in en | `MainActivity`'s, `RingActivity`'s and `LocalizedContext`'s resources resolve hi; clearing it resolves en | Wrap the Activity only |
+| `LocaleSurfacesTest` (SDK 29 and 36), one case per surface | The override on Hindi, the device on English, through the fixture locale `hi-rXA` (ADR 0077 item 4) | Each surface shows the fixture Hindi string and not the English one: `MainActivity`'s title; the ring screen's labels; a reminder notification posted by the fire path's receiver (Tier 1) and its three action titles; the ring session's notification posted by the ringer service; a silent notice posted from the watchdog's worker pass; the reset notification posted by the corruption handler; the name and description of each of the four channels after `ensure`, and again after the override changes from Hindi to Marathi without a process restart. Clearing the override shows English everywhere | For each surface in turn, read its string from the plain context: only that case fails. Do not call `ensure` on an override change: the Marathi case fails |
+| `verifyLocalizedStrings` self test | Fixtures in `delivery` and `work`: `context.getString(...)`, `resources.getQuantityString(...)`, `localized.getString(...)`; the first two in an Activity package | Flagged, flagged, allowed; allowed | Narrow the package list |
+| `StateSurvivalTest` `the back stack survives rotation, a locale change and process death` (SDK 29, 36) | Push two screens, one carrying an id; then each of: recreate with a new orientation; change the override (which recreates); save the instance state, destroy the Activity and build a new one from the saved state | The same three screens in the same order with the same id, each time | Hold the stack in `remember` instead of `rememberSaveable` |
+| `an appearance change loses nothing because nothing is recreated` | Two screens deep, a sheet open, a field half typed in a test form; choose Dark | The same Activity instance, the same stack, the sheet still open, the field's text intact | Recreate on change |
+| `PredictiveBackTest` (SDK 33, 34, 36) | The merged manifest; `MainActivity` at depth 1, at depth 2, and at depth 1 with the sheet open | `enableOnBackInvokedCallback` is true on `MainActivity`; `onBackPressedDispatcher.hasEnabledCallbacks()` is false, true, true; dispatching back at depth 2 pops one screen and at depth 1 finishes the Activity; no source overrides `onBackPressed` or handles `KEYCODE_BACK` (a scan in the test) | Enable the handler always; remove the manifest attribute |
 | `verifyExportedComponents` self test | Fixtures: an extra exported component, a listed one missing, a changed permission, an intent filter with no `exported` attribute, the exact list | Each of the first four fails, the last passes; a missing manifest fails | Compare in one direction only |
 | `BackStackTest` | Push, rotate (recreate), back | Depth and top preserved; back at depth 1 finishes | Do not save the stack |
 
-**STOP points.** The ring screen cannot take the roles without naming a forbidden type. The system's per app language (API 33) conflicts with the override in a way a test shows.
+**Imports.** As PR 7; nothing new.
+
+**STOP points.** The ring screen cannot take the roles without naming a forbidden type. A surface whose string cannot be routed through `LocalizedContext`. The system's per app language (API 33) conflicts with the override in a way a test shows.
 
 **Docs.** `ARCHITECTURE.md` sections 5.2, 5.7, 9 and the UI section; `MANUAL_CHECKS.md` P3-1 procedure; the README's seed section (the app now has a launcher entry).
 
@@ -311,7 +351,7 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `StringsRoundTripTest` | Export `values/strings.xml`; fill hi and mr from a test table; import | The generated `values-hi` holds every key, plurals with the locale's quantities, placeholders equal to the English | Drop plural quantities on export |
 | `import refuses a changed placeholder and a missing quantity` | A row with `%2$d` removed; a plural without `other` | A failure naming the key | Skip the check |
 | `CopyRulesTest` | Every string in every locale | No banned phrase or pattern (ADR 0076 item 5); the test's own list is asserted non empty | Add "Great job" to a string |
-| `NoFixtureInResourcesTest` | ADR 0077 item 4 | As stated, failing closed | Put a fixture string in `values-hi` (in a mutation only) |
+| `NoFixtureInResourcesTest` (moved here from PR 7 if PR 7 has not already added it; the check is the same) | ADR 0077 item 4 | As stated, failing closed | Put a fixture string in `values-hi` (in a mutation only); move the fixture folder to the main source set |
 
 **Docs.** `IMPLEMENTATION_PLAN.md` (wave 1 exported, date); section 7 below.
 
@@ -334,34 +374,52 @@ After the last step, materialise the whole remaining span and assert **convergen
 | The ported assertions of `SetupActivityTest`, `SamsungStepsTest`, `ReliabilityCheckActivityTest` | As in Phase 2 | As in Phase 2 | Phase 2's mutations Q and P rows, re run |
 | `ScreenshotTest` for screens 1 to 6 | The matrix, every listed state | Goldens; `NoClipTest` | A fixed width on the criticality chips |
 
+**Every passage that names one of the three deleted Activities is updated in this pull request.** In `docs/MANUAL_CHECKS.md`: the "Informal now: seed build" paragraph under "Phase 2 device checks outstanding" (it tells the reader to reach the permission and check screens from the ring screen's idle state through "Set up and check my reminders"; they are now reached from the launcher, through onboarding or Settings); P2-32 (names `ReliabilityCheckActivityTest`; the export is now on "How reminders are arriving"); P2-38 (names `SetupActivityTest`); P2-39 (names `SetupActivityTest`); and the procedures of P2-31, P2-33 to P2-37 and P2-40, P2-41 wherever they start from the ring screen's idle link or the check screen. In `README.md`: the paragraph of "The seed screen" that says the app has no launcher entry of its own and that the permission and check screens are reached from the ring screen. In `ARCHITECTURE.md`: section 5.2 ("Until Phase 3's onboarding exists, the ring screen's idle state links to the permission screen"), section 5.7 and section 5.10 (the check "from the ring screen's idle state", `ReliabilityCheckActivity`). In source comments: `RingActivity`, `CanaryRunner`, `SetupController`, `AndroidSettings`. In the manifest: the three entries and their comment. The pull request description lists each with its line before and after; a grep for the three class names and for "Set up and check my reminders" over the repo, excluding ADRs (which are immutable) and the traceability file of Phase 2 (which records history), must come back empty, and the description shows the grep.
+
+**Imports.** As PR 7; nothing new.
+
 **STOP points.** A Phase 2 assertion with no equivalent. The placeholder Samsung drawables still in place at the end of the PR (ship is blocked; say so).
 
 **Docs.** `ARCHITECTURE.md` sections 5.2, 5.10; `MANUAL_CHECKS.md` P2-34 to P2-38 procedures now start from onboarding; README.
 
 ### PR 11. `phase-3/today-and-reminders` (Sonnet)
 
-**Goal.** Design spec screens 7 to 10: Today, the starter schedule, the template list, the editor.
+**Goal.** Design spec screens 7 to 10: Today with its actions and late marking, the starter schedule, the template list, the editor.
 
-**Scope.** `TodayModel` (ADR 0087 items 5 and 6), `RemindersModel`, `EditorModel` over the commands and the edit pass; the editor's vibration choice writes `AndroidSettings.setVibration`; the confirm dialog built from a dry run (`EditTemplateCommand.preview(edited, now): List<Occurrence>` that would be withdrawn, pure over the same rules, added in `shared` with a test that preview and dispatch agree on random edits).
+**Scope.** `TodayModel` (ADR 0087 items 5 to 7), `RemindersModel`, `EditorModel` over the commands and the edit pass; the editor's vibration choice writes `AndroidSettings.setVibration`; in `shared`: `BackfillCommand` (ADR 0087 item 7), the snooze rule in `OccurrenceActions.available` (it gains the occurrence's `scheduledInstant`; ADR 0087 item 6), and `EditTemplateCommand.preview(edited, now)`, which returns what the edit would withdraw and which occurrences would keep today's time, pure over the same rules as `dispatch`.
+
+**Today's actions, stated once.** A To do row, ringing or not, offers acknowledge, snooze and skip, each only when `OccurrenceActionCommand.available` offers it, and each goes through `RingController.act`, which dispatches `OccurrenceActionCommand` inside the coordinator's exclusion and calls `ensureArmed`. A Missed row offers "Taken late", which dispatches `BackfillCommand` and nothing else. No row writes an event itself.
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
-| `TodayModelTest` `four states over the log` | One occurrence in each of the six states, plus a missed one with a backfill event inserted by the test | Done for completed and for the backfilled one; Skipped; Missed; To do for pending and for snoozed with its end time; the withdrawn one absent | Map from the `state` column (the backfilled row shows Missed) |
+| `BackfillCommandTest` `it writes one COMPLETED_BACKFILLED and changes no state` (shared) | A `MISSED` occurrence of a template with two tags; dispatch | Exactly one new event: `COMPLETED_BACKFILLED`, source `USER`, the occurrence's id, the two tags; the occurrence row is byte equal, state `MISSED`; adherence as of before the dispatch counts it missed, as of after counts it completed, on the scheduled date; nutrition counts its tags after | Write a `COMPLETED` event instead (the event type assertion fails); pass no tags (the tags assertion fails) |
+| `it is allowed once` | Dispatch twice | The second returns `NotAvailable` and writes nothing; one backfill event exists | Remove the existing event check |
+| `it is refused on every state but MISSED` | An occurrence in each of the other five states, `WITHDRAWN` among them | `NotAvailable`, nothing written | Allow terminal states generally |
+| `the tags are the template's when the backfill is entered` | Miss; edit the template's tags; backfill | The event carries the new tags | Read tags from the occurrence's last event |
+| `OccurrenceActionsTest` `snooze is not offered before the occurrence's time` (shared) | A `PENDING` occurrence one hour ahead, at its instant, and one minute past | Acknowledge and skip in all three; snooze only in the last two; a snooze dispatched before the time returns `NotAvailable` and writes nothing | Drop the comparison with `scheduledInstant` |
+| `TodayModelTest` `four states over the log` | One occurrence in each of the six states, plus a missed one backfilled through `BackfillCommand` | Done for completed; Done with the caption "Taken late" for the backfilled one; Skipped; Missed; To do for pending and for snoozed with its end time; the withdrawn one absent | Map from the `state` column (the backfilled row shows Missed) |
 | `rows are today's in the current zone, in order` | Occurrences either side of midnight in two zones | The right set and order | Use UTC dates |
-| `Taken and Skip go through the ring controller` | A ringing occurrence; tap Taken on Today | The delta of ADR 0066, the session resolved, the notification cancelled | Call the command directly (the ringer keeps running) |
-| `state is never colour alone` | The four markers composed in every appearance | Each has a distinct content description and a distinct shape tag; the four markers' pixels use only `outline`, `onSurface`, `surface` | Tint the Done marker with a new colour (also fails `NoColourLiteralTest`) |
+| `an open row that is not ringing offers what the domain offers, through the ring controller` (SDK 29, 33, 36) | Three To do rows: one an hour ahead, one due and not ringing (Tier 1, a plain notification posted), one snoozed three times | Row 1 shows Taken and Skip; row 2 Taken, Snooze, Skip; row 3 Taken and Skip. Tapping each of row 2's in turn (on fresh fixtures) writes exactly ADR 0066's event and state through `OccurrenceActionCommand`, cancels the row's notification, and leaves `ShadowAlarmManager` holding the alarm `ensureArmed` selects (for snooze, the snooze's end) | Dispatch the command from the model without the controller: the notification is still posted and the alarm is stale. Offer snooze from the state alone: row 1 shows it |
+| `acting on a ringing row from Today resolves the ring` | Tier 3, one occurrence ringing; tap Taken on Today | The delta of ADR 0066, the session ended, the ringer stopped, the notification cancelled | Call the command directly (the ringer keeps running) |
+| `Taken late shows only on a missed row and only once` | Rows of every state; tap it on the missed one | The control exists on the missed row alone; after the tap the row is Done with "Taken late", the control is gone, the three figures on Overview's model move one from missed to done, and one `COMPLETED_BACKFILLED` exists | Show it on skipped rows; keep it after a backfill |
+| `state is never colour alone` | The four markers composed in every appearance | Each has a distinct content description and a distinct shape tag; each is drawn through one `RolePair` | Give the Done marker its own pair outside the declared list (also fails `ContrastTest`'s completeness check) |
 | `the list follows a change made elsewhere` | Complete an occurrence through the notification receiver while Today is shown | The row becomes Done without a resume | Unsubscribe from `DataChanges` |
 | `a read that meets corruption ends the process and posts nothing` | The corruption seam of `DatabaseCorruptionTest` under `TodayModel` | `ProcessEnd` called once; no state posted after | Catch the exception in the model |
 | `EditorModelTest` `save creates or edits through the commands and runs the pass` | Create; then edit the time | One template; the alarm moved | Write through the repository |
 | `the editor never writes a mission and shows no mission control` | Save every form state the generator produces | `MissionConfig.None` always; no node tagged mission | Add a mission chip |
 | `doctor instructions and dosage are stored and shown verbatim` | Mixed script text with digits | Byte equal in the row, on Today and on the ring screen | Trim or normalise |
-| `the confirm dialog lists exactly what will be withdrawn` | Deactivate with two open occurrences; change weekdays | The dialog's rows equal `preview`; cancel writes nothing | Show the dialog after dispatch |
+| `the confirm dialog lists exactly what will be withdrawn` | Stop a reminder with two open occurrences; change weekdays | The dialog's rows equal `preview`; cancel writes nothing | Show the dialog after dispatch |
+| `an edit to a time already past today says so` | At 10:00, a reminder at 12:00 edited to 09:00 | After saving, the line "Today's reminder stays at 12:00. The new time starts tomorrow." is shown, built from `preview`; with an edit to 15:00 it is absent | Show it always |
+| `preview and dispatch agree` (shared, property, PR 3's generator) | Random edits | The occurrences `preview` names are exactly those `dispatch` then withdraws or leaves at their time | Compute preview with a different `now` |
+| `the editor's draft survives process death` (SDK 29, 36) | Open the editor on an existing reminder; change the title, the time, two tags and the instructions; open the weekday choice; save the instance state, destroy the Activity, build a new one from the saved state | The editor is on top for the same template with every field as typed and the weekday choice open; the database is unchanged; saving then writes the edit once | Hold the draft in `remember`; write the draft to the database as she types |
 | `StarterScheduleTest` `it names nothing and needs a title for every row` | The screen | The three title fields are empty and have no default text; the resources hold no starter title; the button is disabled until titled; saving creates STANDARD Daily templates at the three times with her titles | Prefill a title |
-| `ScreenshotTest` for screens 7 to 10 | The matrix | Goldens; `NoClipTest` | A fixed height row |
+| `ScreenshotTest` for screens 7 to 10 | The matrix, every listed state | Goldens; `NoClipTest` | A fixed height row |
 
-**STOP points.** Any wish for a field or control the design spec does not list.
+**Imports.** As PR 7; nothing new.
 
-**Docs.** `ARCHITECTURE.md` UI section; `IMPLEMENTATION_PLAN.md` deliverables status.
+**STOP points.** Any wish for a field or control the design spec does not list. A Phase 2 test of `OccurrenceActions.available` whose expectation, not its fixture, must change for the snooze rule.
+
+**Docs.** `ARCHITECTURE.md` sections 4.5 (the snooze rule; late marking built) and 4.6, and the UI section; `IMPLEMENTATION_PLAN.md` deliverables status; traceability L3, L19, L20.
 
 ### PR 12. `phase-3/water-nutrition-overview` (Sonnet)
 
@@ -378,6 +436,8 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `the 30 day figure is the reduction's` | A fixture | Equal to `criticalCompletionDays` with `asOf` now | Count consecutive days |
 | `the week card` | Prenatal in range; out of range; postpartum; a due date revised yesterday | Week shown; due date only; due date only; today's week from the latest revision | Show a negative countdown as a week |
 | `ScreenshotTest` for screens 11 to 13 | The matrix | Goldens; `NoClipTest` | A fixed width figure cell |
+
+**Imports.** As PR 7; nothing new.
 
 ### PR 13. `phase-3/settings-and-reliability` (Sonnet)
 
@@ -397,6 +457,8 @@ After the last step, materialise the whole remaining span and assert **convergen
 
 **STOP points.** A setting whose effect cannot be asserted through behaviour.
 
+**Imports.** As PR 7; nothing new.
+
 ### PR 14. `phase-3/widget-tile-nudges` (Sonnet)
 
 **Goal.** ADR 0083 items 2 to 5 and design spec screen 18.
@@ -411,10 +473,13 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `the tile is guarded` | The merged manifest | The service requires `BIND_QUICK_SETTINGS_TILE` | Remove the permission (also fails the allowlist) |
 | `WaterNudgePolicyTest` (shared) | A table: times through a day for 0 to 4 nudges, below and at the goal, inside and outside quiet hours, after a long sleep | At most one per run; none at or above the goal, in quiet hours or with 0 configured; never more than the configured number in a day, and never more than 4 | Post for every missed slot; ignore the goal |
 | `WaterNudgeTest` `a nudge never arms an alarm and never uses a reminder channel` (SDK 29, 33, 36) | Run the worker when a nudge is due, with a reminder armed | `ShadowAlarmManager`'s alarms are exactly what they were; the notification is on `momtime.water`, importance low; no event is written; the budget is unspent | Post on Gentle; call `AlarmManager` |
+| `LocaleSurfacesTest` additions (SDK 29, 36) | The override on Hindi, the device on English, fixture Hindi | The widget's `RemoteViews`, applied to a host view, show the fixture Hindi text; the tile's label and subtitle after `onStartListening` are the fixture Hindi; the nudge notification's title and action are; the water channel's name is | Read each from the plain context in turn |
 | `the nudge state is not backed up` | The rules files | The nudge file is in neither | Add it to the rules |
 | `ScreenshotTest` for screen 18 | The widget's layout applied to a host view, the matrix | Goldens | |
 
 **Docs.** `ARCHITECTURE.md` sections 3.6, 5.6; `MANUAL_CHECKS.md` P3-6 and P3-8 (a nudge's timing on a device, the widget on a launcher, the tile).
+
+**Imports.** `androidx.work.*` from `work-runtime`, as today; the widget, the tile and the receiver use framework classes only (`android.appwidget`, `android.widget.RemoteViews`, `android.service.quicksettings`). Nothing new.
 
 ### PR 15. `phase-3/accessibility-and-freeze` (Sonnet)
 
@@ -449,6 +514,8 @@ After the last step, materialise the whole remaining span and assert **convergen
 | Onboarding: due date, one medicine, permission walkthrough, the check; inherits `PermissionFlows`, `SetupController`, the Samsung walkthrough, `CanaryRunner`; the four copy obligations; the gate (deliverable) | 10 |
 | Starter schedule as an editable suggestion (deliverable, D6) | 11 |
 | Today view with four state display (deliverable) | 11 |
+| Today offers acknowledge, snooze and skip on an open occurrence, ringing or not, through `OccurrenceActionCommand` (Claude (technical review), review of the first draft) | 11 |
+| Late marking: "Taken late" on a missed occurrence, `COMPLETED_BACKFILLED` through `BackfillCommand`, once per occurrence, never on a withdrawn one, with nutrition tags (`ARCHITECTURE.md` section 4.5; Claude (technical review)) | 11 |
 | Schedule builder: create and edit, criticality, recurrence, tags, dosage, doctor instructions, inventory and refill threshold; no mission (deliverable, D7) | 3, 4, 11 |
 | Water: one tap logging, goal, progress, optional nudges (deliverable, D8) | 5, 12, 14 |
 | Nutrition aggregation view (deliverable) | 5, 12 |
@@ -474,7 +541,12 @@ After the last step, materialise the whole remaining span and assert **convergen
 | D2 appearance setting, storage, before first frame | 7, 8 |
 | D2b the switcher on every top level and onboarding screen; persistence; the ring screen; the sheet in the matrix | 8 (and 10 for the onboarding screens, which `SwitcherPresenceTest` covers as they are registered) |
 | D2c the visual spec | this pull request |
-| D3 contrast as a test | 7 |
+| D3 contrast as a test, unrounded; screens can only draw declared pairs (`verifyColourBoundary`, pair components) | 7 |
+| The locale override reaches every string the app produces | 8, 14 |
+| State survives rotation, a locale change, an appearance change and process death; predictive back | 8, 11 |
+| The starting window follows her choice on API 33 and above (`setSplashScreenTheme`) | 7, 8 |
+| Goldens recorded on Linux through the `android-screenshots` job | 7 |
+| Every passage naming a deleted Phase 2 Activity updated | 10 |
 | D4 copy rules | 9 |
 | D10 exported components allowlist | 8, 14 |
 | Start the Play 12 tester clock | Shubham, at the merge of 17 (section 7) |
@@ -487,10 +559,9 @@ Nothing in Phase 3's section of `IMPLEMENTATION_PLAN.md` is unmapped. Each row i
 
 | What | Needed by | Note |
 |---|---|---|
-| Review of this pull request; approval of the dependency list (ADR 0084) and of the two fonts and the icon set (ADR 0085) | Before PR 7 starts. PRs 1 to 6 need no new dependency and can start as soon as this plan is merged | |
-| The mockup's path, or a correction of the lavender palette | In this review | C1 |
-| A decision on marking a missed dose as taken late | Before PR 11 | Section 8 |
-| `android-screenshots` added to the required checks on `main` | When PR 7 merges | |
+| Merge of this pull request | Before PR 1 | The dependency list, the fonts and the icons are approved (section 4) |
+| An answer to section 8 item 1 (the seven sub modules) | Before PR 7. PRs 1 to 6 do not depend on it | |
+| `android-screenshots` added to the required checks on `main` | When PR 7 merges | The new Open items row |
 | The four Galaxy A15 screenshots in `drawable-nodpi`, at most 1080 px wide and 400 KB each | Before PR 10 ships | The Open items row |
 | His brother: wave 1 translation (85 Phase 2 strings and plurals) | Handed over when PR 9 merges; wanted back before PR 16 | Early, on purpose: the health adjacent strings of the ring screen, the notices and the permissions are all in wave 1 |
 | His brother: wave 2 translation and the review of all health adjacent copy | Handed over when PR 15 merges; PR 16 is gated on it | The exit criterion is his review, recorded |
@@ -501,7 +572,7 @@ Nothing in Phase 3's section of `IMPLEMENTATION_PLAN.md` is unmapped. Each row i
 
 ## 8. Open questions for review
 
-1. **The mockup** (C1).
-2. **Late marking.** Today will show a Missed row with nothing to do about it. `COMPLETED_BACKFILLED` exists in the vocabulary and in the reductions, but no command writes it and no deliverable names its UI. Recommendation: add "Taken late" on a Missed row to PR 11, with a `BackfillCommand` in `shared` (a user event on a terminal occurrence, no state change, as ADR 0040 describes). It is one small command and one button, and without it the record she hands her doctor shows a miss she cannot correct. It is not planned until approved, because it is a deliverable the plan does not list.
-3. **Criticality on the occurrence** (C5) is the heaviest part of decision a: a migration and about ten changed read sites on the alarm path. The alternative is to accept that changing a template's criticality relabels the last 30 days and acts on a ladder in mid flight, with a guard that cannot be written for grace. The plan takes the snapshot.
-4. **`WITHDRAWN` reaches Phase 4.** The server's `sweep_status` already has `SUPERSEDED`; the upload must send a withdrawal, or the dead man switch will report a withdrawn dose as missed to a caregiver. This is carried to Phase 4's list in `IMPLEMENTATION_PLAN.md`.
+1. **Which Compose and Activity modules may be declared.** "Anything a pull request's code imports directly is declared directly" and "no dependency beyond the approved list" cannot both hold as written: ordinary Compose code imports `androidx.compose.runtime`, `androidx.compose.ui.graphics`, `androidx.compose.ui.text`, `androidx.compose.ui.unit`, `androidx.compose.foundation.layout`, and tests import `androidx.compose.ui.test`, and `MainActivity` extends `androidx.activity.ComponentActivity`. Each lives in its own artifact (`runtime`, `runtime-saveable`, `ui-graphics`, `ui-text`, `ui-unit`, `foundation-layout`, `ui-test`, `androidx.activity:activity`), all of them parts of the approved libraries at versions the approved BOM and `activity-compose` 1.13.0 already fix. The plan proposes declaring them by name. This needs a yes, or another reading of the rule, before PR 7.
+2. **The snooze rule** (C12): snooze is not offered before a reminder's time. It is a change to a Phase 2 domain function, made in PR 11, for review.
+3. **Today's reminder keeps its old time when the new time has already passed** (ADR 0079). The review said it would decide this if the rule leaves her surprised; the editor tells her in one line when it happens.
+4. **`WITHDRAWN` reaches Phase 4**, and missions' `COMPLETED` rule reaches Phase 5; both are on those phases' carried lists in `IMPLEMENTATION_PLAN.md`.

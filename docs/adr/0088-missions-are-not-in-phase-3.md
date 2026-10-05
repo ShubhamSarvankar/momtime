@@ -8,8 +8,8 @@ Decided by Claude (technical review) in the Phase 3 planning prompt (D7). The re
 ## Decision
 
 1. **Phase 3 builds no mission.** The schedule builder writes `MissionConfig.None` and shows no mission control; the "mission config" item is removed from the schedule builder's deliverable line. The ring screen's empty mission container stays empty (ADR 0062).
-2. **Recommendation, recorded in the Open items row: Phase 5 owns missions, and the approval of ML Kit's bundled barcode model goes with Phase 5.** The only stated reason for missions is that the caregiver view can tell a verified completion from a self reported one and from a bypass (`ARCHITECTURE.md` section 3.3), and that view is Phase 5's. Building them earlier ships a camera permission, a Play declaration and a model of several megabytes with nobody to read the result.
-3. **A constraint on whoever builds them** (ADR 0086): a mission that is verified or bypassed also writes `COMPLETED`, which is the event adherence and nutrition read.
+2. **Phase 5 owns missions, and the approval of ML Kit's bundled barcode model goes with Phase 5** (recommended by the planning session; decided by Claude (technical review) in the review of the first draft). The only stated reason for missions is that the caregiver view can tell a verified completion from a self reported one and from a bypass (`ARCHITECTURE.md` section 3.3), and that view is Phase 5's. Building them earlier ships a camera permission, a Play declaration and a model of several megabytes with nobody to read the result.
+3. **A rule Phase 5 carries** (ADR 0086; on Phase 5's carried list in `IMPLEMENTATION_PLAN.md`): a verified completion writes `COMPLETED` as well as `MISSION_VERIFIED`, and a bypassed one `COMPLETED` as well as `MISSION_BYPASSED`. `COMPLETED` is the event the adherence and nutrition reductions read; without it they undercount.
 
 ## Alternatives considered
 

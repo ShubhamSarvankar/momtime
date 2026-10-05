@@ -1,7 +1,7 @@
 # 0084. Phase 3 dependencies: what is asked for, and what stays declined
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; nothing below enters the build until Shubham approves the list in review, invariant 7)
+Status: Proposed. **The list was approved by Shubham in the review of the first draft (2026-10-05), as written, together with Nunito, Noto Sans Devanagari and the 21 Material Symbols icons of ADR 0085.** Each artifact enters the build in the pull request that first uses it.
 
 Decided by the Phase 3 planning session, for review. Versions were resolved live on 2026-10-05 from Google's Maven repository and Maven Central, and each "used in the spike" entry was built and run on Kotlin 2.4.20, AGP 9.4.1, Gradle 9.8.0 and compileSdk 36.
 
@@ -23,6 +23,12 @@ Decided by the Phase 3 planning session, for review. Versions were resolved live
 Fonts and icons are files copied into the repo with their licences (ADR 0085), not artifacts.
 
 **What these bring transitively, read from the spike's merged release manifest:** no new permission (`verifyManifestPermissions` passed unchanged); one exported receiver, `androidx.profileinstaller.ProfileInstallReceiver`, guarded by `DUMP` (ADR 0078); `androidx.startup.InitializationProvider` entries, unexported; `kotlinx-coroutines`, `androidx.lifecycle`, `androidx.core` and `androidx.test` classes on the classpath, none of which an android source may import (ADR 0081, and the existing rule that anything imported is declared).
+
+## What is imported directly is declared directly
+
+The standing rule (`IMPLEMENTATION_PLAN.md`, Working conventions) applies to every Phase 3 pull request: an artifact whose classes a source file imports is declared in the build, never left to arrive transitively. Each pull request section of the plan lists the androidx packages its code imports and the artifact that declares each.
+
+**One consequence needs Shubham's word before PR 7, and is raised in the plan's open questions.** The approved list names three Compose libraries (`ui`, `foundation`, `material3`), `activity-compose` and `ui-test-junit4`. Compose and Activity are split into more modules than that, and ordinary screen code imports from them: `androidx.compose.runtime` (module `androidx.compose.runtime:runtime`, with `runtime-saveable` for `rememberSaveable`), `androidx.compose.ui.graphics` (`ui-graphics`), `androidx.compose.ui.text` (`ui-text`), `androidx.compose.ui.unit` (`ui-unit`), `androidx.compose.foundation.layout` (`foundation-layout`), `androidx.compose.ui.test` (`ui-test`), and `androidx.activity.ComponentActivity` (`androidx.activity:activity`). All are modules of the approved libraries at the versions the approved BOM and `activity-compose` 1.13.0 already fix, and all are on the classpath today through them. Read strictly, the import rule requires each to be declared, and the rule against anything beyond the approved list forbids declaring them. The plan proposes declaring these seven by name, at the BOM's versions, as part of the approved Compose and Activity libraries and nothing more; PR 7 does not start until that is confirmed or another reading is given.
 
 ## Reconsidered and still declined
 

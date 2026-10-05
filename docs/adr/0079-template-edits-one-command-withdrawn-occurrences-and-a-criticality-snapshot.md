@@ -33,7 +33,35 @@ Phase 1 and 2 have no template edit path: `ScheduleTemplateRepository` offers `i
 
 **11. The debug seed.** Its test reminder was an inactive template with one open occurrence, a state this model does not allow. The seed now creates its one off as an active template with `Recurrence.EveryNDays(n = 3650, anchorDate = today)`: no `Recurrence` value expresses a one off and none is added, and a ten year interval is one for a debug tool.
 
-**Schema version 6** (`migrations/5.sqm`): drop the terminal trigger; add `occurrence.criticality TEXT NOT NULL DEFAULT 'STANDARD'` and fill it from each occurrence's template (an administrative update inside the migration, which is why the trigger is dropped first); replace the unique index with the partial one; recreate the trigger with `WITHDRAWN` among the terminal states; add the two event columns of ADR 0086. Every statement runs on the SQLite 3.22 floor. Forward migration tests run from versions 1 to 5 with foreign keys on.
+**Schema version 6** (`migrations/5.sqm`): drop the terminal trigger; add `occurrence.criticality TEXT NOT NULL DEFAULT 'STANDARD'` and fill it from each occurrence's template (an administrative update inside the migration, which is why the trigger is dropped first); replace the unique index with the partial one; recreate the trigger with `WITHDRAWN` among the terminal states; add the two event columns of ADR 0086 and fill `nutrition_tags` on existing completions from their templates (the fills are set out below). Every statement runs on the SQLite 3.22 floor. Forward migration tests run from versions 1 to 5 with foreign keys on.
+
+## Questions from the review, answered
+
+The model was accepted by Claude (technical review) in the review of the planning pull request: `WITHDRAWN` as a sixth state, criticality kept on the occurrence, schema version 6. These answers were asked for before the merge. They restate the rules above and add nothing to them.
+
+**Which occurrences does a withdrawal reach in a ring session, given that a due one is untouched?** "Untouched" is rule 4 and applies only to an occurrence the edited template still wants. An occurrence the template no longer wants is withdrawn whether or not it has come due (rule 3), so a withdrawal reaches every occurrence in the ring session that belongs to the edited template and falls on a date the template no longer wants: all of that template's when she stops it, and those on removed dates when she changes the recurrence. An occurrence in the session that the template still wants keeps ringing, unchanged.
+
+**"Come due", exactly.** An occurrence has come due when any one of these holds at the edit's `now`: its `scheduledInstant` is at or before `now`; or it has at least one `ALARM_FIRED` event; or its state is `SNOOZED`. A running snooze therefore counts, and so does a snooze that has ended, because its occurrence's instant has passed.
+
+**When the new time for an open, not yet due occurrence today is already past.** It stays at the time it has. It is not clamped to now and it is not withdrawn. Today's reminder rings at the old time and the new time starts with the next date. The editor says so in one line after saving ("Today's reminder stays at 12:00. The new time starts tomorrow."). The test is `TemplateEditScenarioTest`, `an edit to earlier than now keeps today's time`.
+
+**`WITHDRAWN`.**
+
+- It is terminal under the immutability trigger: the trigger's list of terminal states is `COMPLETED`, `SKIPPED`, `MISSED`, `WITHDRAWN`, and any update to such a row aborts.
+- It is written by `EditTemplateCommand` and by nothing else, as a `WITHDRAWN` event with source `USER` and no payload, appended together with the state change in one transaction through `OccurrenceRepository.transition`.
+- It is out of all three adherence figures, and out of "scheduled" wherever completed over scheduled is shown: a count of scheduled occurrences never includes a withdrawn one.
+- `Reconcile` skips it, because `Reconcile` reads open occurrences and a withdrawn one is not open; it can never become `MISSED`. The never fired rung reduction treats a withdrawal before the rung's tolerance has passed as it treats a completion or a skip: no failure. A rung that had already passed its tolerance without firing when the occurrence was withdrawn stays a never fired rung, because the alarm really did not fire.
+- It maps to the server's `SUPERSEDED` in Phase 4's carried list (`IMPLEMENTATION_PLAN.md`).
+
+**The debug seed under this model.** Its test reminder still rings, and through the ordinary path: it is an active template with `Recurrence.EveryNDays(n = 3650, anchorDate = today)`, materialised by the ordinary materialisation, armed by `ensureArmed` and rung by the fire path like any reminder. Nothing rings from an inactive template any more.
+
+## The migration's fill for each new column (version 5 to 6)
+
+- **`occurrence.criticality`** is filled from each occurrence's template. This is exact and not a guess: no build before version 6 could change a template's criticality, so every existing occurrence was materialised under the criticality its template still has.
+- **`event.nutrition_tags`** on existing `COMPLETED` and `COMPLETED_BACKFILLED` events is filled from the tags of the occurrence's template, and is exact for the same reason: no build before version 6 could edit a template's tags. An event whose template has no tags gets null.
+- **`event.zone_id`** on an existing `WATER_LOGGED` row stays null: the zone it was logged in was never recorded and cannot be recovered. No build wrote such a row, so this is a rule for a case that should not exist; it is handled all the same (ADR 0086).
+
+The forward migration test seeds version 5 rows for all three (occurrences of each criticality, a completion of a tagged template, a water event) and asserts each fill.
 
 ## Where ADR 0068 applies and where it does not
 
