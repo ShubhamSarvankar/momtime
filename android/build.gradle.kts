@@ -364,7 +364,11 @@ val selfTestVerifyNoGeneratedQueries =
 // watchdog test can tell a restart from a long uptime.
 
 fun findWallClockReferences(files: Iterable<File>): List<String> {
-    val pattern = Regex("""\bClock\.System\b|\bSystem\.currentTimeMillis\b|\bSystemClock\.|\bBOOT_COUNT\b""")
+    val pattern =
+        Regex(
+            """\bClock\.System\b|\bSystem\.currentTimeMillis\b|\bSystemClock\.|\bBOOT_COUNT\b|""" +
+                """\bTimeZone\.currentSystemDefault\b|\bTimeZone\.getDefault\b""",
+        )
     val offenders = mutableListOf<String>()
     files.filterNot { isInDiPackage(it) }.forEach { file ->
         file.readLines().forEachIndexed { index, line ->
@@ -385,7 +389,7 @@ val verifyNoClockSystem =
             val offenders = findWallClockReferences(androidKotlinFiles)
             if (offenders.isNotEmpty()) {
                 throw GradleException(
-                    "Clock.System, System.currentTimeMillis, SystemClock or BOOT_COUNT outside " +
+                    "Clock.System, System.currentTimeMillis, SystemClock, BOOT_COUNT or the device time zone outside " +
                         "com.momtime.android.di (invariant 8):\n" +
                         offenders.joinToString("\n"),
                 )
@@ -425,7 +429,22 @@ val selfTestVerifyNoClockSystem =
             val uptime = fixture("app/Uptime.kt", "val d = android.os.SystemClock.elapsedRealtime()")
             val bootCount =
                 fixture("app/Boot.kt", "val e = Settings.Global.getLong(r, Settings.Global.BOOT_COUNT, -1L)")
+            val zoneKotlin = fixture("app/ZoneKotlin.kt", "val g = kotlinx.datetime.TimeZone.currentSystemDefault()")
+            val zoneJava = fixture("app/ZoneJava.kt", "val h = java.util.TimeZone.getDefault()")
+            val zoneInDi =
+                fixture("$androidDiPath/ZoneInDi.kt", "val i = kotlinx.datetime.TimeZone.currentSystemDefault()")
+            val zoneFixed = fixture("app/ZoneFixed.kt", "val j = kotlinx.datetime.TimeZone.UTC")
             val failures = mutableListOf<String>()
+            if (findWallClockReferences(listOf(zoneKotlin)).size != 1) {
+                failures += "TimeZone.currentSystemDefault() was not detected"
+            }
+            if (findWallClockReferences(listOf(zoneJava)).size != 1) {
+                failures += "java.util.TimeZone.getDefault() was not detected"
+            }
+            if (findWallClockReferences(listOf(zoneInDi)).isNotEmpty()) {
+                failures += "the DI package was not exempted for the zone"
+            }
+            if (findWallClockReferences(listOf(zoneFixed)).isNotEmpty()) failures += "a fixed zone was flagged"
             if (findWallClockReferences(listOf(uptime)).size != 1) failures += "SystemClock was not detected"
             if (findWallClockReferences(listOf(bootCount)).size != 1) failures += "BOOT_COUNT was not detected"
             if (findWallClockReferences(listOf(inDiBoot)).isNotEmpty()) {

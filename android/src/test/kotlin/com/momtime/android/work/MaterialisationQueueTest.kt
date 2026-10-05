@@ -64,7 +64,8 @@ class MaterialisationQueueTest {
                 }
                 fixture.clock.now
             }
-        WorkEntryPoint.provider = { WorkPasses(fixture.passes.watchdog, pass, fixture.passes.system) }
+        WorkEntryPoint.provider =
+            { WorkPasses(fixture.passes.watchdog, pass, fixture.passes.system, fixture.passes.timezone) }
     }
 
     @After

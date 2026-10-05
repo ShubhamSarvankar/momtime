@@ -17,8 +17,10 @@ import com.momtime.shared.data.SqlDelightOccurrenceRepository
 import com.momtime.shared.data.SqlDelightPregnancyRepository
 import com.momtime.shared.data.SqlDelightScheduleTemplateRepository
 import com.momtime.shared.data.SqlDelightSyncStateRepository
+import com.momtime.shared.data.SqlDelightTransactor
 import com.momtime.shared.data.SqlDelightWaterGoalRepository
 import com.momtime.shared.data.SyncStateRepository
+import com.momtime.shared.data.Transactor
 import com.momtime.shared.data.WaterGoalRepository
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -55,4 +57,5 @@ fun sharedModule(): Module =
             SqlDelightInterruptionBudgetRepository(get<DatabaseHolder>().database)
         }
         single<SyncStateRepository> { SqlDelightSyncStateRepository(get<DatabaseHolder>().database) }
+        single<Transactor> { SqlDelightTransactor(get<DatabaseHolder>().database) }
     }

@@ -12,14 +12,17 @@ CREATE UNIQUE INDEX occurrence_template_date_idx ON occurrence(template_id, loca
 CREATE UNIQUE INDEX occurrence_alarm_slot_idx ON occurrence(alarm_slot);
 CREATE INDEX occurrence_state_scheduled_idx ON occurrence(state, scheduled_instant);
 
--- Terminal states are immutable (ARCHITECTURE.md 3.2, ADR 0014, ADR 0037). Enforced here because
--- every write passes through the schema. The terminal set is COMPLETED, SKIPPED, MISSED; Kotlin's
--- Occurrence.isTerminal is the single definition and a test fails if the two drift.
+-- Terminal occurrences are immutable (ARCHITECTURE.md 3.2, ADR 0014, ADR 0037, ADR 0068). Enforced here because
+-- every write passes through the schema. Any update to a row whose OLD state is terminal aborts, whatever column it
+-- changes (its state, its instant, its zone, its date, its slot): there is no sanctioned update to a terminal row.
+-- Until schema version 5 only a change of state was refused, and nothing stopped an instant or a zone from changing
+-- on a terminal row; the time zone change is the first path that changes an instant. The terminal set is COMPLETED,
+-- SKIPPED, MISSED; Kotlin's Occurrence.isTerminal is the single definition and a test fails if the two drift.
 CREATE TRIGGER occurrence_terminal_immutable
 BEFORE UPDATE ON occurrence
+WHEN old.state IN ('COMPLETED', 'SKIPPED', 'MISSED')
 BEGIN
-    SELECT RAISE(ABORT, 'terminal occurrence state is immutable')
-    WHERE old.state IN ('COMPLETED', 'SKIPPED', 'MISSED') AND new.state <> old.state;
+    SELECT RAISE(ABORT, 'terminal occurrence is immutable');
 END;
 
 insertOccurrence:
@@ -28,6 +31,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 
 updateOccurrenceState:
 UPDATE occurrence SET state = ? WHERE id = ?;
+
+updateOccurrenceSchedule:
+UPDATE occurrence SET scheduled_instant = ?, time_zone_id = ? WHERE id = ?;
 
 selectOccurrenceById:
 SELECT * FROM occurrence WHERE id = ?;

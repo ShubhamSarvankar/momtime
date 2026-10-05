@@ -10,8 +10,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * What the manifest declares for the system broadcasts (ADR 0067): one receiver, not exported, listening to exactly
- * the four actions that are acted on, and not to `LOCKED_BOOT_COMPLETED` (nothing here is direct boot aware) or the
- * timezone broadcast (what it should do is an open question). The expected list is written out here, by hand, and
+ * the five actions that are acted on, and not to `LOCKED_BOOT_COMPLETED` (nothing here is direct boot aware). The
+ * expected list is written out here, by hand, and
  * does not read [SystemEvent]; a second test then says the two agree. This reads the source manifest: it shows what
  * is declared, not that the platform delivers to it (`MANUAL_CHECKS.md` P2-26 to P2-29).
  */
@@ -23,6 +23,7 @@ class SystemManifestTest {
             "android.intent.action.BOOT_COMPLETED",
             "android.intent.action.MY_PACKAGE_REPLACED",
             "android.intent.action.TIME_SET",
+            "android.intent.action.TIMEZONE_CHANGED",
             "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
         )
 
@@ -62,7 +63,6 @@ class SystemManifestTest {
 
         assertEquals(expectedActions, declared)
         assertFalse("LOCKED_BOOT_COMPLETED is not handled", "android.intent.action.LOCKED_BOOT_COMPLETED" in declared)
-        assertFalse("the timezone broadcast is not declared", "android.intent.action.TIMEZONE_CHANGED" in declared)
     }
 
     @Test

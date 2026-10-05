@@ -105,8 +105,7 @@ class SystemBroadcastTest {
             .findById(id)
             ?.state
 
-    private fun workInfos(event: SystemEvent): List<WorkInfo> =
-        workManager.getWorkInfosForUniqueWork(Work.systemName(event)).get()
+    private fun workInfos(): List<WorkInfo> = workManager.getWorkInfosForUniqueWork(Work.SYSTEM_QUEUE).get()
 
     // --- boot
 
@@ -117,7 +116,7 @@ class SystemBroadcastTest {
 
         broadcast(Intent.ACTION_BOOT_COMPLETED)
 
-        val info = workInfos(SystemEvent.BOOT).single()
+        val info = workInfos().single()
         assertEquals(WorkInfo.State.SUCCEEDED, info.state)
         assertEquals("the next alarm exists again", 1, f.arming.alarms().size)
         assertEquals(31, alarmSlot())
@@ -381,7 +380,6 @@ class SystemBroadcastTest {
         listOf(
             "com.example.UNEXPECTED",
             "android.intent.action.LOCKED_BOOT_COMPLETED",
-            "android.intent.action.TIMEZONE_CHANGED",
             "android.intent.action.USER_PRESENT",
         )
         ) {

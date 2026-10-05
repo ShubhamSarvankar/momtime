@@ -1,0 +1,19 @@
+-- Schema version 4 to 5 (Phase 2, PR 6b, ADR 0068).
+--
+-- A terminal occurrence is immutable in full. The trigger from version 2 aborted a change of state out of a
+-- terminal state and nothing else, so an update of a terminal row's instant, zone, date or slot was allowed by the
+-- schema. The time zone change is the first path that changes an instant, and ARCHITECTURE.md 3.2 says terminal
+-- occurrences are immutable, so the schema now says exactly that: any update to a row whose OLD state is COMPLETED,
+-- SKIPPED or MISSED aborts. There is no sanctioned update to a terminal row.
+--
+-- A trigger cannot be altered, so it is dropped and created again under the same name. DROP TRIGGER and CREATE
+-- TRIGGER work on the SQLite 3.22 floor (ADR 0042). No data changes.
+
+DROP TRIGGER occurrence_terminal_immutable;
+
+CREATE TRIGGER occurrence_terminal_immutable
+BEFORE UPDATE ON occurrence
+WHEN old.state IN ('COMPLETED', 'SKIPPED', 'MISSED')
+BEGIN
+    SELECT RAISE(ABORT, 'terminal occurrence is immutable');
+END;

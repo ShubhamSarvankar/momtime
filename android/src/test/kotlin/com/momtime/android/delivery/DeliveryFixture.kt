@@ -105,6 +105,9 @@ internal class DeliveryFixture(
     val vibration = FakeVibration()
     private var fullScreen = fullScreenIntent
 
+    /** The zone the device is in. A zone change test moves it, then delivers the broadcast. */
+    var deviceZone: TimeZone = TimeZone.UTC
+
     val arming =
         ArmingFixture(
             context,
@@ -115,7 +118,7 @@ internal class DeliveryFixture(
                     overlay = overlay,
                     sound = sound,
                     vibration = vibration,
-                    zone = { TimeZone.UTC },
+                    zone = { deviceZone },
                     fullScreenIntentApi = { fullScreen },
                 ),
         )

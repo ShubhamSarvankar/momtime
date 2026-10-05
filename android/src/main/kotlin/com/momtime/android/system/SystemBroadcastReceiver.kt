@@ -20,6 +20,10 @@ import com.momtime.android.work.Work
  * - [SystemEvent.PACKAGE_REPLACED]: the app was updated. AOSP keeps an updated app's alarms, so this usually finds
  *   everything armed and changes nothing; `ensureArmed` is correct either way (ADR 0067).
  * - [SystemEvent.TIME_CHANGED]: the clock was set. The rung that is armed is re armed against the new time.
+ * - [SystemEvent.TIMEZONE_CHANGED]: the device moved to another zone. Templates follow the device zone, so the pass
+ *   first dispatches the zone change command (open occurrences move to their wall clock time in the new zone, never
+ *   to before the change; terminal ones are untouched), then materialises the window and calls `ensureArmed`
+ *   (ADR 0068).
  * - [SystemEvent.EXACT_ALARM_PERMISSION_STATE_CHANGED]: sent on a grant, never on a revocation. It is used only to
  *   upgrade out of Tier 1; a revocation is learned by resolving capability again, never from a broadcast.
  *
@@ -62,6 +66,7 @@ enum class SystemEvent(
     BOOT(Intent.ACTION_BOOT_COMPLETED),
     PACKAGE_REPLACED(Intent.ACTION_MY_PACKAGE_REPLACED),
     TIME_CHANGED(Intent.ACTION_TIME_CHANGED),
+    TIMEZONE_CHANGED(Intent.ACTION_TIMEZONE_CHANGED),
     EXACT_ALARM_PERMISSION_STATE_CHANGED(AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED),
     ;
 

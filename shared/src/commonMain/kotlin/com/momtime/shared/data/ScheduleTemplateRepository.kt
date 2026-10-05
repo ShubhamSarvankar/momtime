@@ -8,6 +8,7 @@ import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.domain.TaskType
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
 
 interface ScheduleTemplateRepository {
     fun insert(template: ScheduleTemplate)
@@ -19,9 +20,21 @@ interface ScheduleTemplateRepository {
     /** Every active template, whatever pregnancy it belongs to. What the daily materialisation reads. */
     fun findAllActive(): List<ScheduleTemplate>
 
+    /** Every template, active or not. What a time zone change reads: every template follows the device zone. */
+    fun findAll(): List<ScheduleTemplate>
+
     fun setActive(
         id: String,
         active: Boolean,
+    )
+
+    /**
+     * Gives a template a new zone: the one thing a time zone change does to a template (ADR 0068). Templates follow the
+     * device zone, so every later materialisation uses it. Nothing else about the template changes.
+     */
+    fun updateTimeZone(
+        id: String,
+        zone: TimeZone,
     )
 }
 
@@ -75,11 +88,24 @@ class SqlDelightScheduleTemplateRepository(
             toDomain(it)
         }
 
+    override fun findAll(): List<ScheduleTemplate> =
+        database.scheduleTemplateQueries
+            .selectAllScheduleTemplates()
+            .executeAsList()
+            .map(::toDomain)
+
     override fun setActive(
         id: String,
         active: Boolean,
     ) {
         database.scheduleTemplateQueries.updateScheduleTemplateActive(active.toDb(), id)
+    }
+
+    override fun updateTimeZone(
+        id: String,
+        zone: TimeZone,
+    ) {
+        database.scheduleTemplateQueries.updateScheduleTemplateTimeZone(zone.toDb(), id)
     }
 
     private fun toDomain(row: com.momtime.shared.data.Schedule_template): ScheduleTemplate {
