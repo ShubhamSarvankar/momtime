@@ -15,8 +15,8 @@ import javax.imageio.ImageIO
  * 2340 screenshot becomes a bitmap of roughly 90 MB and the app can run out of memory. Screenshots therefore live in
  * `drawable-nodpi`, which Android does not scale, and no screenshot may exceed 1080 pixels wide or 400 KB.
  *
- * The audit is a function of a resource directory, so each rule is proved on fixtures, and the real tree is then audited
- * with it. The four Samsung step drawables are placeholders (vector shapes, not bitmaps) until real screenshots replace
+ * The audit is a function of a resource directory, so each rule is proved on fixtures, and the real tree is then
+ * audited with it. The four Samsung step drawables are placeholders (vector shapes, not bitmaps) until real screenshots replace
  * them, so on the real tree today the audit finds no bitmap at all; the fixtures are what show it can find one.
  */
 class DrawableDensityTest {
@@ -118,8 +118,8 @@ class DrawableDensityTest {
         assertEquals(400 * 1024, DrawableAudit.MAX_BYTES)
     }
 
-    // The real tree. The four placeholders are in drawable-nodpi, where a screenshot will replace them, and no bitmap is
-    // anywhere a density would scale it or larger than a screenshot may be.
+    // The real tree. The four placeholders are in drawable-nodpi, where a screenshot will replace them, and no bitmap
+    // is anywhere a density would scale it or larger than a screenshot may be.
     @Test
     fun `the app's own drawables have no bitmap without a density qualifier and none too large`() {
         val real = File("src/main/res")
@@ -189,7 +189,8 @@ internal object DrawableAudit {
         bitmaps(res)
             .filterNot { (dir, _) -> hasDensity(dir) }
             .map { (dir, file) ->
-                "${dir.name}/${file.name}: a bitmap in a folder with no density qualifier is scaled by the screen's density"
+                "${dir.name}/${file.name}: a bitmap in a folder with no density qualifier " +
+                    "is scaled by the screen's density"
             }
 
     /** Bitmaps wider than [MAX_WIDTH] pixels or larger than [MAX_BYTES], and bitmaps that cannot be measured. */
