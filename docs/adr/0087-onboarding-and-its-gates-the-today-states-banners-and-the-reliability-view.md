@@ -1,7 +1,7 @@
 # 0087. Onboarding and its gates, the Today view's four states, the banners and the reliability view
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review. The obligations are the plan's (Phase 3 deliverables) and Phase 2's ADRs: 0050 (tiers, and the blocking state), 0064 (the Quiet notices channel), 0069 (the check she starts), 0070 and 0071 (the report and the banners), 0072 (the permission flows).
 

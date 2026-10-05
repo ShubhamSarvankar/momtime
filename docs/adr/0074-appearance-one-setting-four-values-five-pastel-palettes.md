@@ -1,7 +1,7 @@
 # 0074. Appearance: one setting, four values, five Pastel palettes, and one switcher
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D2, D2b). The storage keys, the state holder and the limit on the system starting window are the planning session's, for review.
 

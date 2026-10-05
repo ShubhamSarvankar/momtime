@@ -1,7 +1,7 @@
 # 0079. Template edits: one command, withdrawn occurrences, and criticality kept on the occurrence
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review. The constraints are Claude (technical review)'s, from the planning prompt (section 4 a): terminal occurrences untouched; the log append only; nothing counted as skipped or missed because of an edit; slots and ids never reused; the whole edit one transaction. It builds on ADR 0036 (atomic materialisation), ADR 0037 and ADR 0068 (terminal occurrences immutable in full; a zone change moves open occurrences in one transaction), ADR 0040 (adherence over the log), ADR 0053 (the count of fired rungs) and ADR 0066 (snooze). It changes shared schema version 5 to 6.
 

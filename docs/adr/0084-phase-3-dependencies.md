@@ -1,7 +1,7 @@
 # 0084. Phase 3 dependencies: what is asked for, and what stays declined
 
 Date: 2026-10-05
-Status: Proposed. **The list was approved by Shubham in the review of the first draft (2026-10-05), as written, together with Nunito, Noto Sans Devanagari and the 21 Material Symbols icons of ADR 0085.** Each artifact enters the build in the pull request that first uses it.
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review)). **The list was approved by Shubham in the review of the first draft (2026-10-05), as written, together with Nunito, Noto Sans Devanagari and the 21 Material Symbols icons of ADR 0085.** Each artifact enters the build in the pull request that first uses it.
 
 Decided by the Phase 3 planning session, for review. Versions were resolved live on 2026-10-05 from Google's Maven repository and Maven Central, and each "used in the spike" entry was built and run on Kotlin 2.4.20, AGP 9.4.1, Gradle 9.8.0 and compileSdk 36.
 

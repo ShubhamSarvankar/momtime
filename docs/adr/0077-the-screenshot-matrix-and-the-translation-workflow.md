@@ -1,7 +1,7 @@
 # 0077. The screenshot matrix, test only Devanagari fixtures, and the translation workflow
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D5, D9). The file format, the fixture mechanism and the recording rule are the planning session's, for review.
 

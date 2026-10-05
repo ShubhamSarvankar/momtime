@@ -1,7 +1,7 @@
 # 0086. The two reductions: nutrition tags are recorded with the completion, and water with the zone it was logged in
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review. It follows ADR 0040 (attribution, effect time, `asOf`, the outcome of an occurrence) and ADR 0052 (event columns are checked per event type), and it is part of shared schema version 6 (ADR 0079).
 

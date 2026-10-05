@@ -1,7 +1,7 @@
 # 0081. How screens observe data: a change signal from `shared`, reads on an executor, no ViewModel, no coroutines in android sources
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review. It builds on ADR 0049 and ADR 0051 (corruption in the middle of a query ends the process), ADR 0054 (the android store fails soft) and the Phase 2 pattern of a host interface and an executor per screen.
 

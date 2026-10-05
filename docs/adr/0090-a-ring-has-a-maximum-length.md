@@ -1,7 +1,7 @@
 # 0090. A ring has a maximum length, and the end of grace ends a ring
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the third review of the Phase 3 plan: the cap and its placeholder value, that it is a dismissal, where its clock starts, that the end of grace ends a ring, and its own pull request (PR 2b, on Fable). What happens to the notification and the ring screen, the evidence field, the change to "Stop the sound" and what a repeat spends were proposed by the planning session and **accepted by Claude (technical review) in the fourth review**, which also settled what "ringing" means for a continuation and asked for the note on the default budget. It builds on ADR 0061 (the ringer), ADR 0062 (the ring session), ADR 0065 (the ramp and the backup sound), ADR 0066 (dismissal is not completion) and ADR 0080 (per occurrence notifications).
 

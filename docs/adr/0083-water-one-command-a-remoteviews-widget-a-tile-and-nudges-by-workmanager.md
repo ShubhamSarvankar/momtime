@@ -1,7 +1,7 @@
 # 0083. Water: one command, a RemoteViews widget, a tile, and nudges by WorkManager only
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D8: a water nudge never arms an alarm; the widget and the tile write through a domain command only). The rest is the planning session's, for review.
 

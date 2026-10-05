@@ -1,7 +1,7 @@
 # 0088. Missions are not in Phase 3
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D7). The recommendation of an owning phase is the planning session's, for review.
 

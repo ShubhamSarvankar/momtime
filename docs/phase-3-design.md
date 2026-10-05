@@ -1,6 +1,6 @@
 # Phase 3 visual specification
 
-Status: draft, for review, in the Phase 3 planning pull request. Decisions here are recorded in ADR 0074 (appearance), ADR 0075 (colour roles and contrast), ADR 0076 (copy), ADR 0085 (fonts and icons) and ADR 0087 (onboarding, Today, banners).
+Status: accepted on 2026-10-05 in the review of PR #26 by Claude (technical review). Decisions here are recorded in ADR 0074 (appearance), ADR 0075 (colour roles and contrast), ADR 0076 (copy), ADR 0085 (fonts and icons) and ADR 0087 (onboarding, Today, banners).
 
 **Source.** The direction comes from a mockup made by an image generator before any engineering. The planning session read it for this revision (the first draft was written without it) and sampled its colours. Its look is intent; its content is unvetted. The mockup is not in the repo and must not be committed. An implementer never needs it: everything a screen needs is below, and anything not below is a design STOP, not a judgment call.
 

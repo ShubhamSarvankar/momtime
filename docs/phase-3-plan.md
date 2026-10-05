@@ -1,6 +1,6 @@
 # Phase 3 plan: Android UI and localisation
 
-Status: draft, for review, final revision (after four reviews by Claude (technical review): the mockup read, the dependency list and its sub modules approved, late marking added and made reachable, the fixes of the reviews, and two corrections of Phase 2 decided in the third: a Gentle reminder does not ring, and a ring has a maximum length). Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
+Status: accepted on 2026-10-05 in the review of PR #26 by Claude (technical review) (after four reviews: the mockup read, the dependency list and its sub modules approved, late marking added and made reachable, the fixes of the reviews, and two corrections of Phase 2 decided in the third: a Gentle reminder does not ring, and a ring has a maximum length). Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
 
 The visual specification is `docs/phase-3-design.md`. The evidence table is `docs/phase-3-traceability.md`.
 

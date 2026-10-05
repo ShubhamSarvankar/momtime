@@ -1,7 +1,7 @@
 # 0080. When several occurrences are due, each has its own notification with its own actions
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review. It completes ADR 0066, which put buttons only on a notification for one occurrence, and builds on ADR 0060 (the delivery paths), ADR 0062 (one ring session) and ADR 0064 (channels, and no per notification silence).
 

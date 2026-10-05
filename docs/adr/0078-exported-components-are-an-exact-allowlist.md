@@ -1,7 +1,7 @@
 # 0078. Exported components are an exact allowlist; "no receiver is exported" is scoped
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D10). The finding about library components is the planning session's.
 

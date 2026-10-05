@@ -1,7 +1,7 @@
 # 0075. Colour roles in one Kotlin model, drawn only as declared pairs; contrast is a test
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D3, and the one source requirement of its section 4 g) and in the review of the first draft (the ratio is compared unrounded; screens can only use declared pairs, enforced by a check and not by review). The role list, the mechanism and the colour values are the planning session's, for review. The lavender palette was revised against the mockup once it was read.
 

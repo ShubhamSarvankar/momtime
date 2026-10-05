@@ -1,7 +1,7 @@
 # 0085. Fonts: Nunito for Latin with the bundled Noto Sans Devanagari as its explicit fallback; icons copied in
 
 Date: 2026-10-05
-Status: Proposed. The two fonts and the 21 icons were approved by Shubham in the review of the first draft (2026-10-05), with licences and provenance recorded as below.
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review)). The two fonts and the 21 icons were approved by Shubham in the review of the first draft (2026-10-05), with licences and provenance recorded as below.
 
 Decided by the Phase 3 planning session, for review. `CLAUDE.md` fixes Noto Sans Devanagari as bundled and forbids relying on system font fallback.
 

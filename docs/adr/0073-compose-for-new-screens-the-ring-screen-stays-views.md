@@ -1,7 +1,7 @@
 # 0073. Compose for every new screen; the ring screen stays framework views
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by Claude (technical review) in the Phase 3 planning prompt (D1): Compose for new screens, the ring screen stays views. The porting decision for the permission, Samsung and reliability check screens, and the version pins, are the planning session's, for review. It resolves the Open items row "UI toolkit for Phase 3".
 

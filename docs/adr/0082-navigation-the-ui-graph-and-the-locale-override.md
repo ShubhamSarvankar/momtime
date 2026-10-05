@@ -1,7 +1,7 @@
 # 0082. Navigation by a small back stack, a UI graph instead of koin-android, and the locale override
 
 Date: 2026-10-05
-Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+Status: Accepted (2026-10-05, in the review of PR #26 by Claude (technical review))
 
 Decided by the Phase 3 planning session, for review.
 
