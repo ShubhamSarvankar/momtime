@@ -345,10 +345,16 @@ Numbers, measured at `0257611`: 209 `shared` tests (186 before PR 6b) and 807 an
 
 **Findings in their own right** (the review of PR #22 asked that a passing item that never tested its subject be flagged as a finding, not as background to another answer):
 
-- **Golden scenario 1 was counted among Phase 1's passing scenarios without being asserted.** Phase 1 has no template edit path at all, and scenario 1's test "edits" a template with `setActive` and never changes `timeOfDay`. That makes **three** golden scenarios counted without testing their subject: 5 (its second case), 8 (travel) and 1 (an edit that changes `timeOfDay`). Their per scenario status is in the plan's Outcome, which carries no count. Recorded in the plan under scenario 1 and in its Outcome, as a named Phase 3 exit criterion with the schedule builder's edit path (which must also decide what deactivating a template does to its open occurrences, which today keep ringing), and in `CLAUDE.md`'s precedent.
+- **Golden scenario 1 was counted among Phase 1's passing scenarios without being asserted.** Phase 1 has no template edit path at all, and scenario 1's test "edits" a template with `setActive` and never changes `timeOfDay`. That makes **three** golden scenarios counted without testing their subject: 5 (its second case), 8 (travel) and 1 (an edit that changes `timeOfDay`). Their per scenario status is in the plan's Outcome (copied below), which carries no count. Recorded in the plan under scenario 1 and in its Outcome, as a named Phase 3 exit criterion with the schedule builder's edit path (which must also decide what deactivating a template does to its open occurrences, which today keep ringing), and in `CLAUDE.md`'s precedent.
 - **The first draft of the zone change command had a race** (found in review): occurrences were moved and then the templates' zones updated with no transaction across the two, so a daily materialisation run between them read the old zone and inserted new dates at the wrong instants, which the idempotence guard then kept from being repaired. Fixed: one transaction (`Transactor`), with `TimeZoneRaceTest` holding the command on a latch.
 - **The schema let a terminal row's instant change.** The version 2 trigger refused only a change of state, and `reschedule` was the first path that changes instants. Schema version 5 closes it for every column.
 - **A mutation survived until the Android migration half was tested:** reverting `4.sqm` left the Android test green because its migrated database was only tested against a change of state. Fixed and recorded in the traceability file.
+
+**Golden scenarios, per scenario status as of PR 6b** (rebuilt from the traceability file, `MANUAL_CHECKS.md` and the test names; the plan's Outcome is the source):
+
+- Tested in `shared`: 2, 5, 6, 9, 10, 11, 12 (its interleaved edit is only an activation toggle), 13, 15, 16, 19.
+- Tested under Robolectric, device remainder in `MANUAL_CHECKS.md`: 3 (traceability E2; P2-5, P2-11, P2-13), 4 (B4, B5, R10; P2-23), 8 (E10; P2-30), 14 (E3; P2-28), 17 (E4; P2-13), 18 (R4, the watchdog repair; the force-stop half stays a device question, P2-1 and P2-2).
+- Owed by a named phase: 1 (Phase 3, with scenario 12's real interleaved edit), 7 (Phase 4).
 
 Other findings:
 
