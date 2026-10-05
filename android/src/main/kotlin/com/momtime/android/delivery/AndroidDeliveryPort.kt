@@ -169,6 +169,7 @@ internal class AndroidDeliveryPort(
             deliveryPath = path.name,
             ringerStarted = null,
             alarmStreamMuted = muted,
+            clockChanges = services.clockChanges.count(),
         )
     }
 
@@ -186,5 +187,6 @@ internal class DeliveryServices(
     val probes: PlatformProbes,
     val actions: OccurrenceActionCommand,
     val settings: AndroidSettings,
+    val clockChanges: com.momtime.android.store.ClockChangeRepository,
     val now: () -> Instant,
 )

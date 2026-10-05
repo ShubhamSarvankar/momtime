@@ -1,0 +1,43 @@
+-- The check she starts from the ring screen (ADR 0069): an alarm 60 seconds out that she watches. The history of the
+-- checks, so the reliability view can say how the last one went. Android's own: the tier is a platform capability
+-- difference (invariant 5, ADR 0048). The shared log carries the platform neutral result, CANARY_RESULT.
+CREATE TABLE reliability_check (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    scheduled_at INTEGER NOT NULL,
+    fired_at INTEGER,
+    outcome TEXT NOT NULL,
+    resolved_tier TEXT NOT NULL,
+
+    CHECK (outcome IN ('PENDING', 'FIRED', 'MISSED')),
+    CHECK (resolved_tier IN ('TIER_1', 'TIER_2', 'TIER_3')),
+    CHECK ((outcome = 'FIRED') = (fired_at IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX reliability_check_one_pending ON reliability_check(outcome) WHERE outcome = 'PENDING';
+
+insertPendingCheck:
+INSERT INTO reliability_check(scheduled_at, fired_at, outcome, resolved_tier) VALUES (?, NULL, 'PENDING', ?);
+
+lastInsertedCheckId:
+SELECT last_insert_rowid();
+
+selectPendingCheck:
+SELECT * FROM reliability_check WHERE outcome = 'PENDING';
+
+markCheckFired:
+UPDATE reliability_check SET outcome = 'FIRED', fired_at = ? WHERE id = ? AND outcome = 'PENDING';
+
+markCheckMissed:
+UPDATE reliability_check SET outcome = 'MISSED' WHERE id = ? AND outcome = 'PENDING';
+
+retierPendingCheck:
+UPDATE reliability_check SET resolved_tier = ? WHERE id = ? AND outcome = 'PENDING';
+
+abandonPendingCheck:
+DELETE FROM reliability_check WHERE id = ? AND outcome = 'PENDING';
+
+changedRows:
+SELECT changes();
+
+selectRecentChecks:
+SELECT * FROM reliability_check ORDER BY id DESC LIMIT ?;

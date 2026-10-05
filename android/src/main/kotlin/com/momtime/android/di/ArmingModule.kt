@@ -2,6 +2,7 @@ package com.momtime.android.di
 
 import android.app.AlarmManager
 import android.content.Context
+import android.os.Build
 import android.provider.Settings
 import com.momtime.android.arming.AlarmApi
 import com.momtime.android.arming.AlarmFireHandler
@@ -30,6 +31,11 @@ import com.momtime.android.delivery.PlatformRingerLauncher
 import com.momtime.android.delivery.RingController
 import com.momtime.android.delivery.RingDomain
 import com.momtime.android.delivery.RingerLauncher
+import com.momtime.android.reliability.CanaryRunner
+import com.momtime.android.reliability.DeviceInfo
+import com.momtime.android.reliability.ReliabilityController
+import com.momtime.android.reliability.ReliabilityHost
+import com.momtime.android.reliability.ReliabilityReader
 import com.momtime.android.ring.RingSessions
 import com.momtime.android.ringer.AlarmSound
 import com.momtime.android.ringer.AlarmVibration
@@ -41,6 +47,10 @@ import com.momtime.android.ringer.SoundPlayers
 import com.momtime.android.ringer.SoundScheduler
 import com.momtime.android.ringer.VolumeRamp
 import com.momtime.android.settings.AndroidSettings
+import com.momtime.android.store.ClockChangeRepository
+import com.momtime.android.store.CountingStoreFailures
+import com.momtime.android.store.ReliabilityCheckRepository
+import com.momtime.android.store.StoreFailures
 import com.momtime.android.work.MaterialisationPass
 import com.momtime.android.work.Pass
 import com.momtime.android.work.TimeZonePass
@@ -54,6 +64,7 @@ import com.momtime.shared.domain.AlarmScheduler
 import kotlinx.datetime.TimeZone
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import java.io.File
 import java.util.UUID
 
 /**
@@ -69,6 +80,24 @@ internal fun platformBootCount(context: Context) =
     BootCount {
         Settings.Global.getLong(context.contentResolver, Settings.Global.BOOT_COUNT, BootCount.UNKNOWN)
     }
+
+/** How many of the checks' history the report reads. */
+private const val RECENT_CHECKS = 10
+
+/** The build and the phone model, as the platform names them (ADR 0070). */
+internal fun deviceInfo(
+    context: Context,
+    appVersion: AppVersion,
+): DeviceInfo =
+    DeviceInfo(
+        model = Build.MODEL,
+        sdk = Build.VERSION.SDK_INT,
+        versionName =
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull().orEmpty(),
+        versionCode = appVersion.versionCode(),
+    )
 
 /**
  * What a test may replace in delivery. In production [enabled] is true and everything else is the platform's;
@@ -94,7 +123,7 @@ internal class DeliveryWiring(
  * run. The alarm API, the boot count, the alarm probe, the app version and, through [DeliveryWiring], the ringer,
  * the overlay, the sound and the zone are replaceable by tests, and nothing else here is.
  */
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "LongMethod")
 internal fun armingModule(
     context: Context,
     alarmApi: AlarmApi? = null,
@@ -131,7 +160,7 @@ internal fun armingModule(
         single<OverlayLauncher> { delivery.overlay ?: PlatformOverlayLauncher(context) }
         single { RingDomain(get(), get(), get(), get()) { get<AlarmLog>().now() } }
         single { RingController(context, get(), get(), get(), get(), get(), get()) }
-        single { DeliveryServices(get(), get(), get(), get(), get(), get()) { get<AlarmLog>().now() } }
+        single { DeliveryServices(get(), get(), get(), get(), get(), get(), get()) { get<AlarmLog>().now() } }
         single<DeliveryPort> {
             if (delivery.enabled) {
                 AndroidDeliveryPort(context, get(), get(), get(), get(), get())
@@ -144,12 +173,34 @@ internal fun armingModule(
         single { ArmCandidates(get(), get(), get(), get()) }
         single { AlarmLog(get(), get(), newId) }
         single { PlatformProbes(probe, bootCount, appVersion) }
-        single { ArmingCoordinator(get(), get(), get(), get(), get(), get()) }
+        single { ArmingCoordinator(get(), get(), get(), get(), get(), get(), get(), get()) }
         single { AlarmFireHandler(get(), get(), get(), get(), get(), get()) }
         single { ReconcileCommand(get(), get(), get(), newId) }
         single { MaterialiseCommand(get(), get(), newId) }
         single { Watchdog(get(), get(), get(), get(), get(), get()) }
         single { AppStart(get(), get(), get()) }
+        single { CanaryRunner(context, get(), get(), get(), get(), get(), get(), newId) }
+        single {
+            ReliabilityReader(
+                occurrences = get(),
+                templates = get(),
+                events = get(),
+                telemetry = get(),
+                contexts = get(),
+                clockChanges = get(),
+                bootCount = bootCount,
+                checks = { get<ReliabilityCheckRepository>().recent(RECENT_CHECKS) },
+                failureCounts = { (get<StoreFailures>() as? CountingStoreFailures)?.counts().orEmpty() },
+                corruption = {
+                    listOf(DatabaseFiles.CORRUPTION_MARKER_NAME, DatabaseFiles.STORE_CORRUPTION_MARKER_NAME)
+                        .firstNotNullOfOrNull { CorruptionMarker.read(File(context.noBackupFilesDir, it)) }
+                },
+                capability = { get<CapabilityResolver>().also { it.resolve() }.inputs },
+            )
+        }
+        single<ReliabilityHost> {
+            ReliabilityController(get(), get(), get(), deviceInfo(context, appVersion), get())
+        }
         single<DeviceZone> { DeviceZone(delivery.zone) }
         single { TimeZoneChangeCommand(get(), get(), get()) }
         single { TimeZonePass(get(), get(), get(), get(), get(), get()) }
@@ -159,6 +210,7 @@ internal fun armingModule(
                 MaterialisationPass(get(), get()) { get<AlarmLog>().now() },
                 system = Pass { get<AppStart>().run() },
                 timezone = get<TimeZonePass>(),
+                clockChanged = Pass { get<ClockChangeRepository>().record(get<AlarmLog>().now()) },
             )
         }
     }

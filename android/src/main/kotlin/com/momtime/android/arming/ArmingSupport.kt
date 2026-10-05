@@ -48,7 +48,12 @@ internal class AlarmLog(
 ) {
     fun now(): Instant = clock.now()
 
-    fun scheduled(occurrenceId: String) = events.insert(AlarmEvents.scheduled(newId(), occurrenceId, clock.now()))
+    /** Appends `ALARM_SCHEDULED` and returns the id of the event, which the arming context is keyed by (ADR 0070). */
+    fun scheduled(occurrenceId: String): String {
+        val id = newId()
+        events.insert(AlarmEvents.scheduled(id, occurrenceId, clock.now()))
+        return id
+    }
 
     /** Appends `ALARM_FIRED` and returns the id of the event, which the device telemetry row is keyed by. */
     fun fired(occurrenceId: String): String {

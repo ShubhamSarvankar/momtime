@@ -35,4 +35,19 @@ class AlarmEventsTest {
             AlarmEvents.snoozeEnded("e4", "occ", now),
         )
     }
+
+    // The check she starts (ADR 0069) belongs to no occurrence, changes no state, and carries only its two instants.
+    @Test
+    fun `a canary result is a system event of no occurrence with its two instants`() {
+        val due = Instant.fromEpochMilliseconds(1_699_999_940_000)
+        assertEquals(
+            Event("e5", null, EventType.CANARY_RESULT, now, null, EventSource.SYSTEM, EventPayload.Canary(due, now)),
+            AlarmEvents.canaryResult("e5", due, now, now),
+        )
+        // A check that never fired has no actual instant.
+        assertEquals(
+            EventPayload.Canary(due, null),
+            AlarmEvents.canaryResult("e6", due, null, now).payload,
+        )
+    }
 }

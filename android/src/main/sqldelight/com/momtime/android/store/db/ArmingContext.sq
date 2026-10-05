@@ -1,0 +1,16 @@
+-- What the device said when a rung was armed, keyed by the id of the shared ALARM_SCHEDULED event that recorded it.
+-- Android's own (invariant 5): the boot count and the clock change count are facts about this device. A fire is
+-- left out of the drift figures when either differs from what it was at arming (ADR 0070). No foreign key across
+-- the two database files; a row may outlive or precede its event.
+CREATE TABLE arming_context (
+    event_id TEXT NOT NULL PRIMARY KEY,
+    rung_instant INTEGER NOT NULL,
+    boot_count INTEGER NOT NULL,
+    clock_changes INTEGER NOT NULL
+);
+
+insertArmingContext:
+INSERT OR REPLACE INTO arming_context(event_id, rung_instant, boot_count, clock_changes) VALUES (?, ?, ?, ?);
+
+selectArmingContext:
+SELECT * FROM arming_context WHERE event_id = ?;

@@ -3,6 +3,9 @@ package com.momtime.android.arming
 import com.momtime.android.capability.DeliveryMechanism
 import com.momtime.android.store.ArmedAlarm
 import com.momtime.android.store.ArmedAlarmRepository
+import com.momtime.android.store.ArmingContext
+import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.ClockChangeRepository
 import com.momtime.shared.domain.AlarmScheduler
 import com.momtime.shared.domain.Channel
 import com.momtime.shared.engine.ArmingSelection
@@ -10,6 +13,9 @@ import com.momtime.shared.engine.RungSelection
 
 /** The channels this device delivers (decision 14). The rungs of every other channel are the server's. */
 internal val DEVICE_CHANNELS: Set<Channel> = setOf(Channel.RING, Channel.RING_REPEAT)
+
+/** The count recorded when the store could not say how many times the clock has been set. */
+internal const val UNKNOWN_CLOCK_CHANGES = -1L
 
 /** What one "ensure armed" pass did. */
 sealed interface EnsureResult {
@@ -45,6 +51,7 @@ sealed interface EnsureResult {
  * `ALARM_SCHEDULED` is appended when a rung is first armed or the expected rung changes, and never on a
  * refresh (decision 6). Neither it nor anything here changes an occurrence's state (invariant 3).
  */
+@Suppress("LongParameterList")
 class ArmingCoordinator internal constructor(
     private val candidates: ArmCandidates,
     private val log: AlarmLog,
@@ -52,6 +59,8 @@ class ArmingCoordinator internal constructor(
     private val armed: ArmedAlarmRepository,
     private val resolver: CapabilityResolver,
     private val probes: PlatformProbes,
+    private val contexts: ArmingContextRepository,
+    private val clockChanges: ClockChangeRepository,
 ) {
     /**
      * The rung the domain says is next: what the armed alarm should be. The watchdog compares what it
@@ -85,7 +94,20 @@ class ArmingCoordinator internal constructor(
             previous == null ||
                 previous.alarmSlot != selection.alarmSlot ||
                 previous.rungInstant != selection.rung.instant
-        if (changed) log.scheduled(selection.occurrenceId)
+        if (changed) {
+            val eventId = log.scheduled(selection.occurrenceId)
+            // What the device said when this rung was armed, for the drift figures to compare a fire with (ADR 0070).
+            // An unknown clock change count is recorded as -1, which no later count equals, so the fire is not
+            // vouched for.
+            contexts.record(
+                ArmingContext(
+                    eventId,
+                    selection.rung.instant,
+                    probes.bootCount.read(),
+                    clockChanges.count() ?: UNKNOWN_CLOCK_CHANGES,
+                ),
+            )
+        }
         val mechanism = resolver.current.mechanism
         armed.replace(
             ArmedAlarm(

@@ -1,0 +1,12 @@
+-- One row for each time the clock was set. Only the count matters to drift: a fire whose arming saw a different
+-- count had the clock moved under it (ADR 0070). Not a log of what the clock was.
+CREATE TABLE clock_change (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    changed_at INTEGER NOT NULL
+);
+
+insertClockChange:
+INSERT INTO clock_change(changed_at) VALUES (?);
+
+countClockChanges:
+SELECT COUNT(*) FROM clock_change;

@@ -50,6 +50,27 @@ object AlarmEvents {
         now: Instant,
     ): Event = systemEvent(id, occurrenceId, EventType.WATCHDOG_REPAIR, now)
 
+    /**
+     * The result of the check she started (ADR 0069): when it was due, and when it was seen to fire, or null if it
+     * was not. It belongs to no occurrence and changes no state. Both instants are platform neutral facts about this
+     * event; how the device delivered it is kept by android (invariant 5, ADR 0048).
+     */
+    fun canaryResult(
+        id: String,
+        scheduledAt: Instant,
+        actualAt: Instant?,
+        now: Instant,
+    ): Event =
+        Event(
+            id = id,
+            occurrenceId = null,
+            eventType = EventType.CANARY_RESULT,
+            deviceTimestamp = now,
+            effectiveAt = null,
+            source = EventSource.SYSTEM,
+            payload = EventPayload.Canary(scheduledAt, actualAt),
+        )
+
     private fun systemEvent(
         id: String,
         occurrenceId: String,

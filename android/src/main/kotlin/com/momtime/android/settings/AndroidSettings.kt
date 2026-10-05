@@ -67,6 +67,17 @@ class AndroidSettings(
         edit.apply()
     }
 
+    /**
+     * Whether she has agreed to share how reliably reminders arrive on this phone (ARCHITECTURE.md section 5.10).
+     * Off by default. It gates upload and nothing else: v1 has no upload, and what is recorded on the device is the
+     * same either way (ADR 0070).
+     */
+    fun shareReliabilityOptIn(): Boolean = prefs.getBoolean(KEY_RELIABILITY_OPT_IN, false)
+
+    fun setShareReliabilityOptIn(value: Boolean) {
+        prefs.edit().putBoolean(KEY_RELIABILITY_OPT_IN, value).apply()
+    }
+
     private fun vibrationKey(templateId: String) = "$KEY_VIBRATION_PREFIX$templateId"
 
     companion object {
@@ -81,5 +92,6 @@ class AndroidSettings(
 
         private const val KEY_BACKUP_DELAY_MS = "backup_sound_delay_ms"
         private const val KEY_VIBRATION_PREFIX = "vibration."
+        private const val KEY_RELIABILITY_OPT_IN = "share_reliability_opt_in"
     }
 }

@@ -98,6 +98,22 @@
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Material.NoActionBar" />
 
+        <!--
+            The reliability check (ADR 0069). Neither is exported. The receiver is reached only by the explicit,
+            immutable PendingIntent the runner armed (its own action, component and request code 0), and the screen by
+            the ring screen and the alarm clock's show intent. A Robolectric test reads the merged manifest and fails if
+            either is exported.
+        -->
+        <receiver
+            android:name=".reliability.CheckReceiver"
+            android:exported="false" />
+
+        <activity
+            android:name=".reliability.ReliabilityCheckActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <!-- The ringer (ADR 0061). Not exported. A foreground service of type mediaPlayback, never started by boot. -->
         <service
             android:name=".ringer.RingerService"

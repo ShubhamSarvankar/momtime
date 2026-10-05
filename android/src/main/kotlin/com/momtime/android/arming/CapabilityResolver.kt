@@ -13,7 +13,10 @@ import com.momtime.android.capability.resolveDelivery
 class CapabilityResolver(
     private val reader: PlatformCapabilityReader,
 ) {
-    private var inputs: CapabilityInputs = reader.read()
+    /** What the last [resolve] read, so a banner can name the input that is missing (ADR 0070). */
+    @Volatile
+    var inputs: CapabilityInputs = reader.read()
+        private set
 
     @Volatile
     var current: DeliveryResolution = resolveDelivery(inputs)

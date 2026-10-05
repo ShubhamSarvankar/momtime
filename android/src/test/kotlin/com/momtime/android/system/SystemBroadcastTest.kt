@@ -18,6 +18,8 @@ import com.momtime.android.delivery.DeliveryFixture
 import com.momtime.android.delivery.NotificationChannels
 import com.momtime.android.delivery.finished
 import com.momtime.android.delivery.withPendingResult
+import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.work.Work
 import com.momtime.android.work.WorkEntryPoint
 import com.momtime.shared.domain.Criticality
@@ -396,5 +398,41 @@ class SystemBroadcastTest {
 
     private companion object {
         const val MAX_FIRES = 8
+    }
+
+    // --- the clock change count (ADR 0070)
+
+    @Test
+    fun `a clock change is counted and a boot or a zone change is not`() {
+        val clock = f.arming.graph.get<ClockChangeRepository>()
+        assertEquals(0L, clock.count())
+
+        broadcast(Intent.ACTION_TIME_CHANGED)
+        assertEquals(1L, clock.count())
+
+        broadcast(Intent.ACTION_BOOT_COMPLETED)
+        broadcast(Intent.ACTION_TIMEZONE_CHANGED)
+        assertEquals("only a clock change moves the clock under an armed alarm", 1L, clock.count())
+
+        broadcast(Intent.ACTION_TIME_CHANGED)
+        assertEquals(2L, clock.count())
+    }
+
+    // The count is taken before the pass that follows, so a rung the pass arms records the count after the change.
+    @Test
+    fun `the clock change is counted before the pass arms, so the arming records it`() {
+        f.arming.seed("a", Criticality.STANDARD, t0 + 1.hours, slot = 31)
+        assertEquals("nothing is armed yet", 0, f.arming.alarms().size)
+
+        broadcast(Intent.ACTION_TIME_CHANGED)
+
+        val scheduled = f.arming.eventsOf("a", EventType.ALARM_SCHEDULED).single()
+        assertEquals(
+            1L,
+            f.arming.graph
+                .get<ArmingContextRepository>()
+                .find(scheduled.id)
+                ?.clockChanges,
+        )
     }
 }

@@ -155,7 +155,7 @@ The critical path. Built and verified on the JVM via Robolectric. Device verific
 - Audio: `USAGE_ALARM`, `CATEGORY_ALARM`, `.wav` assets under 30 seconds, volume ramp, backup louder sound after an unacknowledged interval.
 - Notification channels split by criticality.
 - Per template vibration patterns.
-- Canary: onboarding 60 second test, daily silent canary, per fire telemetry recording scheduled versus actual, tier, screen on, audio focus, battery and Doze state. The tier and the state of the device are kept in the android store, not in the shared schema (ADR 0048); the shared log carries only platform neutral facts, the canary instants among them.
+- Reliability evidence: per fire telemetry recording scheduled versus actual, tier, screen on, audio focus, battery and Doze state, and the check she starts (a 60 second test alarm she watches, launched from the ring screen's idle state in Phase 2 and as an onboarding step in Phase 3). The tier and the state of the device are kept in the android store, not in the shared schema (ADR 0048); the shared log carries only platform neutral facts, the check's result among them. **The daily silent canary is removed from this deliverable, by Claude (technical review) in the review of the PR 7 design report: real fires are the measurement and days with no fire are unobserved (ADR 0069). The one alarm invariant is narrowed to reminders, with the check she starts as the only permitted second alarm.**
 - Local telemetry storage, in app reliability view, export. No upload yet.
 - Samsung One UI onboarding walkthrough: battery optimisation, Sleeping apps, Deep sleeping apps, Put unused apps to sleep, with deep link attempts and screenshot fallbacks.
 - Koin graph that exposes repositories only, never `MomTimeDatabase` or any generated `*Queries` type. The generated `updateOccurrenceState` query is reachable through `database.occurrenceQueries`; the terminal trigger (ADR 0037) guards terminal states, but a non terminal state change through that query would skip the event append, so no `android` code may be able to reach it.
@@ -296,7 +296,7 @@ Six things cannot be proven without real hardware and real time. These are the o
 
 ### Making them passive
 
-The canary from Phase 2 already records the evidence for items 1 through 5 during normal use. So the device check is reading a report, not performing a procedure. The app is the test harness.
+The real fires the app records from Phase 2 (and the check she starts) already record the evidence for items 1 through 5 during normal use, on days when a reminder fired. So the device check is reading a report, not performing a procedure. The app is the test harness.
 
 **Deliverables**
 
@@ -305,7 +305,7 @@ The canary from Phase 2 already records the evidence for items 1 through 5 durin
 - Firebase Test Lab runs of the same instrumented suite across a physical device matrix including Pixel, Samsung and Xiaomi models, driven from `gcloud` in CI. Known limits: per test time limits preclude multi hour soaks, and devices arrive clean so OEM battery managers are not in hostile configuration.
 - Soak script for the Galaxy A15: one command that installs, seeds a schedule, starts a soak, and pulls a report. Involvement is plugging in a cable and running one command, then reading output a day later.
 - `docs/MANUAL_CHECKS.md` completed, with recorded results and dates.
-- Reliability report from real canary data on the A15.
+- Reliability report from real fire data on the A15, including a reminder after the low use period.
 
 **Exit criteria.** Emulator suite green in CI. Test Lab suite green across the matrix. A minimum 72 hour A15 soak with delivery inside SLO. All six ceiling items recorded as checked with results.
 
@@ -356,6 +356,6 @@ Permanently excluded: AI or LLM features, nutrient quantity calculations, dose c
 | 5. Firebase Test Lab | CI | Real hardware across OEMs, clean state. |
 | 6. A15 soak, automated | One command, read later | Real Doze cadence, real timing drift, One UI sleeping apps, audio, screen on. |
 
-Layers 1 through 5 are fully automated and verifiable without human time. Layer 6 is a script plus reading a report. The six ceiling items are the only genuinely manual surface, and the canary converts most of them into telemetry.
+Layers 1 through 5 are fully automated and verifiable without human time. Layer 6 is a script plus reading a report. The six ceiling items are the only genuinely manual surface, and real fires convert most of them into telemetry.
 
 The standard to aim at is that a device run confirms what the automated suites already proved, rather than discovering new bugs. That is reachable for roughly the whole surface except the six enumerated items, which is why they are enumerated rather than waved at.

@@ -10,6 +10,10 @@ import com.momtime.android.delivery.NotificationActionEntryPoint
 import com.momtime.android.delivery.NotificationChannels
 import com.momtime.android.delivery.RingController
 import com.momtime.android.di.momTimeModules
+import com.momtime.android.reliability.CanaryRunner
+import com.momtime.android.reliability.CheckEntryPoint
+import com.momtime.android.reliability.ReliabilityEntryPoint
+import com.momtime.android.reliability.ReliabilityHost
 import com.momtime.android.ring.RingEntryPoint
 import com.momtime.android.ringer.RingerEntryPoint
 import com.momtime.android.work.Work
@@ -37,6 +41,8 @@ open class MomTimeApplication : Application() {
         RingEntryPoint.provider = { controller }
         RingerEntryPoint.provider = { controller }
         NotificationActionEntryPoint.provider = { controller }
+        CheckEntryPoint.provider = { koin.get<CanaryRunner>() }
+        ReliabilityEntryPoint.provider = { koin.get<ReliabilityHost>() }
         WorkEntryPoint.provider = { koin.get<WorkPasses>() }
         startWork()
         AlarmReceiver.executor.execute {

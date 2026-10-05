@@ -1,0 +1,17 @@
+-- How often each store operation has failed (ADR 0054, ADR 0070). Kept across restarts: a count held in memory is
+-- gone when the process that saw the failures ends, which is exactly when a store that fails every time needs to
+-- stay visible. The operation is a repository call's name, never a value (invariant 11).
+CREATE TABLE store_failure (
+    operation TEXT NOT NULL PRIMARY KEY,
+    failures INTEGER NOT NULL CHECK (failures >= 0)
+);
+
+-- Two statements and not an upsert: `ON CONFLICT ... DO UPDATE` needs SQLite 3.24, the floor is 3.22 (ADR 0042).
+ensureFailureRow:
+INSERT OR IGNORE INTO store_failure(operation, failures) VALUES (?, 0);
+
+bumpFailure:
+UPDATE store_failure SET failures = failures + 1 WHERE operation = ?;
+
+selectFailureCounts:
+SELECT * FROM store_failure;
