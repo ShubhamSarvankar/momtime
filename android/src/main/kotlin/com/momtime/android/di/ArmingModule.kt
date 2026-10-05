@@ -160,7 +160,7 @@ internal fun armingModule(
                 ) { get<AndroidSettings>().backupSoundDelay() }
         }
         single<AlarmVibration> { delivery.vibration ?: PlatformVibration(context) }
-        single { OccurrenceActionCommand(get(), get(), get(), newId) }
+        single { OccurrenceActionCommand(get(), get(), get(), get(), get(), newId) }
         single<RingerLauncher> { delivery.ringer ?: PlatformRingerLauncher(context) }
         single<OverlayLauncher> { delivery.overlay ?: PlatformOverlayLauncher(context) }
         single { RingDomain(get(), get(), get(), get()) { get<AlarmLog>().now() } }

@@ -15,6 +15,7 @@ import com.momtime.shared.domain.PregnancyPhase
 import com.momtime.shared.domain.Recurrence
 import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.domain.TaskType
+import com.momtime.shared.engine.EventLogReduction
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
@@ -87,7 +88,8 @@ class CommandsTest {
         slot: Int,
         state: OccurrenceState = OccurrenceState.PENDING,
         day: Int = 1,
-    ) = Occurrence(id, templateId, LocalDate(2026, 3, day), scheduled, zone, state, slot)
+        criticality: Criticality = Criticality.CRITICAL,
+    ) = Occurrence(id, templateId, LocalDate(2026, 3, day), scheduled, zone, state, slot, criticality)
 
     private fun event(
         id: String,
@@ -102,7 +104,7 @@ class CommandsTest {
         slot: Int = 1,
     ) {
         templates.insert(template("t-$id", criticality))
-        occurrences.insert(occurrence(id, "t-$id", slot, state))
+        occurrences.insert(occurrence(id, "t-$id", slot, state, criticality = criticality))
     }
 
     @Test
@@ -170,6 +172,71 @@ class CommandsTest {
         seed("s", state = OccurrenceState.SNOOZED, slot = 2)
         seed("c", state = OccurrenceState.COMPLETED, slot = 3)
         assertEquals(setOf("p", "s"), occurrences.findOpen().map { it.id }.toSet())
+    }
+
+    /** Withdraws [id] as the edit command will: its WITHDRAWN event and its state, in one transition. */
+    private fun withdraw(id: String) =
+        occurrences.transition(
+            id,
+            OccurrenceState.WITHDRAWN,
+            Event("withdrawn-$id", id, EventType.WITHDRAWN, scheduled, null, EventSource.USER, EventPayload.None),
+        )
+
+    // The query, on its own (ADR 0079): a withdrawn occurrence is not open, so Reconcile never reads it.
+    @Test
+    fun `findOpen never returns a withdrawn occurrence`() {
+        seed("p", slot = 1)
+        seed("s", state = OccurrenceState.SNOOZED, slot = 2)
+        seed("w", slot = 3)
+        withdraw("w")
+        seed("w2", state = OccurrenceState.WITHDRAWN, slot = 4)
+
+        assertEquals(listOf("p", "s"), occurrences.findOpen().map { it.id }.sorted())
+    }
+
+    // The event level record, on its own: the row still says PENDING (a divergent row), and the WITHDRAWN event
+    // in its log is what closes it. Reconcile leaves it alone, as it does for the other four closing events.
+    @Test
+    fun `an occurrence with a withdrawal event is not reconciled`() {
+        seed("a")
+        events.insert(event("gone", "a", EventType.WITHDRAWN))
+
+        assertEquals(0, reconcile.dispatch(scheduled + 5.hours))
+
+        assertEquals(OccurrenceState.PENDING, occurrences.findById("a")?.state)
+        assertTrue(events.findByOccurrenceAndType("a", EventType.MISSED).isEmpty())
+    }
+
+    // A withdrawn occurrence (its event and state written here, as no writer exists yet) beside one completed, one
+    // skipped and one missed. Reconcile is then dispatched a day after the withdrawn occurrence's grace has ended:
+    // the step that would write MISSED for it if anything still treated it as open. The figures are read after.
+    @Test
+    fun `a withdrawn occurrence is in none of the three figures, even after its grace`() {
+        seed("w", slot = 1)
+        seed("c", slot = 2)
+        seed("s", slot = 3)
+        seed("m", slot = 4)
+        withdraw("w")
+        occurrences.transition("c", OccurrenceState.COMPLETED, event("done", "c", EventType.COMPLETED))
+        occurrences.transition("s", OccurrenceState.SKIPPED, event("skip", "s", EventType.SKIPPED))
+        assertEquals(1, reconcile.dispatch(scheduled + 2.hours), "only the untouched occurrence is missed")
+        assertEquals(OccurrenceState.MISSED, occurrences.findById("m")?.state)
+
+        val dayAfterGrace = scheduled + 2.hours + 24.hours
+        assertEquals(0, reconcile.dispatch(dayAfterGrace))
+
+        assertTrue(events.findByOccurrenceAndType("w", EventType.MISSED).isEmpty(), "no MISSED for the withdrawn one")
+        assertEquals(listOf(EventType.WITHDRAWN), events.findForOccurrence("w").map { it.eventType })
+        assertEquals(OccurrenceState.WITHDRAWN, occurrences.findById("w")?.state)
+        val all = listOf("w", "c", "s", "m")
+        assertEquals(
+            EventLogReduction.AdherenceFigures(completed = 1, missed = 1, skipped = 1),
+            EventLogReduction.adherenceFigures(
+                all.map { checkNotNull(occurrences.findById(it)) },
+                all.flatMap { events.findForOccurrence(it) },
+                asOf = dayAfterGrace,
+            ),
+        )
     }
 
     @Test

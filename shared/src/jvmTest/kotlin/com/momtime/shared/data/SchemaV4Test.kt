@@ -118,6 +118,9 @@ class SchemaV4Test {
             ).value
 
     private fun assertV4(driver: SqlDriver) {
+        // The repository decodes the current schema, so the database is taken the rest of the way first, as
+        // SchemaV3Test does; what is asserted below is what version 4 did.
+        migrate(driver, 4, MomTimeDatabase.Schema.version)
         val events = SqlDelightEventRepository(MomTimeDatabase(driver))
         assertTrue("snoozed_until" in columns(driver), "the column must exist")
         assertEquals(

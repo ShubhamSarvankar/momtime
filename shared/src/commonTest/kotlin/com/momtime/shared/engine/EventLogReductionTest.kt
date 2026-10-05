@@ -37,6 +37,7 @@ class EventLogReductionTest {
         timeZoneId = zone,
         state = state,
         alarmSlot = 1,
+        criticality = Criticality.CRITICAL,
     )
 
     private fun event(
@@ -103,6 +104,33 @@ class EventLogReductionTest {
         assertEquals(
             EventLogReduction.AdherenceFigures(completed = 2, missed = 1, skipped = 1),
             figures(listOf(a, b, c, d, e), events),
+        )
+    }
+
+    // The pure half of the test of the same name in CommandsTest: a WITHDRAWN event is not an outcome (ADR 0079),
+    // so a withdrawn occurrence is in none of the three figures, at the withdrawal and a day after its grace alike.
+    @Test
+    fun `a withdrawn occurrence is in none of the three figures, even after its grace`() {
+        val withdrawn = occ(state = OccurrenceState.WITHDRAWN)
+        val done = occ(state = OccurrenceState.COMPLETED)
+        val skipped = occ(state = OccurrenceState.SKIPPED)
+        val missed = occ()
+        val events =
+            listOf(
+                event(withdrawn, EventType.WITHDRAWN, base),
+                event(done, EventType.COMPLETED, base),
+                event(skipped, EventType.SKIPPED, base),
+                missed(missed, Criticality.CRITICAL, base + 3.hours),
+            )
+        val all = listOf(withdrawn, done, skipped, missed)
+        val dayAfterGrace = base + 2.hours + 1.days
+        val expected = EventLogReduction.AdherenceFigures(completed = 1, missed = 1, skipped = 1)
+        assertEquals(expected, figures(all, events, asOf = dayAfterGrace))
+        assertEquals(expected, figures(all, events))
+        assertEquals(
+            EventLogReduction.AdherenceFigures(completed = 0, missed = 0, skipped = 0),
+            figures(listOf(withdrawn), events),
+            "the withdrawn occurrence alone counts nothing",
         )
     }
 

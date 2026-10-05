@@ -4,7 +4,9 @@ import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
+import com.momtime.shared.domain.NutritionTag
 import com.momtime.shared.domain.OccurrenceState
+import com.momtime.shared.domain.isTerminal
 import kotlin.time.Duration
 import kotlin.time.Instant
 
@@ -15,7 +17,8 @@ enum class OccurrenceAction { ACKNOWLEDGE, SNOOZE, SKIP }
  * The rules of her three actions and the shape of the events they write, decided once here so that no platform
  * gives them another (invariant 3, invariant 5). Pure: it reads no clock and touches no store.
  *
- * Acknowledge writes `COMPLETED` and skip writes `SKIPPED`, each by the user and with no payload. Snooze writes
+ * Acknowledge writes `COMPLETED` carrying the nutrition tags its template has then (ADR 0086), and skip writes
+ * `SKIPPED` with no payload, each by the user. Snooze writes
  * `SNOOZED` carrying its number (the first is 1). None of them is written by stopping a sound or by dismissing a
  * notification: dismissing the alert is not completion (ARCHITECTURE.md section 4.6).
  *
@@ -38,9 +41,7 @@ object OccurrenceActions {
         snoozeDuration: Duration,
         nextOccurrenceOfSameTemplate: Instant?,
     ): Set<OccurrenceAction> {
-        if (state == OccurrenceState.COMPLETED || state == OccurrenceState.SKIPPED || state == OccurrenceState.MISSED) {
-            return emptySet()
-        }
+        if (state.isTerminal) return emptySet()
         val canSnooze =
             SnoozePolicy.snoozedUntil(now, snoozeDuration, snoozeCount, nextOccurrenceOfSameTemplate) != null
         return if (canSnooze) {
@@ -72,7 +73,8 @@ object OccurrenceActions {
         id: String,
         occurrenceId: String,
         now: Instant,
-    ): Event = userEvent(id, occurrenceId, EventType.COMPLETED, now, EventPayload.None)
+        nutritionTags: Set<NutritionTag>,
+    ): Event = userEvent(id, occurrenceId, EventType.COMPLETED, now, EventPayload.Completion(nutritionTags))
 
     fun skipped(
         id: String,

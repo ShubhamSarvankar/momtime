@@ -28,7 +28,8 @@ sealed interface ActionResult {
  * occurrence's state.
  *
  * Each action writes exactly its own event and the state change that goes with it, in one transaction
- * ([OccurrenceRepository.transition]), and nothing else: acknowledge is `COMPLETED` and the state `COMPLETED`;
+ * ([OccurrenceRepository.transition]), and nothing else: acknowledge is `COMPLETED`, carrying the nutrition tags the
+ * template has at that moment, read inside the same transaction (ADR 0086), and the state `COMPLETED`;
  * skip is `SKIPPED` and the state `SKIPPED`; snooze is `SNOOZED` carrying its number and the state `SNOOZED`.
  * Whether an action is available is [OccurrenceActions.available], which asks `SnoozePolicy` for the cap and
  * for the next occurrence of the same template. An action that is not available is refused with
@@ -43,6 +44,8 @@ class OccurrenceActionCommand(
     private val occurrences: OccurrenceRepository,
     private val events: EventRepository,
     private val settings: AppSettingsRepository,
+    private val templates: ScheduleTemplateRepository,
+    private val transactor: Transactor,
     private val newId: () -> String,
 ) {
     /** The actions she may take on [occurrenceId] at [now]. Empty if it is terminal or does not exist. */
@@ -55,26 +58,33 @@ class OccurrenceActionCommand(
         occurrenceId: String,
         action: OccurrenceAction,
         now: Instant,
-    ): ActionResult {
-        val occurrence = occurrences.findById(occurrenceId) ?: return ActionResult.UnknownOccurrence
-        if (action !in available(occurrence, now)) return ActionResult.NotAvailable
-        when (action) {
-            OccurrenceAction.ACKNOWLEDGE ->
-                occurrences.transition(
-                    occurrenceId,
-                    OccurrenceState.COMPLETED,
-                    OccurrenceActions.acknowledged(newId(), occurrenceId, now),
-                )
-            OccurrenceAction.SKIP ->
-                occurrences.transition(
-                    occurrenceId,
-                    OccurrenceState.SKIPPED,
-                    OccurrenceActions.skipped(newId(), occurrenceId, now),
-                )
-            OccurrenceAction.SNOOZE -> snooze(occurrence, now)
+    ): ActionResult =
+        transactor.inTransaction {
+            val occurrence = occurrences.findById(occurrenceId) ?: return@inTransaction ActionResult.UnknownOccurrence
+            if (action !in available(occurrence, now)) return@inTransaction ActionResult.NotAvailable
+            when (action) {
+                OccurrenceAction.ACKNOWLEDGE ->
+                    occurrences.transition(
+                        occurrenceId,
+                        OccurrenceState.COMPLETED,
+                        OccurrenceActions.acknowledged(newId(), occurrenceId, now, tagsOf(occurrence)),
+                    )
+                OccurrenceAction.SKIP ->
+                    occurrences.transition(
+                        occurrenceId,
+                        OccurrenceState.SKIPPED,
+                        OccurrenceActions.skipped(newId(), occurrenceId, now),
+                    )
+                OccurrenceAction.SNOOZE -> snooze(occurrence, now)
+            }
+            ActionResult.Done
         }
-        return ActionResult.Done
-    }
+
+    /**
+     * The nutrition tags of the occurrence's template as they are now. A template that cannot be read has none:
+     * her acknowledgement is recorded all the same.
+     */
+    private fun tagsOf(occurrence: Occurrence) = templates.findById(occurrence.templateId)?.nutritionTags.orEmpty()
 
     /**
      * Takes a snooze: the end is decided here, once, from the duration in force now and the next occurrence of the

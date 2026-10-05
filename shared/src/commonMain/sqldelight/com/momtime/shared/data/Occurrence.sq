@@ -5,10 +5,15 @@ CREATE TABLE occurrence (
     scheduled_instant INTEGER NOT NULL,
     time_zone_id TEXT NOT NULL,
     state TEXT NOT NULL,
-    alarm_slot INTEGER NOT NULL
+    alarm_slot INTEGER NOT NULL,
+    -- The criticality the occurrence was materialised with (ADR 0079, schema version 6): a snapshot, as
+    -- time_zone_id is. The default exists for the migration's ADD COLUMN; every insert names the column.
+    criticality TEXT NOT NULL DEFAULT 'STANDARD'
 );
 
-CREATE UNIQUE INDEX occurrence_template_date_idx ON occurrence(template_id, local_date);
+-- One occurrence per template and date, withdrawn ones aside: a date wanted again after a withdrawal gets a new
+-- occurrence with a new id and a new slot (ADR 0079, schema version 6).
+CREATE UNIQUE INDEX occurrence_template_date_idx ON occurrence(template_id, local_date) WHERE state <> 'WITHDRAWN';
 CREATE UNIQUE INDEX occurrence_alarm_slot_idx ON occurrence(alarm_slot);
 CREATE INDEX occurrence_state_scheduled_idx ON occurrence(state, scheduled_instant);
 
@@ -17,17 +22,18 @@ CREATE INDEX occurrence_state_scheduled_idx ON occurrence(state, scheduled_insta
 -- changes (its state, its instant, its zone, its date, its slot): there is no sanctioned update to a terminal row.
 -- Until schema version 5 only a change of state was refused, and nothing stopped an instant or a zone from changing
 -- on a terminal row; the time zone change is the first path that changes an instant. The terminal set is COMPLETED,
--- SKIPPED, MISSED; Kotlin's Occurrence.isTerminal is the single definition and a test fails if the two drift.
+-- SKIPPED, MISSED and, from schema version 6, WITHDRAWN (ADR 0079); Kotlin's isTerminal is the single definition
+-- and a test fails if the two drift.
 CREATE TRIGGER occurrence_terminal_immutable
 BEFORE UPDATE ON occurrence
-WHEN old.state IN ('COMPLETED', 'SKIPPED', 'MISSED')
+WHEN old.state IN ('COMPLETED', 'SKIPPED', 'MISSED', 'WITHDRAWN')
 BEGIN
     SELECT RAISE(ABORT, 'terminal occurrence is immutable');
 END;
 
 insertOccurrence:
-INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, alarm_slot)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO occurrence(id, template_id, local_date, scheduled_instant, time_zone_id, state, alarm_slot, criticality)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateOccurrenceState:
 UPDATE occurrence SET state = ? WHERE id = ?;

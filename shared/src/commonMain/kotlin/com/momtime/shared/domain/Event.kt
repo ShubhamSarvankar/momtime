@@ -1,5 +1,6 @@
 package com.momtime.shared.domain
 
+import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
 
 /**
@@ -48,8 +49,23 @@ sealed interface EventPayload {
         val missionType: MissionResultType,
     ) : EventPayload
 
+    /**
+     * The payload of `COMPLETED` and `COMPLETED_BACKFILLED`, and of nothing else: the nutrition tags the template
+     * had when she completed it, so a later edit of the template's tags never changes what she already did
+     * (ADR 0086). Every completion carries it; a completion of a template with no tags carries the empty set.
+     */
+    data class Completion(
+        val nutritionTags: Set<NutritionTag>,
+    ) : EventPayload
+
+    /**
+     * Water she logged and the zone she logged it in: an instant and a zone, never a formatted local time
+     * (invariant 9, ADR 0086). [zone] is null only for a row from before schema version 6, whose zone was never
+     * recorded.
+     */
     data class Water(
         val waterMl: Int,
+        val zone: TimeZone?,
     ) : EventPayload
 
     data class Weight(

@@ -94,6 +94,7 @@ class SchemaV2Test {
         timeZoneId = zone,
         state = state,
         alarmSlot = slot,
+        criticality = Criticality.CRITICAL,
     )
 
     private fun seedTemplate(db: MomTimeDatabase) {
@@ -159,7 +160,10 @@ class SchemaV2Test {
                     // never be moved back, so it cannot be reused for the next target.
                     n++
                     val row =
-                        occurrence(from, slot = n).copy(id = "occ-$n", localDate = LocalDate(2026, 1, n))
+                        occurrence(
+                            from,
+                            slot = n,
+                        ).copy(id = "occ-$n", localDate = LocalDate.fromEpochDays(20_000 + n))
                     repo.insert(row)
                     val context = "$label: $from to $to"
                     if (row.isTerminal) {

@@ -107,6 +107,7 @@ class ForeignKeyEnforcementTest {
                 TimeZone.of("Asia/Kolkata"),
                 OccurrenceState.PENDING,
                 1,
+                Criticality.CRITICAL,
             )
         val orphans: Map<String, () -> Unit> =
             mapOf(

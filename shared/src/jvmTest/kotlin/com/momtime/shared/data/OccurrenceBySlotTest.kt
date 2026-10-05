@@ -67,7 +67,16 @@ class OccurrenceBySlotTest {
     @Test
     fun `a slot finds the occurrence that owns it, and an unknown slot finds none`() {
         val occurrence =
-            Occurrence("occ", "tmpl", LocalDate(2026, 1, 1), epoch, zone, OccurrenceState.PENDING, alarmSlot = 41)
+            Occurrence(
+                "occ",
+                "tmpl",
+                LocalDate(2026, 1, 1),
+                epoch,
+                zone,
+                OccurrenceState.PENDING,
+                alarmSlot = 41,
+                criticality = Criticality.CRITICAL,
+            )
         occurrences.insert(occurrence)
 
         assertEquals(occurrence, occurrences.findByAlarmSlot(41))
