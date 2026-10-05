@@ -29,13 +29,19 @@ import kotlin.time.Instant
  * [neverFiredAfter] had passed by [asOf], with no `ALARM_FIRED` for the occurrence at or before [asOf]. An occurrence
  * that she completed or skipped before its first rung is not a failure and is not counted: nothing was left to ring
  * for. A completion after the rung does not excuse it. The first rung only, because it is the one that depends on
- * nothing she did.
+ * nothing she did. The caller may excuse a rung through [unfiredExclusion], which is given the rung and the instant its
+ * occurrence's grace ends: the one excuse is a phone that was off past the end of grace (ADR 0070). A phone that was
+ * running at any point within grace after the rung gets its rungs armed for now and delivered late, so a rung that
+ * still never fired is a real failure, and a restart that left the phone running through grace excuses nothing.
  *
  * Pure: no clock (invariant 8), no scheduling (invariant 6), nothing platform specific (invariant 5).
  */
 object FireTiming {
-    /** Why a fire, or an unfired rung, was left out of the figures. */
-    enum class Exclusion { BOOT_CHANGED, CLOCK_CHANGED, UNVERIFIABLE }
+    /**
+     * Why a fire, or an unfired rung, was left out of the figures. [BOOT_CHANGED] and [CLOCK_CHANGED] are reasons a
+     * fire's latency means nothing; [OFF_THROUGH_GRACE] is the one reason a rung that never fired is excused.
+     */
+    enum class Exclusion { BOOT_CHANGED, CLOCK_CHANGED, OFF_THROUGH_GRACE, UNVERIFIABLE }
 
     /** One fire and the arming that preceded it. [fireEventId] and [scheduleEventId] are in-process keys only. */
     data class FireSample(
@@ -44,9 +50,18 @@ object FireTiming {
         val rung: Instant,
         val armedAt: Instant,
         val firedAt: Instant,
+        val occurrenceId: String,
     ) {
         val latency: Duration get() = firedAt - rung
     }
+
+    /** A first rung that was armed ahead of time and never fired, with the instant its occurrence's grace ends. */
+    data class UnfiredRung(
+        val occurrenceId: String,
+        val scheduleEventId: String,
+        val rung: Instant,
+        val graceEnd: Instant,
+    )
 
     data class Timings(
         /** The fires counted, in the order they were recorded per occurrence. */
@@ -56,10 +71,12 @@ object FireTiming {
         /** Fires left out, by reason. */
         val excluded: Map<Exclusion, Int>,
         /** First rungs that were armed ahead of time and never fired. */
-        val neverFired: Int,
+        val neverFiredRungs: List<UnfiredRung>,
         /** First rungs that never fired but could not be held against the platform, by reason. */
         val neverFiredExcluded: Map<Exclusion, Int>,
-    )
+    ) {
+        val neverFired: Int get() = neverFiredRungs.size
+    }
 
     @Suppress("LongParameterList")
     fun compute(
@@ -71,13 +88,13 @@ object FireTiming {
         neverFiredAfter: Duration,
         rungArmedBy: (scheduleEventId: String) -> Instant?,
         exclusion: (FireSample) -> Exclusion?,
-        unfiredExclusion: (scheduleEventId: String) -> Exclusion?,
+        unfiredExclusion: (UnfiredRung) -> Exclusion?,
     ): Timings {
         val byOccurrence = events.filter { it.occurrenceId != null }.groupBy { it.occurrenceId }
         val samples = mutableListOf<FireSample>()
         var catchUp = 0
         val excluded = mutableMapOf<Exclusion, Int>()
-        var neverFired = 0
+        val neverFiredRungs = mutableListOf<UnfiredRung>()
         val neverFiredExcluded = mutableMapOf<Exclusion, Int>()
 
         for (occurrence in occurrences) {
@@ -98,7 +115,14 @@ object FireTiming {
                             continue
                         }
                         val sample =
-                            FireSample(event.id, schedule.id, rung, schedule.deviceTimestamp, event.deviceTimestamp)
+                            FireSample(
+                                event.id,
+                                schedule.id,
+                                rung,
+                                schedule.deviceTimestamp,
+                                event.deviceTimestamp,
+                                occurrence.id,
+                            )
                         when {
                             sample.armedAt >= rung -> catchUp++
                             else -> {
@@ -111,17 +135,25 @@ object FireTiming {
                 }
             }
             if (fired == 0) {
-                val first = firstRung(occurrence, criticalityOf(occurrence), channels) ?: continue
+                val criticality = criticalityOf(occurrence)
+                val first = firstRung(occurrence, criticality, channels) ?: continue
                 if (first + neverFiredAfter > asOf) continue
                 if (log.any { it.deviceTimestamp <= first && it.eventType in USER_CLOSES_BEFORE_RUNG }) continue
                 val armedAhead =
                     log.lastOrNull { it.eventType == EventType.ALARM_SCHEDULED && it.deviceTimestamp < first }
                 if (armedAhead == null) continue
-                val reason = unfiredExclusion(armedAhead.id)
-                if (reason == null) neverFired++ else bump(neverFiredExcluded, reason)
+                val unfired =
+                    UnfiredRung(
+                        occurrence.id,
+                        armedAhead.id,
+                        first,
+                        Reconcile.graceExpiryInstant(occurrence, criticality),
+                    )
+                val reason = unfiredExclusion(unfired)
+                if (reason == null) neverFiredRungs += unfired else bump(neverFiredExcluded, reason)
             }
         }
-        return Timings(samples, catchUp, excluded, neverFired, neverFiredExcluded)
+        return Timings(samples, catchUp, excluded, neverFiredRungs, neverFiredExcluded)
     }
 
     private fun firstRung(

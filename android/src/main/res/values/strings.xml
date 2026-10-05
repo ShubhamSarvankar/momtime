@@ -98,6 +98,6 @@
     <string name="report_last_check_missed">Last test: it did not arrive.</string>
 
     <string name="optin_label">Help fix reminder problems</string>
-    <string name="optin_copy">Share how reliably reminders arrive on this phone. This includes your phone\'s model and what the phone was doing when a reminder came, and never your medicines, your notes or the times you take them. Nothing is shared in this version. Reminders work the same if this is off.</string>
+    <string name="optin_copy">Share how reliably reminders arrive on this phone. This includes your phone\'s model, what the phone was doing when a reminder came, and the hour of the day each reminder was due and arrived, never the minute. It never includes your medicines or your notes. Nothing is shared in this version. Reminders work the same if this is off.</string>
     <string name="export_button">Save a report</string>
 </resources>

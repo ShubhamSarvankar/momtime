@@ -128,6 +128,7 @@ internal fun armingModule(
     context: Context,
     alarmApi: AlarmApi? = null,
     bootCount: BootCount = platformBootCount(context),
+    uptime: Uptime = platformUptime(),
     newId: () -> String = { UUID.randomUUID().toString() },
     probe: AlarmProbe = PlatformAlarmProbe(context),
     appVersion: AppVersion = PlatformAppVersion(context),
@@ -172,13 +173,13 @@ internal fun armingModule(
         single { DeliveryDecider(get(), get()) }
         single { ArmCandidates(get(), get(), get(), get()) }
         single { AlarmLog(get(), get(), newId) }
-        single { PlatformProbes(probe, bootCount, appVersion) }
+        single { PlatformProbes(probe, bootCount, appVersion, uptime) }
         single { ArmingCoordinator(get(), get(), get(), get(), get(), get(), get(), get()) }
         single { AlarmFireHandler(get(), get(), get(), get(), get(), get()) }
         single { ReconcileCommand(get(), get(), get(), newId) }
         single { MaterialiseCommand(get(), get(), newId) }
         single { Watchdog(get(), get(), get(), get(), get(), get()) }
-        single { AppStart(get(), get(), get()) }
+        single { AppStart(get(), get(), get(), get(), get()) }
         single { CanaryRunner(context, get(), get(), get(), get(), get(), get(), newId) }
         single {
             ReliabilityReader(
@@ -188,7 +189,7 @@ internal fun armingModule(
                 telemetry = get(),
                 contexts = get(),
                 clockChanges = get(),
-                bootCount = bootCount,
+                boots = get(),
                 checks = { get<ReliabilityCheckRepository>().recent(RECENT_CHECKS) },
                 failureCounts = { (get<StoreFailures>() as? CountingStoreFailures)?.counts().orEmpty() },
                 corruption = {

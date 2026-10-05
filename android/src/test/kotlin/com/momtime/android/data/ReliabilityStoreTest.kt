@@ -3,6 +3,8 @@ package com.momtime.android.data
 import android.content.Context
 import com.momtime.android.store.ArmingContext
 import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstant
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.CheckOutcome
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.CountingStoreFailures
@@ -192,6 +194,21 @@ class ReliabilityStoreTest {
         assertTrue(contexts.record(again))
         assertEquals(again, contexts.find("e1"))
         assertNull(contexts.find("e2"))
+    }
+
+    @Test
+    fun `the boot instants keep the first answer per boot and list earliest first`() {
+        val boots = graph().get<BootInstantRepository>()
+        assertEquals(emptyList<BootInstant>(), boots.all())
+
+        assertTrue(boots.record(BootInstant(9, at)))
+        assertTrue(boots.record(BootInstant(9, at.plus(kotlin.time.Duration.parse("1h")))))
+        assertTrue(boots.record(BootInstant(8, at.minus(kotlin.time.Duration.parse("1h")))))
+
+        assertEquals(
+            listOf(BootInstant(8, at.minus(kotlin.time.Duration.parse("1h"))), BootInstant(9, at)),
+            boots.all(),
+        )
     }
 
     @Test

@@ -5,6 +5,8 @@ import com.momtime.android.store.ArmedAlarm
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.android.store.ArmingContext
 import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstant
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.CheckOutcome
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.FireTelemetryRepository
@@ -206,6 +208,11 @@ class AndroidStoreMigrationTest {
             val context = ArmingContext("evt", due, 7, 0)
             assertEquals(true, contexts.record(context))
             assertEquals(context, contexts.find("evt"))
+
+            val boots = graph.get<BootInstantRepository>()
+            assertEquals(emptyList<BootInstant>(), boots.all())
+            assertEquals(true, boots.record(BootInstant(3, due)))
+            assertEquals(listOf(BootInstant(3, due)), boots.all())
 
             val clock = graph.get<ClockChangeRepository>()
             assertEquals(0L, clock.count())

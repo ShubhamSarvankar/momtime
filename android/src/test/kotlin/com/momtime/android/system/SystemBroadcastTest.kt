@@ -19,6 +19,8 @@ import com.momtime.android.delivery.NotificationChannels
 import com.momtime.android.delivery.finished
 import com.momtime.android.delivery.withPendingResult
 import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstant
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.work.Work
 import com.momtime.android.work.WorkEntryPoint
@@ -398,6 +400,24 @@ class SystemBroadcastTest {
 
     private companion object {
         const val MAX_FIRES = 8
+    }
+
+    // --- when the boot began (ADR 0070)
+
+    @Test
+    fun `the boot pass records when the boot began`() {
+        f.arming.bootCount = 12
+        f.arming.uptime = 90.minutes
+        f.arming.clock.now = t0
+
+        broadcast(Intent.ACTION_BOOT_COMPLETED)
+
+        assertEquals(
+            listOf(BootInstant(12, t0 - 90.minutes)),
+            f.arming.graph
+                .get<BootInstantRepository>()
+                .all(),
+        )
     }
 
     // --- the clock change count (ADR 0070)

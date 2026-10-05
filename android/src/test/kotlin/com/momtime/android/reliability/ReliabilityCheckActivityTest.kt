@@ -205,7 +205,7 @@ class ReliabilityCheckActivityTest {
         val box = activity.findViewById<CheckBox>(R.id.check_opt_in)
         assertFalse(box.isChecked)
         assertFalse(settings.shareReliabilityOptIn())
-        assertTrue(activity.text(R.id.check_opt_in_copy).contains("never your medicines"))
+        assertTrue(activity.text(R.id.check_opt_in_copy).contains("It never includes your medicines"))
 
         box.performClick()
 

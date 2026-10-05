@@ -10,6 +10,7 @@ import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
 import com.momtime.shared.engine.FireTiming.Exclusion
 import com.momtime.shared.engine.FireTiming.FireSample
+import com.momtime.shared.engine.FireTiming.UnfiredRung
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -72,7 +73,7 @@ class FireTimingTest {
         neverFiredAfter: Duration = after,
         rungArmedBy: (String) -> Instant? = { rung },
         exclusion: (FireSample) -> Exclusion? = { null },
-        unfiredExclusion: (String) -> Exclusion? = { null },
+        unfiredExclusion: (UnfiredRung) -> Exclusion? = { null },
     ) = FireTiming.compute(
         occurrences,
         events,
@@ -88,7 +89,7 @@ class FireTimingTest {
     @Test
     fun `a fire of a rung armed ahead is a sample with its latency`() {
         val result = compute(listOf(scheduled("s1", rung - 1.hours), fired("f1", rung + 30.seconds)))
-        eq(listOf(FireSample("f1", "s1", rung, rung - 1.hours, rung + 30.seconds)), result.samples)
+        eq(listOf(FireSample("f1", "s1", rung, rung - 1.hours, rung + 30.seconds, "occ")), result.samples)
         eq(30.seconds, result.samples.single().latency)
         eq(0, result.catchUp)
         eq(0, result.neverFired)
@@ -260,17 +261,37 @@ class FireTimingTest {
     }
 
     @Test
-    fun `a never fired rung the caller excludes is counted apart`() {
+    fun `a never fired rung the caller excludes is counted apart, and is asked with the rung and its grace end`() {
         val events = listOf(scheduled("s1", rung - 1.hours))
-        val seen = mutableListOf<String>()
+        val seen = mutableListOf<UnfiredRung>()
         val result =
             compute(events, unfiredExclusion = {
                 seen += it
-                Exclusion.BOOT_CHANGED
+                Exclusion.OFF_THROUGH_GRACE
             })
         eq(0, result.neverFired)
-        eq(mapOf(Exclusion.BOOT_CHANGED to 1), result.neverFiredExcluded)
-        eq("it is asked about the arming of the first rung", listOf("s1"), seen)
+        eq(mapOf(Exclusion.OFF_THROUGH_GRACE to 1), result.neverFiredExcluded)
+        eq(emptyList<UnfiredRung>(), result.neverFiredRungs)
+        // A STANDARD occurrence's grace ends four hours after it is due (ARCHITECTURE.md section 4.5).
+        eq(
+            "it is asked about the first rung's arming, the rung and the end of grace",
+            listOf(
+                UnfiredRung(
+                    "occ",
+                    "s1",
+                    rung,
+                    rung + 4.hours,
+                ),
+            ),
+            seen,
+        )
+    }
+
+    @Test
+    fun `a counted never fired rung is listed with its occurrence, its rung and its grace end`() {
+        val result = compute(listOf(scheduled("s1", rung - 1.hours)))
+        eq(listOf(UnfiredRung("occ", "s1", rung, rung + 4.hours)), result.neverFiredRungs)
+        eq(1, result.neverFired)
     }
 
     @Test

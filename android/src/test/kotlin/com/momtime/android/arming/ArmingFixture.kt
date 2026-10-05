@@ -10,6 +10,7 @@ import com.momtime.android.data.template
 import com.momtime.android.data.testZone
 import com.momtime.android.di.BootCount
 import com.momtime.android.di.DeliveryWiring
+import com.momtime.android.di.Uptime
 import com.momtime.android.di.armingModule
 import com.momtime.android.reliability.CheckReceiver
 import com.momtime.android.store.ArmedAlarmRepository
@@ -93,6 +94,9 @@ internal class ArmingFixture(
 
     /** What the device reports as its boot count and the app's version code. A test changes them. */
     var bootCount = 7L
+
+    /** How long the device has been up: with the clock it gives the instant the boot began (ADR 0070). */
+    var uptime: kotlin.time.Duration = kotlin.time.Duration.ZERO
     var versionCode = 100L
     val graph =
         TestGraph(
@@ -105,6 +109,7 @@ internal class ArmingFixture(
                     context,
                     api,
                     BootCount { bootCount },
+                    uptime = Uptime { uptime },
                     newId = { "$idPrefix-${nextId++}" },
                     appVersion = AppVersion { versionCode },
                     delivery = delivery,

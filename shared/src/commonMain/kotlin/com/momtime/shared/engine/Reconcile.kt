@@ -52,8 +52,11 @@ object Reconcile {
         )
     }
 
-    /** CRITICAL 2h, STANDARD 4h, GENTLE same local day (ARCHITECTURE.md section 4.5). */
-    private fun graceExpiryInstant(
+    /**
+     * The instant an occurrence's grace ends and it becomes `MISSED` if nothing closed it before: CRITICAL 2h,
+     * STANDARD 4h, GENTLE the end of the local day (ARCHITECTURE.md section 4.5).
+     */
+    fun graceExpiryInstant(
         occurrence: Occurrence,
         criticality: Criticality,
     ): Instant =

@@ -18,11 +18,12 @@ data class DeviceInfo(
  * She chooses where the file goes (the system's document picker), and nothing is sent anywhere.
  *
  * What it carries: the build and the phone model, how late each counted reminder fire was (with its tier and what the
- * device was doing), the counts the report shows, the check's history and the store's health. What it never carries,
- * by construction and by a test that plants a medicine name and a note and looks for them: any identifier (an event,
- * an occurrence, a template), any text she typed, a dose, an instruction, a weight, and the time of day of any
- * reminder. A fire is dated by its day number alone, so the times she takes her medicine are not in the file.
- * Invariant 11 applies to a file as it does to a log.
+ * device was doing), the counts the report shows, the check's history and the store's health. When a fire or a rung
+ * was is its local date and its local **hour** of the day, never a minute or a second: the hour is what makes a latency
+ * diagnostic (Doze behaves differently overnight than in the day), and the exact time is when she takes her medicine.
+ * What it never carries, by construction and by tests that plant a medicine name and a note and look for them, and that
+ * show two fires an hour apart in minutes export alike: any identifier (an event, an occurrence, a template), any text
+ * she typed, a dose, an instruction, a weight, and any timestamp. Invariant 11 applies to a file as it does to a log.
  *
  * Written with the platform's `org.json`, which is part of Android: no dependency is added (invariant 7).
  */
@@ -49,6 +50,8 @@ object ReliabilityExport {
             .put("catchUp", report.catchUp)
             .put("excluded", counts(report.excluded.mapKeys { it.key.name }))
             .put("neverFired", report.neverFired)
+            .put("neverFiredRungs", JSONArray(report.neverFiredRungs.map(::unfired)))
+            .put("clockChanges", report.clockChanges)
             .put("neverFiredExcluded", counts(report.neverFiredExcluded.mapKeys { it.key.name }))
             .put("missedOccurrences", report.missedOccurrences)
             .put("watchdogRepairs", report.watchdogRepairs)
@@ -68,7 +71,9 @@ object ReliabilityExport {
     private fun fireRow(row: FireRow): JSONObject {
         val t = row.telemetry
         return JSONObject()
-            .put("day", day(row.firedAt))
+            .put("day", row.localDay)
+            .put("rungHour", row.rungHour)
+            .put("fireHour", row.fireHour)
             .put("tier", row.tier.name)
             .put("latencyMs", row.latency.inWholeMilliseconds)
             .put("screenOn", t.screenOn ?: JSONObject.NULL)
@@ -80,6 +85,8 @@ object ReliabilityExport {
             .put("ringerStarted", t.ringerStarted ?: JSONObject.NULL)
             .put("alarmStreamMuted", t.alarmStreamMuted ?: JSONObject.NULL)
     }
+
+    private fun unfired(rung: UnfiredRow) = JSONObject().put("day", rung.localDay).put("hour", rung.hour)
 
     private fun check(check: ReliabilityCheck): JSONObject =
         JSONObject()

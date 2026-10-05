@@ -4,6 +4,7 @@ import android.content.Context
 import app.cash.sqldelight.db.SqlDriver
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.CountingStoreFailures
 import com.momtime.android.store.FireTelemetryRepository
@@ -11,6 +12,7 @@ import com.momtime.android.store.LogOnlyStoreFailures
 import com.momtime.android.store.ReliabilityCheckRepository
 import com.momtime.android.store.SqlDelightArmedAlarmRepository
 import com.momtime.android.store.SqlDelightArmingContextRepository
+import com.momtime.android.store.SqlDelightBootInstantRepository
 import com.momtime.android.store.SqlDelightClockChangeRepository
 import com.momtime.android.store.SqlDelightFireTelemetryRepository
 import com.momtime.android.store.SqlDelightReliabilityCheckRepository
@@ -85,6 +87,9 @@ fun androidStoreModule(
         }
         single<ArmingContextRepository> {
             SqlDelightArmingContextRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<BootInstantRepository> {
+            SqlDelightBootInstantRepository(get<StoreDatabaseHolder>()::database, get())
         }
         single<ClockChangeRepository> {
             SqlDelightClockChangeRepository(get<StoreDatabaseHolder>()::database, get())

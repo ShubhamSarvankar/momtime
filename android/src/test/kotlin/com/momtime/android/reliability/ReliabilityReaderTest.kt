@@ -3,10 +3,11 @@ package com.momtime.android.reliability
 import android.content.Context
 import com.momtime.android.arming.ArmingFixture
 import com.momtime.android.arming.t0
-import com.momtime.android.di.BootCount
 import com.momtime.android.di.CorruptionMarker
 import com.momtime.android.store.ArmingContext
 import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstant
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
@@ -17,6 +18,7 @@ import com.momtime.shared.domain.EventPayload
 import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.engine.FireTiming.Exclusion
+import kotlinx.datetime.LocalDate
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -40,7 +42,8 @@ import kotlin.time.Instant
  * The join of the `shared` fire timing reduction with what android kept (ADR 0070), through the real fire path and
  * the real arming: a fire is counted as drift only if its rung was armed ahead of time and the phone neither restarted
  * nor had its clock set between arming and the fire, and everything else is counted apart, by reason, and never
- * silently dropped. A rung that never fired is held against the platform only if nothing of that kind intervened.
+ * silently dropped. A rung that never fired is excused only if the phone stayed off past the end of its grace, and a
+ * clock change excuses nothing (ADR 0070).
  */
 @RunWith(RobolectricTestRunner::class)
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
@@ -52,6 +55,7 @@ class ReliabilityReaderTest {
     private val telemetry: FireTelemetryRepository get() = fixture.graph.get()
     private val clockChanges: ClockChangeRepository get() = fixture.graph.get()
     private val contexts: ArmingContextRepository get() = fixture.graph.get()
+    private val boots: BootInstantRepository get() = fixture.graph.get()
 
     @After
     fun tearDown() = fixture.close()
@@ -199,30 +203,102 @@ class ReliabilityReaderTest {
         assertEquals(Duration.parse("15m"), ReliabilityReader.NEVER_FIRED_AFTER)
     }
 
-    @Test
-    fun `a rung that never fired after the phone restarted is not held against the platform`() {
+    /** A first rung due at [t0] that was armed an hour ahead and never fired. */
+    private fun unfiredAtT0() {
         fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
         fixture.clock.now = t0 - 1.hours
         fixture.coordinator.ensureArmed()
-        fixture.bootCount = fixture.bootCount + 1
+    }
+
+    private fun boot(
+        count: Long,
+        at: Instant,
+    ) = boots.record(BootInstant(count, at))
+
+    // The failure that matters most on One UI: the phone restarts at 3 AM, the app is asleep and never re-armed, and
+    // the 7 AM rung never fires. The phone was running through grace, so this is a real failure and raises the banner.
+    @Test
+    fun `a restart before the rung with the phone running through grace does not excuse a rung that never fired`() {
+        unfiredAtT0()
+        boot(8, t0 - 4.hours)
 
         val report = reader.read(t0 + 1.hours)
 
-        assertEquals(0, report.neverFired)
-        assertEquals(mapOf(Exclusion.BOOT_CHANGED to 1), report.neverFiredExcluded)
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+        assertTrue(Banner.NeverFired(1) in report.banners)
     }
 
     @Test
-    fun `a rung that never fired after the clock was set is not held against the platform`() {
-        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
-        fixture.clock.now = t0 - 1.hours
-        fixture.coordinator.ensureArmed()
+    fun `a phone that stayed off past the end of grace excuses a rung that never fired`() {
+        unfiredAtT0()
+        // STANDARD grace ends four hours after the rung; the first boot after the rung began after that.
+        boot(8, t0 + 5.hours)
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(0, report.neverFired)
+        assertEquals(mapOf(Exclusion.OFF_THROUGH_GRACE to 1), report.neverFiredExcluded)
+        assertEquals(emptyList<Banner>(), report.banners.filterIsInstance<Banner.NeverFired>())
+    }
+
+    @Test
+    fun `a boot within grace after the rung means the phone was running, so the rung that never fired is a failure`() {
+        unfiredAtT0()
+        boot(8, t0 + 1.hours)
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+    }
+
+    @Test
+    fun `a boot exactly at the end of grace is within it, and one a millisecond later is after it`() {
+        unfiredAtT0()
+        val graceEnd = t0 + 4.hours
+
+        boot(8, graceEnd)
+        assertEquals("exactly at the end of grace", 1, reader.read(t0 + 6.hours).neverFired)
+
+        // Replace the boot with one a millisecond later (a fresh store, so the first answer is not kept).
+        fixture.close()
+        val again = ArmingFixture(context)
+        try {
+            again.seed("a", Criticality.STANDARD, t0, slot = 31)
+            again.clock.now = t0 - 1.hours
+            again.coordinator.ensureArmed()
+            again.graph.get<BootInstantRepository>().record(BootInstant(8, graceEnd + 1.milliseconds))
+            val report = again.graph.get<ReliabilityReader>().read(t0 + 6.hours)
+            assertEquals("a millisecond after", 0, report.neverFired)
+            assertEquals(mapOf(Exclusion.OFF_THROUGH_GRACE to 1), report.neverFiredExcluded)
+        } finally {
+            again.close()
+        }
+    }
+
+    @Test
+    fun `with no boot known after the rung the rung that never fired is counted`() {
+        unfiredAtT0()
+
+        val report = reader.read(t0 + 6.hours)
+
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+    }
+
+    // A backward jump puts the rung back in the future, so it is not counted; a forward jump arms it for now, so it
+    // fires. Either way a rung that still never fired is a failure, and a clock change excuses nothing.
+    @Test
+    fun `a clock change never excuses a rung that never fired`() {
+        unfiredAtT0()
         clockChanges.record(t0 - 30.minutes)
 
         val report = reader.read(t0 + 1.hours)
 
-        assertEquals(0, report.neverFired)
-        assertEquals(mapOf(Exclusion.CLOCK_CHANGED to 1), report.neverFiredExcluded)
+        assertEquals(1, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+        assertEquals("the count is carried into the report", 1L, report.clockChanges)
     }
 
     @Test
@@ -274,6 +350,41 @@ class ReliabilityReaderTest {
         armedAndFired("b", 32, rung = t0 + 1.hours, armedAt = t0 + 1.minutes, firedAt = t0 + 1.hours + 5.seconds)
 
         assertEquals(1, reader.read(t0 + 2.hours).mutedFires)
+    }
+
+    // The hour of the day is local to the occurrence's zone (Asia/Kolkata in the fixture, UTC+5:30), is floored, and is
+    // never a minute or a second. 08:00:30Z is 13:30:30 there.
+    @Test
+    fun `a counted fire carries its local date and the local hour of the fire and of its rung, and no minute`() {
+        armedAndFired("a", 31, rung = t0, armedAt = t0 - 1.hours, firedAt = t0 + 30.seconds)
+
+        val row = reader.read(t0 + 1.hours).fires.single()
+
+        assertEquals(13, row.rungHour)
+        assertEquals(13, row.fireHour)
+        assertEquals(LocalDate(2026, 3, 1).toEpochDays(), row.localDay)
+    }
+
+    @Test
+    fun `the hour is floored and the local date is the local one, across midnight`() {
+        // 23:59:59 in Kolkata is 18:29:59Z; the fire is at 00:00:10 the next local day, 18:30:10Z.
+        val rung = Instant.parse("2026-03-01T18:29:59Z")
+        armedAndFired("a", 31, rung = rung, armedAt = rung - 1.hours, firedAt = Instant.parse("2026-03-01T18:30:10Z"))
+
+        val row = reader.read(rung + 1.hours).fires.single()
+
+        assertEquals("not rounded up to midnight", 23, row.rungHour)
+        assertEquals(0, row.fireHour)
+        assertEquals("the fire is on the next local day", LocalDate(2026, 3, 2).toEpochDays(), row.localDay)
+    }
+
+    @Test
+    fun `a never fired rung is reported by its local date and hour`() {
+        unfiredAtT0()
+
+        val report = reader.read(t0 + 1.hours)
+
+        assertEquals(listOf(UnfiredRow(LocalDate(2026, 3, 1).toEpochDays(), 13)), report.neverFiredRungs)
     }
 
     @Test
@@ -374,7 +485,7 @@ class ReliabilityReaderTest {
                 telemetry,
                 contexts,
                 clockChanges,
-                BootCount { 7 },
+                boots,
                 checks = { emptyList() },
                 failureCounts = { mapOf("fire_telemetry.insert" to 3L) },
                 corruption = { CorruptionMarker(t0, preserved = true) },

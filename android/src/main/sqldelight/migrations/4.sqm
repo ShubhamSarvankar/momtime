@@ -6,6 +6,9 @@
 --  * arming_context: what the device said when a rung was armed, keyed by the shared ALARM_SCHEDULED event's id:
 --    the rung's instant, the boot count and the count of clock changes then. A fire is compared with it.
 --  * clock_change: one row for each time the clock was set, so a fire after a clock change can be left out of drift.
+--  * boot_instant: the wall clock instant each boot began, by boot count (now minus the time since boot, read when the
+--    app first runs in that boot), so a rung that never fired can be excused only if the phone stayed off past the end
+--    of its grace (ADR 0070).
 --  * fire_telemetry.clock_changes: the count of clock changes when the alarm fired. Null for a row from before.
 CREATE TABLE reliability_check (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +39,11 @@ CREATE TABLE arming_context (
 CREATE TABLE clock_change (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     changed_at INTEGER NOT NULL
+);
+
+CREATE TABLE boot_instant (
+    boot_count INTEGER NOT NULL PRIMARY KEY,
+    booted_at INTEGER NOT NULL
 );
 
 ALTER TABLE fire_telemetry ADD COLUMN clock_changes INTEGER;

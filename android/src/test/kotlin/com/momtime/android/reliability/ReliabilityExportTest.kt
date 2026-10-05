@@ -8,6 +8,7 @@ import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.DeliveryCapability
 import com.momtime.shared.domain.EventType
+import kotlinx.datetime.LocalDate
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -20,6 +21,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -92,10 +94,10 @@ class ReliabilityExportTest {
                 "Prenatal",
             )
         for (secret in secrets) assertFalse("the export must not contain \"$secret\"", json.contains(secret))
-        // The times she takes her medicine are not in the file: a fire is dated by its day number alone.
+        // No timestamp is in the file: a fire is dated by its local date and hour, and the hour is all there is.
         assertFalse(json.contains(t0.toEpochMilliseconds().toString().take(9)))
         assertFalse(json.contains("2026-03-01T08"))
-        assertFalse("no key names a time of day", Regex("\"(firedAt|scheduledAt|time)\"").containsMatchIn(json))
+        assertFalse("no key names a timestamp", Regex("\"(firedAt|scheduledAt|time|timestamp)\"").containsMatchIn(json))
     }
 
     @Test
@@ -113,7 +115,9 @@ class ReliabilityExportTest {
         val fire = doc.getJSONArray("fires").getJSONObject(0)
         assertEquals("TIER_3", fire.getString("tier"))
         assertEquals(12_000, fire.getLong("latencyMs"))
-        assertEquals(t0.toEpochMilliseconds() / 86_400_000L, fire.getLong("day"))
+        assertEquals(LocalDate(2026, 3, 1).toEpochDays(), fire.getLong("day"))
+        assertEquals("13:30 in the fixture's zone, the hour only", 13, fire.getInt("rungHour"))
+        assertEquals(13, fire.getInt("fireHour"))
         assertEquals(true, fire.getBoolean("screenOn"))
         assertTrue(fire.isNull("audioFocus"))
         assertEquals(64, fire.getInt("batteryPct"))
@@ -163,5 +167,74 @@ class ReliabilityExportTest {
         assertEquals("MISSED", exported.getString("outcome"))
         assertTrue(exported.isNull("latencyMs"))
         assertEquals(60.seconds.inWholeMilliseconds, CheckPolicy.DELAY.inWholeMilliseconds)
+    }
+
+    /** A fire due [rungOffset] after 08:00Z, fired 12 seconds late, exported as in [planted]. */
+    private fun exportOfFireDueAfter(rungOffset: kotlin.time.Duration): String {
+        val other = ArmingFixture(context)
+        try {
+            val rung = t0 + rungOffset
+            other.seed("occ-secret-7", Criticality.CRITICAL, rung, slot = 31)
+            other.clock.now = rung - 1.hours
+            other.coordinator.ensureArmed()
+            other.clock.now = rung + 12.seconds
+            other.handler.onFire(31, rung)
+            val fired = other.eventsOf("occ-secret-7", EventType.ALARM_FIRED).first().id
+            other.graph.get<FireTelemetryRepository>().insert(
+                FireTelemetry(
+                    fired,
+                    DeliveryCapability.TIER_3,
+                    true,
+                    null,
+                    64,
+                    "IDLE",
+                    false,
+                    other.bootCount,
+                    "RING",
+                    true,
+                    false,
+                    0,
+                ),
+            )
+            return ReliabilityExport.toJson(other.graph.get<ReliabilityReader>().read(rung + 1.hours), device)
+        } finally {
+            other.close()
+        }
+    }
+
+    // Two fires in the same local hour that differ in minutes and seconds export identically: nothing finer than the
+    // hour is in the file. 13:30:00 and 13:59:41 in the fixture's zone are both hour 13.
+    @Test
+    fun `fires in the same hour export alike, so no field has sub hour resolution`() {
+        val early = exportOfFireDueAfter(0.seconds)
+        val late = exportOfFireDueAfter(29.minutes + 41.seconds)
+
+        assertEquals(early, late)
+        val fire = JSONObject(early).getJSONArray("fires").getJSONObject(0)
+        assertEquals(13, fire.getInt("fireHour"))
+        assertEquals(13, fire.getInt("rungHour"))
+    }
+
+    @Test
+    fun `an hour later exports as the next hour`() {
+        val first = JSONObject(exportOfFireDueAfter(0.seconds)).getJSONArray("fires").getJSONObject(0)
+        val next = JSONObject(exportOfFireDueAfter(1.hours)).getJSONArray("fires").getJSONObject(0)
+
+        assertEquals(first.getInt("fireHour") + 1, next.getInt("fireHour"))
+    }
+
+    @Test
+    fun `every hour field is a whole hour of the day and every day field a whole day`() {
+        val doc = JSONObject(ReliabilityExport.toJson(planted(), device))
+        val fire = doc.getJSONArray("fires").getJSONObject(0)
+
+        for (key in listOf("rungHour", "fireHour")) {
+            val value = fire.get(key)
+            assertTrue("$key must be an integer, was $value", value is Int)
+            assertTrue("$key must be an hour of the day", (value as Int) in 0..23)
+        }
+        assertTrue(fire.get("day") is Number)
+        assertTrue("a day number is far smaller than an instant in milliseconds", fire.getLong("day") < 1_000_000L)
+        assertEquals(0, doc.getJSONArray("neverFiredRungs").length())
     }
 }
