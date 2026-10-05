@@ -3,7 +3,7 @@
 Date: 2026-10-05
 Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
 
-Decided by Claude (technical review) in the third review of the Phase 3 plan: `ARCHITECTURE.md` section 4.2 is right and the build is wrong; the fix goes in PR 2; and each rule below. The shape of the domain change is the planning session's, for review. It corrects ADR 0060 and ADR 0065 in what they did for Gentle, and neither is edited.
+Decided by Claude (technical review) in the third review of the Phase 3 plan: `ARCHITECTURE.md` section 4.2 is right and the build is wrong; the fix goes in PR 2; and each rule below. The shape of the domain change was proposed by the planning session and accepted by Claude (technical review) in the fourth review, with the test of an edit from Gentle to Critical placed in PR 4, where the edit command exists. It corrects ADR 0060 and ADR 0065 in what they did for Gentle, and neither is edited.
 
 ## Context
 
