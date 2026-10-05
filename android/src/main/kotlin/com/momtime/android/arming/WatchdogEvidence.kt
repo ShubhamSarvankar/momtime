@@ -45,7 +45,7 @@ internal data class WatchdogObservation(
 )
 
 /**
- * The evidence that the armed alarm was lost (decision 6 of the Phase 2 progress file, ADR 0058). Pure.
+ * The evidence that the armed alarm was lost (ADR 0058). Pure.
  *
  * It looks for positive evidence and writes nothing: a pass over a correct state finds none (golden scenario
  * 17), and `WATCHDOG_REPAIR` is written only when this returns something. The expected rung is the first one
