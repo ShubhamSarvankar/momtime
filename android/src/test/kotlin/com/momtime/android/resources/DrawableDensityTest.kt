@@ -16,8 +16,9 @@ import javax.imageio.ImageIO
  * `drawable-nodpi`, which Android does not scale, and no screenshot may exceed 1080 pixels wide or 400 KB.
  *
  * The audit is a function of a resource directory, so each rule is proved on fixtures, and the real tree is then
- * audited with it. The four Samsung step drawables are placeholders (vector shapes, not bitmaps) until real screenshots replace
- * them, so on the real tree today the audit finds no bitmap at all; the fixtures are what show it can find one.
+ * audited with it. The four Samsung step drawables are placeholders (vector shapes, not bitmaps) until real
+ * screenshots replace them, so on the real tree today the audit finds no bitmap at all; the fixtures are what
+ * show it can find one.
  */
 class DrawableDensityTest {
     @get:Rule
