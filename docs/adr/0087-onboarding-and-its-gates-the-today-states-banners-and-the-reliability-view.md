@@ -1,0 +1,26 @@
+# 0087. Onboarding and its gates, the Today view's four states, the banners and the reliability view
+
+Date: 2026-10-05
+Status: Proposed (draft in the Phase 3 planning pull request; revisable until that pull request is merged)
+
+Decided by the Phase 3 planning session, for review. The obligations are the plan's (Phase 3 deliverables) and Phase 2's ADRs: 0050 (tiers, and the blocking state), 0064 (the Quiet notices channel), 0069 (the check she starts), 0070 and 0071 (the report and the banners), 0072 (the permission flows).
+
+## Decision
+
+1. **Onboarding is six steps in one flow, and nothing else:** what the app keeps; her due date; one reminder; permissions; the Samsung steps, only on a Samsung; the reliability check. Each step after the first can be left with Back. The appearance switcher is in every step's top bar (ADR 0074). Finishing sets `onboarding_complete` in `momtime_android_settings` and opens Today. Until it is set, `MainActivity` opens the flow.
+2. **What each step does.** Due date: creates the pregnancy and its first due date revision. One reminder: a title she writes, a time and a criticality, created through the same command the schedule builder uses; the field's hint says "for example, the name on the packet" and names nothing. Permissions: `SetupHost.onReturn` on every resume, as today, rendering `PermissionFlows` items. Samsung: `SamsungStep` as today. The check: `CanaryRunner` through `ReliabilityHost`, with `settleOverdue` called when the step opens and each second while a check runs.
+3. **Copy obligations, each a string that a test asserts is on its screen:**
+   - step 1 says that her records are kept on this phone, that nothing is uploaded, and that the sharing choice in Settings is about a future upload only;
+   - the permissions step names the Critical channel as the one not to mute and the Quiet notices channel as the one to keep on, because a late reminder arrives there;
+   - when the resolved tier is 1, the permissions step and a banner say that reminders may arrive some minutes late;
+   - when notifications are denied and exact capability is absent, a blocking banner says that no reminder can reach her.
+4. **Gates.** The permissions step cannot be passed, and Today is covered by the blocking banner with one action (open the permissions screen), while notifications are denied and there is no exact capability: in that state nothing is delivered visibly (`ARCHITECTURE.md` section 5.8). Every other missing input is skippable and shown as a banner. The check step can be skipped; a failed check is a banner. The gate is computed from `CapabilityInputs` at every resume, never remembered.
+5. **The Today view shows four states, defined over the log and not over the state column** (ADR 0040's outcome as of now): **Done** (outcome completed, a backfill included), **Skipped** (outcome skipped), **Missed** (outcome missed), and **To do** (no outcome: `PENDING`, and `SNOOZED`, which shows the time its snooze ends on the same row). `WITHDRAWN` occurrences are not listed. Each state has its own marker shape and its label; none has a colour of its own (ADR 0075). Rows are today's occurrences in the current zone, ordered by scheduled instant.
+6. **Actions on a Today row** are acknowledge and skip, on a To do row, dispatched through the same path as a notification button (`RingController.act`), so the ring session and the notifications follow. Marking a missed dose as taken late (`COMPLETED_BACKFILLED`) is not in the Phase 3 deliverables and is not built; it is raised in the plan as an open question.
+7. **Banners.** One composable renders `Banner` values from `ReliabilityReport.banners` plus the Tier 1 notice and the blocking state, in a fixed priority order (blocking; store trouble; never fired; not run after restart; check failed; below Tier 3; slow; muted; unused app restrictions). A banner's action opens its `FixStep`: the Samsung steps, the permissions screen at the battery row, or the unused app flow. Today shows the first banner; the reliability view shows all.
+8. **The reliability view** is the port of the check screen: the check, the last result, the report as the sentences `ReliabilityText` already builds, every banner, the opt in and the export. Thresholds stay Phase 2's constants.
+
+## Alternatives considered
+
+- **A gate on every permission.** Rejected: capability degrades by design (ADR 0050); only the state in which nothing reaches her blocks.
+- **Today's states from the `state` column.** Rejected: a backfilled occurrence's state stays `MISSED` (ADR 0040), and the dashboard's three figures would disagree with the list.
