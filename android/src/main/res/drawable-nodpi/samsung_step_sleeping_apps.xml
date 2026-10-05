@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PLACEHOLDER for a screenshot of One UI (Galaxy A15). To replace it, put samsung_step_sleeping_apps.png in THIS folder
+     (drawable-nodpi: a bitmap in a folder with no density qualifier is scaled by Android about three times on an xxhdpi
+     screen, so a 1080 by 2340 screenshot would become a bitmap of about 90 MB) and delete this file: a drawable of the
+     same name in two formats is a build error. The screenshot must be at most 1080 pixels wide and 400 KB. Both rules
+     are enforced by DrawableDensityTest. The files to supply are listed in the description of the pull request that
+     added this one (PR 8) and of PR 9. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFE0E0E0" />
+    <stroke android:width="2dp" android:color="#FF9E9E9E" />
+    <size android:width="360dp" android:height="320dp" />
+</shape>
