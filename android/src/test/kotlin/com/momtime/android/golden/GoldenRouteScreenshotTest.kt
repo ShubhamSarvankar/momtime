@@ -32,7 +32,7 @@ class GoldenRouteScreenshotTest {
     @Test fun oneScreen() {
         rule.setContent {
             Column(Modifier.background(Color.White).padding(16.dp)) {
-                Text("Golden route 08:30", fontSize = 22.sp)
+                Text("Golden route 09:30", fontSize = 22.sp)
                 Text("क्षत्रिय श्री कुंजी", fontSize = 18.sp)
                 Button(onClick = {}) { Text("Taken") }
             }
