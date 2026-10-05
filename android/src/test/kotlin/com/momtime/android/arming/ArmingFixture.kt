@@ -10,7 +10,9 @@ import com.momtime.android.data.template
 import com.momtime.android.data.testZone
 import com.momtime.android.di.BootCount
 import com.momtime.android.di.DeliveryWiring
+import com.momtime.android.di.Uptime
 import com.momtime.android.di.armingModule
+import com.momtime.android.reliability.CheckReceiver
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.android.work.WorkPasses
 import com.momtime.shared.data.EventRepository
@@ -77,10 +79,12 @@ internal class SwitchableAlarmApi(
  * count and the refusal of exact alarms in the test's hands. Occurrences are written straight to the
  * repositories, as the materialiser would have.
  */
+@Suppress("LongParameterList")
 internal class ArmingFixture(
     private val context: Context,
     val clock: MutableClock = MutableClock(t0),
     name: String = "t-${java.util.UUID.randomUUID().toString().take(8)}.db",
+    storeName: String = "s-${java.util.UUID.randomUUID().toString().take(8)}.db",
     idPrefix: String = "gen",
     seedPregnancy: Boolean = true,
     delivery: DeliveryWiring = DeliveryWiring(),
@@ -90,17 +94,22 @@ internal class ArmingFixture(
 
     /** What the device reports as its boot count and the app's version code. A test changes them. */
     var bootCount = 7L
+
+    /** How long the device has been up: with the clock it gives the instant the boot began (ADR 0070). */
+    var uptime: kotlin.time.Duration = kotlin.time.Duration.ZERO
     var versionCode = 100L
     val graph =
         TestGraph(
             context,
             name = name,
+            storeName = storeName,
             clock = clock,
             arming =
                 armingModule(
                     context,
                     api,
                     BootCount { bootCount },
+                    uptime = Uptime { uptime },
                     newId = { "$idPrefix-${nextId++}" },
                     appVersion = AppVersion { versionCode },
                     delivery = delivery,
@@ -149,6 +158,12 @@ internal class ArmingFixture(
         before.forEach { remaining.remove(it) }
         return remaining
     }
+
+    /** The alarms of the reliability check (ADR 0069): those whose operation names `CheckReceiver`. */
+    fun checkAlarms(): List<ShadowAlarmManager.ScheduledAlarm> =
+        allAlarms().filter {
+            shadowOf(it.operation).savedIntent.component == ComponentName(context, CheckReceiver::class.java)
+        }
 
     fun clearAlarms() = alarms().toList().forEach { alarmManager.cancel(operation(it)) }
 

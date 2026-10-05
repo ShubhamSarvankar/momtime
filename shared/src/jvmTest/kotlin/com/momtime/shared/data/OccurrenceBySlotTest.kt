@@ -73,4 +73,11 @@ class OccurrenceBySlotTest {
         assertEquals(occurrence, occurrences.findByAlarmSlot(41))
         assertNull(occurrences.findByAlarmSlot(42))
     }
+
+    // Request code 0 is the reliability check's alone (ADR 0069): the counter starts at 1, so no occurrence ever has it.
+    @Test
+    fun `the slot counter starts at one and only goes up, so it never yields zero`() {
+        val slots = List(50) { occurrences.allocateNextAlarmSlot() }
+        assertEquals((1..50).toList(), slots)
+    }
 }

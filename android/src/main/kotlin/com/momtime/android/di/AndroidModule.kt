@@ -3,10 +3,21 @@ package com.momtime.android.di
 import android.content.Context
 import app.cash.sqldelight.db.SqlDriver
 import com.momtime.android.store.ArmedAlarmRepository
+import com.momtime.android.store.ArmingContextRepository
+import com.momtime.android.store.BootInstantRepository
+import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.CountingStoreFailures
 import com.momtime.android.store.FireTelemetryRepository
+import com.momtime.android.store.LogOnlyStoreFailures
+import com.momtime.android.store.ReliabilityCheckRepository
 import com.momtime.android.store.SqlDelightArmedAlarmRepository
+import com.momtime.android.store.SqlDelightArmingContextRepository
+import com.momtime.android.store.SqlDelightBootInstantRepository
+import com.momtime.android.store.SqlDelightClockChangeRepository
 import com.momtime.android.store.SqlDelightFireTelemetryRepository
+import com.momtime.android.store.SqlDelightReliabilityCheckRepository
+import com.momtime.android.store.SqlDelightStoreFailureRepository
+import com.momtime.android.store.StoreFailureRepository
 import com.momtime.android.store.StoreFailures
 import com.momtime.android.store.db.AndroidStoreDatabase
 import com.momtime.shared.data.DatabaseDriverFactory
@@ -60,13 +71,33 @@ fun androidStoreModule(
 ): Module =
     module {
         single<StoreDriverFactory> { storeFactory }
-        single<StoreFailures> { failures }
+        single<StoreFailures> {
+            // Counts are written through to the store the first time one is needed, not when the graph is built.
+            failures.also { (it as? CountingStoreFailures)?.persistThrough { get<StoreFailureRepository>() } }
+        }
         single { StoreDatabaseHolder(get()) }
         single<FireTelemetryRepository> {
             SqlDelightFireTelemetryRepository(get<StoreDatabaseHolder>()::database, get())
         }
         single<ArmedAlarmRepository> {
             SqlDelightArmedAlarmRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<ReliabilityCheckRepository> {
+            SqlDelightReliabilityCheckRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<ArmingContextRepository> {
+            SqlDelightArmingContextRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<BootInstantRepository> {
+            SqlDelightBootInstantRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        single<ClockChangeRepository> {
+            SqlDelightClockChangeRepository(get<StoreDatabaseHolder>()::database, get())
+        }
+        // The failure counts are written through to the store. The repository that holds them reports its own
+        // failures to the log only, so a store that cannot count never counts itself into a loop (ADR 0070).
+        single<StoreFailureRepository> {
+            SqlDelightStoreFailureRepository(get<StoreDatabaseHolder>()::database, LogOnlyStoreFailures())
         }
     }
 

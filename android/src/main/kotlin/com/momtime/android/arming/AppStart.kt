@@ -1,5 +1,7 @@
 package com.momtime.android.arming
 
+import com.momtime.android.store.BootInstant
+import com.momtime.android.store.BootInstantRepository
 import com.momtime.shared.data.ReconcileCommand
 
 /**
@@ -16,10 +18,23 @@ class AppStart internal constructor(
     private val reconcile: ReconcileCommand,
     private val coordinator: ArmingCoordinator,
     private val log: AlarmLog,
+    private val probes: PlatformProbes,
+    private val boots: BootInstantRepository,
 ) {
     fun run(): EnsureResult =
         coordinator.exclusive {
+            recordBoot()
             reconcile.dispatch(log.now())
             coordinator.ensureArmed()
         }
+
+    /**
+     * Records when this boot began: now minus the time since boot, under this boot's count. Whichever runs first in a
+     * boot, the boot pass or the app starting, records it, and the first answer is kept (ADR 0070). It is what lets a
+     * rung that never fired be excused only if the phone stayed off through the end of its grace.
+     */
+    private fun recordBoot() {
+        val count = probes.bootCount.read()
+        if (count >= 0) boots.record(BootInstant(count, log.now() - probes.uptime.sinceBoot()))
+    }
 }

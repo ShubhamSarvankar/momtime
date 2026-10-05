@@ -46,4 +46,58 @@
 
     <!-- The ringer's own notification while the sound plays. -->
     <string name="ringer_notification_title">Reminder ringing</string>
+    <!-- The reliability check and report (ADR 0069, ADR 0070). English only in Phase 2. -->
+    <string name="check_title">Check my reminders</string>
+    <string name="check_intro">This sets a test alarm for one minute from now. Lock your phone and wait. If it arrives, your reminders can reach you.</string>
+    <string name="check_start">Start the test</string>
+    <string name="check_status_none">No test has been run yet.</string>
+    <plurals name="check_status_running">
+        <item quantity="one">The test alarm is due in %d second.</item>
+        <item quantity="other">The test alarm is due in %d seconds.</item>
+    </plurals>
+    <string name="check_status_due">The test alarm is due now.</string>
+    <plurals name="check_status_fired">
+        <item quantity="one">It arrived %d second after it was due.</item>
+        <item quantity="other">It arrived %d seconds after it was due.</item>
+    </plurals>
+    <string name="check_status_missed">It did not arrive in time. Your phone may be stopping your reminders.</string>
+    <string name="check_start_near">A reminder is due at about the same time. Try again after it.</string>
+    <string name="check_start_failed">The test could not be started.</string>
+    <string name="check_already_running">A test is already running.</string>
+    <string name="ring_open_check">Check my reminders</string>
+
+    <string name="report_heading">How your reminders have arrived</string>
+    <plurals name="report_tier_line">
+        <item quantity="one">Tier %1$d: %2$d reminder, middle %3$d s, slowest %4$d s.</item>
+        <item quantity="other">Tier %1$d: %2$d reminders, middle %3$d s, slowest %4$d s.</item>
+    </plurals>
+    <string name="report_no_fires">No reminder has been measured yet.</string>
+    <plurals name="report_never_fired">
+        <item quantity="one">%d reminder was set ahead and never sounded.</item>
+        <item quantity="other">%d reminders were set ahead and never sounded.</item>
+    </plurals>
+    <plurals name="report_missed">
+        <item quantity="one">%d reminder was missed.</item>
+        <item quantity="other">%d reminders were missed.</item>
+    </plurals>
+    <plurals name="report_repairs">
+        <item quantity="one">%d alarm had to be set again after it was lost.</item>
+        <item quantity="other">%d alarms had to be set again after they were lost.</item>
+    </plurals>
+    <plurals name="report_store_failures">
+        <item quantity="one">%d problem was found saving what this screen reads.</item>
+        <item quantity="other">%d problems were found saving what this screen reads.</item>
+    </plurals>
+    <string name="report_corruption">The data on this phone was found damaged and had to be replaced.</string>
+    <plurals name="report_unobserved">
+        <item quantity="one">%d of the last 7 days had no reminder, so nothing was measured on that day.</item>
+        <item quantity="other">%d of the last 7 days had no reminder, so nothing was measured on those days.</item>
+    </plurals>
+    <string name="report_last_check_none">You have not run the test yet.</string>
+    <string name="report_last_check_fired">Last test: it arrived on time.</string>
+    <string name="report_last_check_missed">Last test: it did not arrive.</string>
+
+    <string name="optin_label">Help fix reminder problems</string>
+    <string name="optin_copy">Share how reliably reminders arrive on this phone. This includes your phone\'s model, what the phone was doing when a reminder came, and the hour of the day each reminder was due and arrived, never the minute. It never includes your medicines or your notes. Nothing is shared in this version. Reminders work the same if this is off.</string>
+    <string name="export_button">Save a report</string>
 </resources>

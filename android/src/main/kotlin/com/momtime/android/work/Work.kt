@@ -47,6 +47,8 @@ class WorkPasses internal constructor(
     val materialisation: MaterialisationPass,
     val system: Pass,
     val timezone: Pass,
+    /** Counts one clock change, so a fire after it is left out of drift (ADR 0070). Before the system pass. */
+    val clockChanged: Pass = Pass {},
 )
 
 /**
@@ -157,6 +159,8 @@ class SystemEventWorker(
                     Result.success()
                 }
                 else -> {
+                    // The count first: the pass that follows may arm, and an arming records the count it saw.
+                    if (event == SystemEvent.TIME_CHANGED) passes.clockChanged.run()
                     passes.system.run()
                     Result.success()
                 }

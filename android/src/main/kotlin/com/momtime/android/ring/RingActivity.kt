@@ -11,6 +11,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.momtime.android.R
+import com.momtime.android.reliability.ReliabilityCheckActivity
 import com.momtime.shared.engine.OccurrenceAction
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -68,6 +69,9 @@ class RingActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.ring)
         findViewById<Button>(R.id.ring_stop_sound).setOnClickListener { host?.stopSound() }
+        findViewById<Button>(R.id.ring_open_check).setOnClickListener {
+            startActivity(ReliabilityCheckActivity.intent(this))
+        }
     }
 
     override fun onStart() {
@@ -96,6 +100,8 @@ class RingActivity : Activity() {
         container.removeAllViews()
         items.forEach { container.addView(itemView(it)) }
         findViewById<View>(R.id.ring_stop_sound).visibility = if (sounding) View.VISIBLE else View.GONE
+        // With nothing due, the way to the reliability check (ADR 0069). Never beside a reminder that is ringing.
+        findViewById<View>(R.id.ring_open_check).visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         findViewById<View>(R.id.ring_sound_stopped).visibility =
             if (!sounding && items.isNotEmpty()) View.VISIBLE else View.GONE
     }

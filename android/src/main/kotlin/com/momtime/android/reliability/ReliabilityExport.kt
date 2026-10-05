@@ -1,0 +1,103 @@
+package com.momtime.android.reliability
+
+import com.momtime.android.store.ReliabilityCheck
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.time.Instant
+
+/** The phone and the build, as the platform names them. A model is a type of phone, not a person (ADR 0070). */
+data class DeviceInfo(
+    val model: String,
+    val sdk: Int,
+    val versionName: String,
+    val versionCode: Long,
+)
+
+/**
+ * The reliability report as one JSON document (ADR 0070), for her to hand to whoever is fixing her phone's reminders.
+ * She chooses where the file goes (the system's document picker), and nothing is sent anywhere.
+ *
+ * What it carries: the build and the phone model, how late each counted reminder fire was (with its tier and what the
+ * device was doing), the counts the report shows, the check's history and the store's health. When a fire or a rung
+ * was is its local date and its local **hour** of the day, never a minute or a second: the hour is what makes a latency
+ * diagnostic (Doze behaves differently overnight than in the day), and the exact time is when she takes her medicine.
+ * What it never carries, by construction and by tests that plant a medicine name and a note and look for them, and that
+ * show two fires an hour apart in minutes export alike: any identifier (an event, an occurrence, a template), any text
+ * she typed, a dose, an instruction, a weight, and any timestamp. Invariant 11 applies to a file as it does to a log.
+ *
+ * Written with the platform's `org.json`, which is part of Android: no dependency is added (invariant 7).
+ */
+object ReliabilityExport {
+    const val SCHEMA_VERSION = 1
+    const val MIME_TYPE = "application/json"
+    const val FILE_NAME = "momtime-reliability.json"
+
+    private const val DAY_MILLIS = 86_400_000L
+
+    fun toJson(
+        report: ReliabilityReport,
+        device: DeviceInfo,
+    ): String =
+        JSONObject()
+            .put("schemaVersion", SCHEMA_VERSION)
+            .put("exportedDay", day(report.asOf))
+            .put("app", JSONObject().put("versionName", device.versionName).put("versionCode", device.versionCode))
+            .put("device", JSONObject().put("model", device.model).put("sdk", device.sdk))
+            .put("windowDays", report.windowDays)
+            .put("daysWithFires", report.daysWithFires)
+            .put("drift", JSONArray(report.drift.map(::tierDrift)))
+            .put("fires", JSONArray(report.fires.map(::fireRow)))
+            .put("catchUp", report.catchUp)
+            .put("excluded", counts(report.excluded.mapKeys { it.key.name }))
+            .put("neverFired", report.neverFired)
+            .put("neverFiredRungs", JSONArray(report.neverFiredRungs.map(::unfired)))
+            .put("clockChanges", report.clockChanges)
+            .put("neverFiredExcluded", counts(report.neverFiredExcluded.mapKeys { it.key.name }))
+            .put("missedOccurrences", report.missedOccurrences)
+            .put("watchdogRepairs", report.watchdogRepairs)
+            .put("mutedFires", report.mutedFires)
+            .put("storeFailures", counts(report.storeFailures))
+            .put("corruptionFound", report.corruption != null)
+            .put("checks", JSONArray(report.checks.map(::check)))
+            .toString()
+
+    private fun tierDrift(drift: TierDrift) =
+        JSONObject()
+            .put("tier", drift.tier.name)
+            .put("fires", drift.fires)
+            .put("medianMs", drift.median.inWholeMilliseconds)
+            .put("slowestMs", drift.slowest.inWholeMilliseconds)
+
+    private fun fireRow(row: FireRow): JSONObject {
+        val t = row.telemetry
+        return JSONObject()
+            .put("day", row.localDay)
+            .put("rungHour", row.rungHour)
+            .put("fireHour", row.fireHour)
+            .put("tier", row.tier.name)
+            .put("latencyMs", row.latency.inWholeMilliseconds)
+            .put("screenOn", t.screenOn ?: JSONObject.NULL)
+            .put("audioFocus", t.audioFocusObtained ?: JSONObject.NULL)
+            .put("batteryPct", t.batteryPct ?: JSONObject.NULL)
+            .put("doze", t.dozeState ?: JSONObject.NULL)
+            .put("watchdogRepair", t.watchdogRepair)
+            .put("deliveryPath", t.deliveryPath ?: JSONObject.NULL)
+            .put("ringerStarted", t.ringerStarted ?: JSONObject.NULL)
+            .put("alarmStreamMuted", t.alarmStreamMuted ?: JSONObject.NULL)
+    }
+
+    private fun unfired(rung: UnfiredRow) = JSONObject().put("day", rung.localDay).put("hour", rung.hour)
+
+    private fun check(check: ReliabilityCheck): JSONObject =
+        JSONObject()
+            .put("day", day(check.scheduledAt))
+            .put("outcome", check.outcome.name)
+            .put("tier", check.resolvedTier.name)
+            .put("latencyMs", check.firedAt?.let { (it - check.scheduledAt).inWholeMilliseconds } ?: JSONObject.NULL)
+
+    private fun counts(values: Map<String, Number>) =
+        JSONObject().also { json -> values.forEach { (k, v) -> json.put(k, v) } }
+
+    /** Days since the epoch (UTC): a date and no time of day. */
+    private fun day(at: Instant): Long = Math.floorDiv(at.toEpochMilliseconds(), DAY_MILLIS)
+}

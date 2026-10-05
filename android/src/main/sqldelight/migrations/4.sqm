@@ -1,0 +1,49 @@
+-- Version 4 to 5 (Phase 2, PR 7): what the reliability evidence needs that the shared schema must not hold (ADR 0069,
+-- ADR 0070, invariant 5).
+--  * reliability_check: the history of the check she starts. One row per check; at most one is PENDING at a time.
+--  * store_failure: how often each store operation has failed, kept across restarts, so a store that fails every
+--    time stays visible after the process that saw it has ended (ADR 0054 counted them in memory only).
+--  * arming_context: what the device said when a rung was armed, keyed by the shared ALARM_SCHEDULED event's id:
+--    the rung's instant, the boot count and the count of clock changes then. A fire is compared with it.
+--  * clock_change: one row for each time the clock was set, so a fire after a clock change can be left out of drift.
+--  * boot_instant: the wall clock instant each boot began, by boot count (now minus the time since boot, read when the
+--    app first runs in that boot), so a rung that never fired can be excused only if the phone stayed off past the end
+--    of its grace (ADR 0070).
+--  * fire_telemetry.clock_changes: the count of clock changes when the alarm fired. Null for a row from before.
+CREATE TABLE reliability_check (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    scheduled_at INTEGER NOT NULL,
+    fired_at INTEGER,
+    outcome TEXT NOT NULL,
+    resolved_tier TEXT NOT NULL,
+
+    CHECK (outcome IN ('PENDING', 'FIRED', 'MISSED')),
+    CHECK (resolved_tier IN ('TIER_1', 'TIER_2', 'TIER_3')),
+    CHECK ((outcome = 'FIRED') = (fired_at IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX reliability_check_one_pending ON reliability_check(outcome) WHERE outcome = 'PENDING';
+
+CREATE TABLE store_failure (
+    operation TEXT NOT NULL PRIMARY KEY,
+    failures INTEGER NOT NULL CHECK (failures >= 0)
+);
+
+CREATE TABLE arming_context (
+    event_id TEXT NOT NULL PRIMARY KEY,
+    rung_instant INTEGER NOT NULL,
+    boot_count INTEGER NOT NULL,
+    clock_changes INTEGER NOT NULL
+);
+
+CREATE TABLE clock_change (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    changed_at INTEGER NOT NULL
+);
+
+CREATE TABLE boot_instant (
+    boot_count INTEGER NOT NULL PRIMARY KEY,
+    booted_at INTEGER NOT NULL
+);
+
+ALTER TABLE fire_telemetry ADD COLUMN clock_changes INTEGER;

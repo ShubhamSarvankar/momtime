@@ -24,6 +24,8 @@ data class FireTelemetry(
     val ringerStarted: Boolean? = null,
     /** Whether the alarm stream was muted (volume zero) at the fire: a ring she could not hear. Null if not read. */
     val alarmStreamMuted: Boolean? = null,
+    /** How many times the clock had been set when the alarm fired (ADR 0070). Null for a row from before. */
+    val clockChanges: Long? = null,
 )
 
 /**
@@ -70,6 +72,7 @@ class SqlDelightFireTelemetryRepository(
                 delivery_path = telemetry.deliveryPath,
                 ringer_started = telemetry.ringerStarted?.toLong(),
                 alarm_stream_muted = telemetry.alarmStreamMuted?.toLong(),
+                clock_changes = telemetry.clockChanges,
             )
             true
         }
@@ -99,6 +102,7 @@ class SqlDelightFireTelemetryRepository(
                     deliveryPath = it.delivery_path,
                     ringerStarted = it.ringer_started?.let { value -> value != 0L },
                     alarmStreamMuted = it.alarm_stream_muted?.let { value -> value != 0L },
+                    clockChanges = it.clock_changes,
                 )
             }
         }

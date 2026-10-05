@@ -3,6 +3,7 @@ package com.momtime.android.arming
 import android.content.Context
 import com.momtime.android.capability.DeliveryMechanism
 import com.momtime.android.di.BootCount
+import com.momtime.android.di.Uptime
 import com.momtime.android.store.ArmedAlarmRepository
 import com.momtime.shared.data.ReconcileCommand
 
@@ -49,6 +50,7 @@ internal class PlatformProbes(
     val alarm: AlarmProbe,
     val bootCount: BootCount,
     val appVersion: AppVersion,
+    val uptime: Uptime,
 )
 
 /** What one watchdog pass did. */

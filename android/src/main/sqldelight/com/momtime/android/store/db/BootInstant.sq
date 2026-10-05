@@ -1,0 +1,14 @@
+-- The wall clock instant each boot began, by boot count (ADR 0070). It is now minus the time since boot, read the first
+-- time the app runs in that boot, whether the boot pass or the app starting got there first, and the first answer is
+-- kept. A rung that never fired is excused only if the first boot after its instant began after the end of its grace:
+-- the phone stayed off through all of it. Android's own (invariant 5): the boot count is a fact about this device.
+CREATE TABLE boot_instant (
+    boot_count INTEGER NOT NULL PRIMARY KEY,
+    booted_at INTEGER NOT NULL
+);
+
+insertBootInstant:
+INSERT OR IGNORE INTO boot_instant(boot_count, booted_at) VALUES (?, ?);
+
+selectBootInstants:
+SELECT * FROM boot_instant ORDER BY booted_at ASC;
