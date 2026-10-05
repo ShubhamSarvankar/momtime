@@ -253,7 +253,7 @@ class ReliabilityCheckActivityTest {
     }
 
     @Test
-    fun `with nothing ringing the ring screen offers the way to the check, and it opens the check screen`() {
+    fun `with nothing ringing the ring screen offers the way to the setup, and it opens the setup screen`() {
         RingEntryPoint.provider = { quietHost(RingSessions()) }
         val ring =
             Robolectric
@@ -270,13 +270,13 @@ class ReliabilityCheckActivityTest {
         link.performClick()
 
         assertEquals(
-            ComponentName(context, ReliabilityCheckActivity::class.java),
+            ComponentName(context, com.momtime.android.onboarding.SetupActivity::class.java),
             shadowOf(ring).nextStartedActivity.component,
         )
     }
 
     @Test
-    fun `while a reminder is ringing the ring screen does not offer the check`() {
+    fun `while a reminder is ringing the ring screen does not offer the setup`() {
         val sessions = RingSessions()
         sessions.join(
             RingItem("occ", "Iron tablet", null, null, alarmSlot = 31, actions = setOf(OccurrenceAction.ACKNOWLEDGE)),

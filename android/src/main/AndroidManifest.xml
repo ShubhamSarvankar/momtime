@@ -114,6 +114,23 @@
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.NoActionBar" />
 
+        <!--
+            The permission screen and the Samsung walkthrough (ADR 0072). Neither is exported: they are reached from the
+            ring screen's idle state and from each other. A Robolectric test reads the merged manifest and fails if
+            either is exported.
+        -->
+        <activity
+            android:name=".onboarding.SetupActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <activity
+            android:name=".onboarding.SamsungStepsActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
         <!-- The ringer (ADR 0061). Not exported. A foreground service of type mediaPlayback, never started by boot. -->
         <service
             android:name=".ringer.RingerService"

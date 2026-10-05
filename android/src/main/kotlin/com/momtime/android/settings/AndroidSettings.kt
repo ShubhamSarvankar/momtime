@@ -78,6 +78,17 @@ class AndroidSettings(
         prefs.edit().putBoolean(KEY_RELIABILITY_OPT_IN, value).apply()
     }
 
+    /**
+     * Whether the runtime request for notifications has been made (API 33 and above). After it, the system will not
+     * show
+     * the dialog again, so the setup screen opens the app's notification settings instead (ADR 0072).
+     */
+    fun notificationsRequested(): Boolean = prefs.getBoolean(KEY_NOTIFICATIONS_REQUESTED, false)
+
+    fun markNotificationsRequested() {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS_REQUESTED, true).apply()
+    }
+
     private fun vibrationKey(templateId: String) = "$KEY_VIBRATION_PREFIX$templateId"
 
     companion object {
@@ -93,5 +104,6 @@ class AndroidSettings(
         private const val KEY_BACKUP_DELAY_MS = "backup_sound_delay_ms"
         private const val KEY_VIBRATION_PREFIX = "vibration."
         private const val KEY_RELIABILITY_OPT_IN = "share_reliability_opt_in"
+        private const val KEY_NOTIFICATIONS_REQUESTED = "notifications_requested"
     }
 }

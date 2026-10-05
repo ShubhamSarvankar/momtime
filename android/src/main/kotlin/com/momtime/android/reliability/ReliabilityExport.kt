@@ -52,6 +52,8 @@ object ReliabilityExport {
             .put("neverFired", report.neverFired)
             .put("neverFiredRungs", JSONArray(report.neverFiredRungs.map(::unfired)))
             .put("clockChanges", report.clockChanges)
+            .put("unseenBoots", report.unseenBoots)
+            .put("unusedAppExempt", report.unusedAppExempt ?: JSONObject.NULL)
             .put("neverFiredExcluded", counts(report.neverFiredExcluded.mapKeys { it.key.name }))
             .put("missedOccurrences", report.missedOccurrences)
             .put("watchdogRepairs", report.watchdogRepairs)

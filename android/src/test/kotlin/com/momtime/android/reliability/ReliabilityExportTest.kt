@@ -237,4 +237,37 @@ class ReliabilityExportTest {
         assertTrue("a day number is far smaller than an instant in milliseconds", fire.getLong("day") < 1_000_000L)
         assertEquals(0, doc.getJSONArray("neverFiredRungs").length())
     }
+
+    @Test
+    fun `the export carries the unseen boot count and the unused app restrictions, and no timestamp`() {
+        fixture.graph.get<com.momtime.android.store.BootInstantRepository>().apply {
+            record(
+                com.momtime.android.store
+                    .BootInstant(7, t0 - 5.hours),
+            )
+            record(
+                com.momtime.android.store
+                    .BootInstant(10, t0 - 1.hours),
+            )
+        }
+        fixture.unusedAppExempt = false
+
+        val json = ReliabilityExport.toJson(fixture.graph.get<ReliabilityReader>().read(t0), device)
+        val doc = JSONObject(json)
+
+        assertEquals("a count: two boots lie between 7 and 10", 2, doc.getInt("unseenBoots"))
+        assertEquals(false, doc.getBoolean("unusedAppExempt"))
+        assertFalse(
+            "no instant of the boots is in the file",
+            json.contains((t0 - 1.hours).toEpochMilliseconds().toString().take(9)),
+        )
+    }
+
+    @Test
+    fun `below API 30 the unused app restrictions are exported as null`() {
+        val doc = JSONObject(ReliabilityExport.toJson(fixture.graph.get<ReliabilityReader>().read(t0), device))
+
+        assertTrue(doc.isNull("unusedAppExempt"))
+        assertEquals(0, doc.getInt("unseenBoots"))
+    }
 }

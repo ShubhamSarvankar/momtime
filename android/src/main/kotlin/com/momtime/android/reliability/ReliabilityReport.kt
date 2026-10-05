@@ -2,6 +2,7 @@ package com.momtime.android.reliability
 
 import com.momtime.android.arming.DEVICE_CHANNELS
 import com.momtime.android.capability.CapabilityInputs
+import com.momtime.android.di.BootCount
 import com.momtime.android.di.CorruptionMarker
 import com.momtime.android.store.ArmingContextRepository
 import com.momtime.android.store.BootInstant
@@ -81,6 +82,14 @@ data class ReliabilityReport(
     val corruption: CorruptionMarker?,
     val checks: List<ReliabilityCheck>,
     val capability: CapabilityInputs,
+    /**
+     * Boots in the window that the app did not run in, from gaps in the boot counts it recorded (ADR 0071). A count and
+     * no instant: it is direct evidence that the app was asleep through a restart.
+     */
+    val unseenBoots: Int,
+    /** True if exempt from Android's unused app restrictions, false if they apply, null below API 30 (ADR 0072). */
+    val unusedAppExempt: Boolean?,
+    val samsung: Boolean,
 ) {
     val lastSettledCheck: ReliabilityCheck? get() = checks.firstOrNull { it.outcome != CheckOutcome.PENDING }
 
@@ -95,6 +104,9 @@ data class ReliabilityReport(
                     mutedFires = mutedFires,
                     storeFailures = storeFailures.values.sum(),
                     corruption = corruption != null,
+                    unseenBoots = unseenBoots,
+                    samsung = samsung,
+                    unusedAppExempt = unusedAppExempt,
                 ),
             )
 }
@@ -114,6 +126,9 @@ class ReliabilityReader internal constructor(
     private val contexts: ArmingContextRepository,
     private val clockChanges: ClockChangeRepository,
     private val boots: BootInstantRepository,
+    private val bootCount: BootCount,
+    private val unusedAppExempt: () -> Boolean?,
+    private val samsung: () -> Boolean,
     private val checks: () -> List<ReliabilityCheck>,
     private val failureCounts: () -> Map<String, Long>,
     private val corruption: () -> CorruptionMarker?,
@@ -138,7 +153,7 @@ class ReliabilityReader internal constructor(
                 neverFiredAfter = NEVER_FIRED_AFTER,
                 rungArmedBy = { contexts.find(it)?.rungInstant },
                 exclusion = { sample -> excludeFire(sample) },
-                unfiredExclusion = { unfired -> excludeUnfired(unfired, bootInstants) },
+                unfiredExclusion = { unfired -> excludeUnfired(unfired, bootInstants, bootCount.read()) },
             )
 
         val rows =
@@ -183,6 +198,9 @@ class ReliabilityReader internal constructor(
             corruption = corruption(),
             checks = checks(),
             capability = capability(),
+            unseenBoots = BootGaps.unseenSince(bootInstants, from),
+            unusedAppExempt = unusedAppExempt(),
+            samsung = samsung(),
         )
     }
 
@@ -214,14 +232,24 @@ class ReliabilityReader internal constructor(
      * point within grace after the rung has its overdue rungs armed for now and delivered late, so a rung that still
      * never fired is a real failure, however many times it restarted; and a clock change excuses nothing (a backward
      * jump puts the rung back in the future, and a forward jump arms it for now, so it fires). A boot the app never
-     * saw is not known, and a rung is then not excused.
+     * saw is not known, and a rung is then not excused: not across a gap in the recorded boot counts, and not when the
+     * boot count is unknown (ADR 0071).
      */
     private fun excludeUnfired(
         unfired: FireTiming.UnfiredRung,
         bootInstants: List<BootInstant>,
+        bootNow: Long,
     ): Exclusion? {
         val firstAfter = bootInstants.firstOrNull { it.bootedAt > unfired.rung }
-        return if (firstAfter != null && firstAfter.bootedAt > unfired.graceEnd) Exclusion.OFF_THROUGH_GRACE else null
+        // Never excused when the boot count is unknown, and never across a gap in the boot counts between the rung and
+        // the first boot recorded after it: the app did not run in at least one boot, so the phone may have been
+        // running through grace (ADR 0071).
+        val excused =
+            bootNow >= 0 &&
+                firstAfter != null &&
+                BootGaps.unseenBefore(bootInstants, firstAfter) == 0 &&
+                firstAfter.bootedAt > unfired.graceEnd
+        return if (excused) Exclusion.OFF_THROUGH_GRACE else null
     }
 
     private fun localDaysWithFires(

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Samsung walkthrough (ADR 0072). Nothing here has a fixed width or a fixed height; the steps are added by the
+     Activity, each with a screenshot that scales to the width of the screen. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/samsung_heading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/samsung_title"
+            android:textAppearance="@android:style/TextAppearance.Material.Headline" />
+
+        <TextView
+            android:id="@+id/samsung_intro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/samsung_intro" />
+
+        <LinearLayout
+            android:id="@+id/samsung_steps"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <Button
+            android:id="@+id/samsung_continue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/samsung_continue" />
+    </LinearLayout>
+</ScrollView>

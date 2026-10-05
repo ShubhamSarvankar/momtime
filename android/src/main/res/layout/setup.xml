@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The permission screen (ADR 0072). Nothing here has a fixed width or a fixed height: at 200 percent font scale every
+     label wraps and nothing is cut off. The rows are added by the Activity from what is needed now. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/setup_heading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/setup_title"
+            android:textAppearance="@android:style/TextAppearance.Material.Headline" />
+
+        <TextView
+            android:id="@+id/setup_intro"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setup_intro" />
+
+        <TextView
+            android:id="@+id/setup_tier"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textAppearance="@android:style/TextAppearance.Material.Subhead" />
+
+        <LinearLayout
+            android:id="@+id/setup_items"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
+
+        <Button
+            android:id="@+id/setup_continue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/setup_continue" />
+    </LinearLayout>
+</ScrollView>

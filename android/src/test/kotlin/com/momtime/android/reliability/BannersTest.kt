@@ -30,6 +30,9 @@ class BannersTest {
 
     @Suppress("LongParameterList")
     private fun inputs(
+        unseenBoots: Int = 0,
+        samsung: Boolean = false,
+        unusedAppExempt: Boolean? = null,
         latencies: List<Duration> = emptyList(),
         neverFired: Int = 0,
         lastCheck: CheckOutcome? = null,
@@ -37,7 +40,18 @@ class BannersTest {
         muted: Int = 0,
         failures: Long = 0,
         corruption: Boolean = false,
-    ) = BannerInputs(latencies, neverFired, lastCheck, capability, muted, failures, corruption)
+    ) = BannerInputs(
+        latencies,
+        neverFired,
+        lastCheck,
+        capability,
+        muted,
+        failures,
+        corruption,
+        unseenBoots,
+        samsung,
+        unusedAppExempt,
+    )
 
     private fun banners(vararg changes: BannerInputs) = Banners.compute(changes.single())
 
@@ -196,5 +210,34 @@ class BannersTest {
         assertTrue(Banners.isExactTier(com.momtime.shared.domain.DeliveryCapability.TIER_3))
         assertTrue(Banners.isExactTier(com.momtime.shared.domain.DeliveryCapability.TIER_2))
         assertEquals(false, Banners.isExactTier(com.momtime.shared.domain.DeliveryCapability.TIER_1))
+    }
+
+    @Test
+    fun `a restart the app did not run after raises a banner from the first, with the fix path for the phone`() {
+        assertEquals(1, Banners.UNSEEN_BOOT_LIMIT)
+        assertEquals(emptyList<Banner>(), banners(inputs(unseenBoots = 0)))
+        assertEquals(
+            listOf<Banner>(Banner.NotRunAfterRestart(1, FixStep.BATTERY_STEP)),
+            banners(inputs(unseenBoots = 1)),
+        )
+        assertEquals(
+            "on a Samsung it names the Sleeping apps and Deep sleeping apps steps",
+            listOf<Banner>(Banner.NotRunAfterRestart(2, FixStep.SAMSUNG_SLEEPING_STEPS)),
+            banners(inputs(unseenBoots = 2, samsung = true)),
+        )
+    }
+
+    @Test
+    fun `unused app restrictions raise a banner only when they apply`() {
+        assertEquals(
+            listOf<Banner>(Banner.UnusedAppRestrictions(FixStep.UNUSED_APP_STEP)),
+            banners(inputs(unusedAppExempt = false)),
+        )
+        assertEquals("exempt: none", emptyList<Banner>(), banners(inputs(unusedAppExempt = true)))
+        assertEquals(
+            "below API 30 the setting does not exist: none",
+            emptyList<Banner>(),
+            banners(inputs(unusedAppExempt = null)),
+        )
     }
 }

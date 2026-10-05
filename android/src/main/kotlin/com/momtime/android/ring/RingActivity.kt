@@ -11,7 +11,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.momtime.android.R
-import com.momtime.android.reliability.ReliabilityCheckActivity
+import com.momtime.android.onboarding.SetupActivity
 import com.momtime.shared.engine.OccurrenceAction
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -70,7 +70,7 @@ class RingActivity : Activity() {
         setContentView(R.layout.ring)
         findViewById<Button>(R.id.ring_stop_sound).setOnClickListener { host?.stopSound() }
         findViewById<Button>(R.id.ring_open_check).setOnClickListener {
-            startActivity(ReliabilityCheckActivity.intent(this))
+            startActivity(SetupActivity.intent(this))
         }
     }
 

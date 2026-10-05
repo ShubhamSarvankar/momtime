@@ -878,6 +878,154 @@ val selfTestVerifyManifestPermissions =
         }
     }
 
+// --- Debug only components (ADR 0072). The debug seed screen is a launcher entry in the debug manifest, in the
+// `debug` source set, so a release build cannot have it. This check keeps it that way: no component of the debug
+// package may appear in the merged release manifest, which is the processed output and includes anything a library or
+// a stray main manifest entry brought in. Fail closed twice over: a missing release manifest means the check read
+// nothing, and the merged debug manifest must declare at least one debug component, or the pattern would be matching
+// nothing and the check would pass for the wrong reason.
+
+val debugComponentPrefix = "com.momtime.android.debug."
+val componentTags = setOf("activity", "activity-alias", "service", "receiver", "provider")
+
+/** The android:name of every component under the debug package, as `tag|name`. */
+fun debugComponents(
+    manifest: File,
+    prefix: String = debugComponentPrefix,
+): List<String> {
+    val factory = DocumentBuilderFactory.newInstance()
+    factory.isNamespaceAware = true
+    val elements = factory.newDocumentBuilder().parse(manifest).getElementsByTagName("*")
+    val found = mutableListOf<String>()
+    for (i in 0 until elements.length) {
+        val element = elements.item(i) as Element
+        if (element.tagName !in componentTags) continue
+        val name = element.getAttributeNS("http://schemas.android.com/apk/res/android", "name")
+        if (name.startsWith(prefix)) found += "${element.tagName}|$name"
+    }
+    return found
+}
+
+val releaseManifest = mergedManifests.first { it.path.contains("release") }
+val debugManifest = mergedManifests.first { it.path.contains("debug") }
+
+val verifyNoDebugComponents =
+    tasks.register("verifyNoDebugComponents") {
+        group = "verification"
+        description = "Fails if a debug only component reaches the merged release manifest (ADR 0072)"
+        dependsOn("processDebugManifest", "processReleaseManifest")
+        doLast {
+            val missing = listOf(releaseManifest, debugManifest).filterNot { it.isFile }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    "verifyNoDebugComponents found no merged manifest at: $missing",
+                )
+            }
+            val inDebug = debugComponents(debugManifest)
+            if (inDebug.isEmpty()) {
+                throw GradleException(
+                    "the merged debug manifest declares no component under $debugComponentPrefix, so this check " +
+                        "would " +
+                        "pass without looking at anything (ADR 0072)",
+                )
+            }
+            val inRelease = debugComponents(releaseManifest)
+            if (inRelease.isNotEmpty()) {
+                throw GradleException(
+                    "a debug only component is in the merged release manifest (ADR 0072):\n" +
+                        inRelease.joinToString("\n"),
+                )
+            }
+        }
+    }
+
+val selfTestVerifyNoDebugComponents =
+    tasks.register("selfTestVerifyNoDebugComponents") {
+        group = "verification"
+        description = "Proves verifyNoDebugComponents detects each kind of debug component and passes clean manifests"
+        doLast {
+            val root =
+                layout.buildDirectory
+                    .dir("debug-components-fixture")
+                    .get()
+                    .asFile
+            root.deleteRecursively()
+            root.mkdirs()
+
+            fun manifest(
+                name: String,
+                body: String,
+            ): File =
+                File(root, name).also {
+                    it.writeText(
+                        "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" +
+                            "<application>\n$body\n</application>\n</manifest>\n",
+                    )
+                }
+
+            val mustBeFlagged =
+                mapOf(
+                    "the seed activity" to
+                        manifest(
+                            "activity.xml",
+                            "<activity android:name=\"com.momtime.android.debug.SeedActivity\" />",
+                        ),
+                    "a debug service" to
+                        manifest("service.xml", "<service android:name=\"com.momtime.android.debug.S\" />"),
+                    "a debug receiver" to
+                        manifest("receiver.xml", "<receiver android:name=\"com.momtime.android.debug.R\" />"),
+                    "a debug provider" to
+                        manifest("provider.xml", "<provider android:name=\"com.momtime.android.debug.P\" />"),
+                    "a debug activity alias" to
+                        manifest(
+                            "alias.xml",
+                            "<activity-alias android:name=\"com.momtime.android.debug.A\" " +
+                                "android:targetActivity=\".ring.RingActivity\" />",
+                        ),
+                    "a debug component among others" to
+                        manifest(
+                            "among.xml",
+                            "<activity android:name=\"com.momtime.android.ring.RingActivity\" />\n" +
+                                "<service android:name=\"com.momtime.android.ringer.RingerService\" />\n" +
+                                "<activity android:name=\"com.momtime.android.debug.SeedActivity\" />",
+                        ),
+                )
+            val mustPass =
+                mapOf(
+                    "an empty application" to manifest("empty.xml", ""),
+                    "the real components" to
+                        manifest(
+                            "real.xml",
+                            "<activity android:name=\"com.momtime.android.ring.RingActivity\" />\n" +
+                                "<receiver android:name=\"com.momtime.android.arming.AlarmReceiver\" />",
+                        ),
+                    "a package that only starts with the same letters" to
+                        manifest("lookalike.xml", "<activity android:name=\"com.momtime.android.debugger.X\" />"),
+                    "the word debug in another place" to
+                        manifest(
+                            "word.xml",
+                            "<activity android:name=\"com.momtime.android.ring.DebugOverlay\" " +
+                                "android:label=\"com.momtime.android.debug.NotAComponent\" />",
+                        ),
+                )
+
+            val failures = mutableListOf<String>()
+            for ((what, file) in mustBeFlagged) {
+                val found = debugComponents(file).size
+                if (found != 1) failures += "not detected exactly once ($found): $what"
+            }
+            for ((what, file) in mustPass) {
+                val found = debugComponents(file)
+                if (found.isNotEmpty()) failures += "was flagged: $what: $found"
+            }
+            root.deleteRecursively()
+            if (failures.isNotEmpty()) {
+                throw GradleException("verifyNoDebugComponents self-test failed:\n" + failures.joinToString("\n"))
+            }
+            logger.lifecycle("verifyNoDebugComponents self-test passed.")
+        }
+    }
+
 tasks.named("check") {
     dependsOn(
         verifyNoGeneratedQueries,
@@ -890,5 +1038,7 @@ tasks.named("check") {
         selfTestVerifyManifestPermissions,
         verifyRingUiBoundary,
         selfTestVerifyRingUiBoundary,
+        verifyNoDebugComponents,
+        selfTestVerifyNoDebugComponents,
     )
 }
