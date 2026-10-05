@@ -8,6 +8,8 @@ plugins {
     alias(libs.plugins.sqldelight)
     alias(libs.plugins.detekt)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -30,6 +32,8 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+
+    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -88,6 +92,15 @@ dependencies {
     implementation(libs.kotlinx.datetime)
     implementation(libs.work.runtime)
 
+    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    testImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.work.testing)

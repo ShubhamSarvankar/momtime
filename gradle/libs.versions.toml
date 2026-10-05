@@ -39,6 +39,7 @@ work-runtime = { module = "androidx.work:work-runtime", version.ref = "work" }
 work-testing = { module = "androidx.work:work-testing", version.ref = "work" }
 
 [plugins]
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

@@ -117,3 +117,33 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor :android:verifyManifestPermissions :android:selfTestVerifyManifestPermissions :android:verifyRingUiBoundary :android:selfTestVerifyRingUiBoundary :android:verifyNoDebugComponents :android:selfTestVerifyNoDebugComponents
+
+  android-screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - id: verify
+        continue-on-error: true
+        run: ./gradlew :android:verifyRoborazziDebug --tests "*ScreenshotTest*"
+      - name: Keep the comparison images of a failed verify
+        if: steps.verify.outcome == 'failure'
+        run: mkdir -p screenshot-diff && cp -r android/build/outputs/roborazzi/. screenshot-diff/ || true
+      - name: Record what this commit renders on Linux
+        run: ./gradlew :android:recordRoborazziDebug --tests "*ScreenshotTest*"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: goldens
+          path: android/src/test/snapshots
+      - uses: actions/upload-artifact@v4
+        if: steps.verify.outcome == 'failure'
+        with:
+          name: screenshot-diff
+          path: screenshot-diff
+      - name: Fail if the committed goldens are not what this commit renders
+        if: steps.verify.outcome == 'failure'
+        run: exit 1
