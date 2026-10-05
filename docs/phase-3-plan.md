@@ -1,6 +1,6 @@
 # Phase 3 plan: Android UI and localisation
 
-Status: draft, for review, third revision (after two reviews by Claude (technical review): the mockup read, the dependency list and its sub modules approved, late marking added and made reachable, and the fixes of both reviews). Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
+Status: draft, for review, fourth revision (after three reviews by Claude (technical review): the mockup read, the dependency list and its sub modules approved, late marking added and made reachable, the fixes of the reviews, and two corrections of Phase 2 decided in the third: a Gentle reminder does not ring, and a ring has a maximum length). Written by the Phase 3 planning session; decisions marked D1 to D10 are Claude (technical review)'s, from the planning prompt, and decisions a to i are the planning session's, for review. No production code and no dependency entered the build in this pull request. `CLAUDE.md` wins over this file, then `ARCHITECTURE.md`, then `IMPLEMENTATION_PLAN.md`.
 
 The visual specification is `docs/phase-3-design.md`. The evidence table is `docs/phase-3-traceability.md`.
 
@@ -27,8 +27,8 @@ The visual specification is `docs/phase-3-design.md`. The evidence table is `doc
 | C11 | Phase 3's deliverables did not name marking a missed dose as taken late, though `ARCHITECTURE.md` section 4.5 promises it. | **Decided by Claude (technical review): in PR 11.** No command wrote `COMPLETED_BACKFILLED`, so PR 11 adds `BackfillCommand` (ADR 0087 item 7). |
 | C12 | `OccurrenceActions.available` offers snooze on any open occurrence, including one that is not yet due; Today is the first surface to show one. | Snooze is not offered before the occurrence's time; a rule added to the domain in PR 11, for review (ADR 0087 item 6). |
 | C13 | "Anything a pull request imports directly is declared directly" and "nothing beyond the approved list" pulled against each other for the sub modules of the approved Compose and Activity libraries. | **Resolved by Shubham: the eight are declared by name** at the versions the approved BOM and `activity-compose` 1.13.0 fix (ADR 0084, section 4). |
-| C14 | **Found while checking the onboarding lines against the build: a Gentle reminder rings.** `ARCHITECTURE.md` section 4.2 says Gentle is "t+0 notification only, no repeat". In the build, `EscalationLadder` gives Gentle one `RING` rung, `EscalationPolicy.resolveDelivery` returns `RING` for it outside quiet hours and the budget, and `DeliveryPath.choose` does not look at criticality, so on an exact tier a Gentle reminder starts the ringer service: the alarm sound, looping, with the light vibration, until she answers or stops it. `DeliveryTest` `each criticality rings on its own channel` asserts that ringer start. | **Not resolved here; it is a decision about Phase 2's behaviour and is raised in section 8.** The onboarding line for Gentle is written for both outcomes (PR 10). |
-| C15 | Found in the same check: **the ringer has no maximum ring time.** `RingerService` stops only when she acts, when she presses "Stop the sound", or when the session ends; the sound loops, and the louder sound replaces it after its interval. "Rings once and repeats once", the first draft's line for Standard, was false. | The lines are corrected to what is built (PR 10). Whether an unanswered ring should ever stop by itself is raised in section 8. |
+| C14 | **Found while checking the onboarding lines against the build: a Gentle reminder rings.** `ARCHITECTURE.md` section 4.2 says Gentle is "t+0 notification only, no repeat"; the build starts the ringer for it on an exact tier, and `DeliveryTest` `each criticality rings on its own channel` asserts that. | **Decided by Claude (technical review): the document is right and the build is wrong.** Corrected in PR 2 under ADR 0089. |
+| C15 | Found in the same check: **the ringer has no maximum ring time**, so the repeat rung only ever "continues" a ring that is still sounding, and a ring can outlive its occurrence's grace. | **Decided by Claude (technical review): a ring has a maximum length**, 4 minutes as a placeholder, and the end of grace ends a ring. A new pull request, PR 2b, under ADR 0090. |
 
 ---
 
@@ -55,9 +55,9 @@ All spikes ran in a throwaway clone under the session's scratch directory, never
 | 37356335976 | `dacd1ed` | The screen's text changed, the golden not | **Failure**, on the step that fails when verify failed; the artifacts `goldens` and `screenshot-diff` were uploaded |
 | 37356903352 | `bb2f594` | The `goldens` artifact of the second run, downloaded through the MCP and committed unchanged | **Success** |
 
-So the route works end to end, verify is shown able to fail, and a legitimately changed golden is replaced by downloading the job's artifact. One further finding: for this capture, Robolectric's native graphics rendered identically on Windows and Linux. That is one screen with Robolectric's own fonts, not a guarantee for 705 captures with bundled fonts, so the rule stays that only Linux recorded files are committed; but a local Windows recording is a faithful preview. The steps are in PR 7.
+So the route works end to end, verify is shown able to fail, and a legitimately changed golden is replaced by downloading the job's artifact. One further finding: for this capture, Robolectric's native graphics rendered identically on Windows and Linux. That is one screen with Robolectric's own fonts, not a guarantee for 735 captures with bundled fonts, so the rule stays that only Linux recorded files are committed; but a local Windows recording is a faithful preview. The steps are in PR 7.
 
-**Timing and size.** Warm captures took about half a second each for a small screen. The matrix is 47 screen states (design spec section 6): 47 by 9 in Light is 423, and 47 by 6 other appearances at English 100 percent is 282, **705 captures**, plus 9 type specimens. At half a second to one second each that is 6 to 12 minutes on one SDK level (36), plus the recording pass the job also makes, so screenshots run as their own CI job, `android-screenshots`. The throwaway run of that job, with one capture, took 2 minutes 39 seconds end to end, nearly all of it build. **Capture density is mdpi, not xhdpi, to keep the repository's history small** (ADR 0077 item 6, with the estimate): about 10 MB for one full set and about 40 MB of history across PRs 7 to 16, against about 32 MB and 125 MB at xhdpi. These are estimates from one measured file; PR 7 measures the real average per capture and reports it, and a single snapshot set above 60 MB is a STOP.
+**Timing and size.** Warm captures took about half a second each for a small screen. The matrix is 49 screen states (design spec section 6): 49 by 9 in Light is 441, and 49 by 6 other appearances at English 100 percent is 294, **735 captures**, plus 9 type specimens. At half a second to one second each that is 6 to 12 minutes on one SDK level (36), plus the recording pass the job also makes, so screenshots run as their own CI job, `android-screenshots`. The throwaway run of that job, with one capture, took 2 minutes 39 seconds end to end, nearly all of it build. **Capture density is mdpi, not xhdpi, to keep the repository's history small** (ADR 0077 item 6, with the estimate): about 10 MB for one full set and about 40 MB of history across PRs 7 to 16, against about 32 MB and 125 MB at xhdpi. These are estimates from one measured file; PR 7 measures the real average per capture and reports it, and a single snapshot set above 60 MB is a STOP.
 
 ---
 
@@ -83,6 +83,8 @@ So the route works end to end, verify is shown able to fail, and a legitimately 
 | g | One source of colour roles for Compose, views and the widget | 0075 |
 | h | Nutrition tags are recorded with the completion; water with its zone; both reductions pure with an explicit `asOf` | 0086 |
 | i | Onboarding in six steps with one gate; Today's four states over the log, its three actions and late marking; banners; the reliability view | 0087 |
+| | A Gentle reminder is a notification only: a correction of Phase 2 (decided in the third review) | 0089 |
+| | A ring has a maximum length, and the end of grace ends a ring (decided in the third review) | 0090 |
 
 ---
 
@@ -109,6 +111,59 @@ Rules for every PR: one branch from current `main`, never stacked, only after th
 "STOP" means: do not choose; write what was found and hand back.
 
 Test tables give, for each test, its subject and setup, its assertion, and the mutation that must fail it. Every test named here reaches its subject through the production entry point named in its row; a test that asserts a helper's output where the row names a command or a screen does not count.
+
+### The audit of absence assertions (second review, fix 1)
+
+Done in full for the third revision and set out here in the fourth, because its report gave only the tests that changed. Every assertion in this plan that a miss, a skip, a failure, an event, a ring or a write is **absent** is listed with the step that would have produced the thing if the code were wrong. "Changed" means the step was missing and was added; "sound" means the test already contained it; "new" means the test was added by the audit or by a later decision.
+
+| PR | Test | What must be absent | The step that would produce it | Status |
+|---|---|---|---|---|
+| 1 | `a withdrawn occurrence is in none of the three figures, even after its grace` | A `MISSED` event for a withdrawn occurrence; a count in any figure | `Reconcile` a day after its grace | Changed |
+| 1 | `a date can be materialised again after a withdrawal and not otherwise` | A second open row for one date | The third insert | Sound |
+| 2 | `the budget is unspent after a Gentle fire` | A spent budget | The Gentle fire itself, beside a Standard fire that spends one as the control | New |
+| 2 | `a Gentle fire during a ringing Critical session leaves the session as it was` | A join, a spread, a second ringer start | The Gentle fire while the session rings | New |
+| 2 | `Gentle at Tier 3 starts no ringer` | A ringer start, a full screen intent | A real fire at Tier 3 | New |
+| 2b | `the cap is a dismissal and writes nothing` | Any event or state change | The scheduler advanced past `MAX_RING` | New |
+| 2b | `the end of grace ends the ring` | Sound after the occurrence is `MISSED` | The watchdog pass after grace, with the session still sounding | New |
+| 3 | Scenario 1, assertion 6 | A miss of D+1 because of the move | `Reconcile` at 13:00 on D+1 | Changed |
+| 3 | `deactivation withdraws every open occurrence, due or not` | `MISSED` or `SKIPPED` for a withdrawn occurrence; a miss or a skip in the figures | `Reconcile` after the grace of both withdrawn occurrences, before the figures | Changed |
+| 3 | `a recurrence change withdraws exactly the dates no longer wanted` | A miss on a withdrawn date | `Reconcile` after the grace of all three | Changed |
+| 3 | `a criticality edit never ends a grace in the past` | A miss at once after the edit | `Reconcile` one minute after the edit | New |
+| 3 | `reactivation materialises fresh occurrences and never a past one` | A new occurrence for an instant already past | The materialisation after reactivating | Sound |
+| 3 | `an edit of a snoozed occurrence changes nothing of it` | Any change to the row or its events | The edit of time and criticality | Sound |
+| 3 | `other fields touch no occurrence` | Any occurrence or event change | The edit; its positive control is the time edit | Sound |
+| 3 | `validation refuses and writes nothing` | A changed template row | The dispatch of each invalid input | Sound |
+| 3 | Scenario 12, final check | A miss produced or dated by an edit; a miss of a withdrawn row | `Reconcile` after the grace of every row in the span | Changed |
+| 4 | `deactivating a ringing reminder stops the ring` | `MISSED`, a silent notice, a `WATCHDOG_REPAIR` | The watchdog pass after the occurrence's grace | Changed |
+| 4 | `a withdrawn occurrence's late alarm delivers nothing` | An event, a notification | The old alarm's broadcast delivered | Sound |
+| 4 | `an edit raises no never fired rung` | A never fired rung | The old instant passed by 20 minutes, beyond the 15 minute tolerance, before the report is read | Sound |
+| 5 | `a backfill counts on its scheduled date from when it is entered` | A count before it is entered | The reduction with `asOf` before the backfill, which exists | Sound |
+| 5 | `mission events, skips, misses and withdrawals count nothing` | A serving counted | One event of each kind present | Sound |
+| 5 | `asOf is inclusive and nothing after it counts` | A count for a later event | An event after `asOf` present | Sound |
+| 6 | `a second occurrence spreads the session` | A full screen intent or delete intent on a per occurrence notification | The second fire | Sound |
+| 6 | `the invariant holds along every path` | A notification for a resolved occurrence | Each action in the table of paths | Sound |
+| 8 | `DataChangesTest` | A signal after a rollback or after unsubscribing | The rolled back write; a write after unsubscribing | Sound |
+| 8 | `a choice applies at once, persists, and recreates nothing` | A recreation, a confirm control | The choice made from the sheet | Sound |
+| 10 | `the copy obligations are on screen` | The Tier 1 sentence at Tier 3 | The screen composed at Tier 3 | Sound |
+| 10 | `the gate` | A gate when something can still reach her | All 64 capability combinations | Sound |
+| 11 | `it is allowed once`, `it is refused on every state but MISSED` | A second or a wrongful backfill event | The second dispatch; a dispatch on each other state | Sound |
+| 11 | `snooze is not offered before the occurrence's time` | A `SNOOZED` event | A snooze dispatched before the time | Sound |
+| 11 | `four states over the log` | A withdrawn row on Today | The withdrawn occurrence present in the database for today | Sound |
+| 11 | `an occurrence missed two days ago does not appear` | Older or already corrected rows in the group | Those rows present | Sound |
+| 11 | `a read that meets corruption ends the process and posts nothing` | A state posted | The read against the corruption seam | Sound |
+| 11 | `the confirm dialog lists exactly what will be withdrawn` | A write on cancel | Cancel pressed with occurrences to withdraw | Sound |
+| 11 | `an edit to a time already past today says so, and names the date the new time starts` | The line when it does not apply | An edit to a time still ahead | Sound |
+| 11 | `the editor's draft survives process death` | A database write while typing | Every field typed before the process death | Sound |
+| 11 | `the editor never writes a mission and shows no mission control` | A mission | Every form state saved | Sound |
+| 12 | `reaching the goal changes only the numbers` | Praise, a new node, a colour | Totals at and above the goal | Sound |
+| 12 | `counts per day and per week, nothing else`; `three figures, never one` | A percentage, a target, a sum | Data with all three outcomes present | Sound |
+| 13 | `the blocking banner cannot be dismissed and covers Today` | A dismiss control | The blocked capability | Sound |
+| 13 | `the reliability view reads the report and the store failing soft is shown` | A throw | The store's seam made to fail | Sound |
+| 13 | `RestoredPhoneTest` | Onboarding shown again | A launch with the flag restored and an empty android store | Sound |
+| 14 | `a nudge never arms an alarm and never uses a reminder channel` | An alarm, an event, a spent budget | The worker run when a nudge is due, with a reminder armed | Sound |
+| 14 | `WaterNudgePolicyTest` | A nudge at or above the goal, in quiet hours, or beyond the cap | The table's rows for each | Sound |
+| 14 | `the nudge state is not backed up` | The file in the rules | The rules files read | Sound |
+
 
 ### PR 1. `phase-3/schema-v6` (Sonnet)
 
@@ -148,21 +203,67 @@ Test tables give, for each test, its subject and setup, its assertion, and the m
 
 **Why Fable.** It changes which value the alarm path reads at about ten sites in seven files (`ReconcileCommand`, `ArmingSelection`, `ArmingSupport`, `AlarmFireHandler`, `AndroidDeliveryPort`, `ReliabilityReport`, and callers of `criticalCompletionDays`). A site left on the template is a silent fork that only an edit exposes, and deciding that a given site is display rather than behaviour is a correctness judgment.
 
-**Goal.** Every behaviour that depends on criticality reads `occurrence.criticality`; the template's is read only to materialise and to show the editor.
+**Goal.** Every behaviour that depends on criticality reads `occurrence.criticality`; the template's is read only to materialise and to show the editor. **And a Gentle reminder stops ringing** (ADR 0089): a correction of Phase 2 to match `ARCHITECTURE.md` section 4.2, decided by Claude (technical review) and placed here because this pull request already moves every criticality decision onto the occurrence.
 
-**Scope.** Those sites; `criticalCompletionDays` loses its `criticalityOf` parameter. A structural check, `verifyCriticalityFromOccurrence`, in the style of `verifyRingUiBoundary`: outside `OccurrenceMaterialiser`, the edit command and the UI's editor package, no source may read `.criticality` on a `ScheduleTemplate`; with a fixture self test, wired into `check` and `verify-android-structure`. **Out of scope:** the edit command.
+**Scope.** Those sites; `criticalCompletionDays` loses its `criticalityOf` parameter. A structural check, `verifyCriticalityFromOccurrence`, in the style of `verifyRingUiBoundary`: outside `OccurrenceMaterialiser`, the edit command and the UI's editor package, no source may read `.criticality` on a `ScheduleTemplate`; with a fixture self test, wired into `check` and `verify-android-structure`. **Gentle, exactly as ADR 0089 says:** `RungDelivery.NOTIFICATION`; `EscalationPolicy.resolveDelivery` in the order Critical, quiet hours or budget, Gentle, ring, given the occurrence's criticality; `DeliveryPath.choose` sends `NOTIFICATION` to the plain path on any tier and reads no criticality; `recordRing` only for `RING`; `VibrationPattern.defaultFor(GENTLE)` is `NONE` and `AndroidSettings.vibrationFor` returns `NONE` for a Gentle occurrence whatever is stored, deleting nothing; arming unchanged. **The one Phase 2 expectation that changes:** `DeliveryTest` `each criticality rings on its own channel` expects for Gentle a plain notification on the Gentle channel and no ringer start. It is the single authorised exception to this pull request's STOP on changed expectations.
 
-**Relies on.** ADR 0079 item 6.
+**Out of scope:** the edit command; the editor's vibration control (PR 11); the ring limit (PR 2b).
+
+**Relies on.** ADR 0079 item 6, ADR 0089.
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
 | `CriticalitySourceTest` (android, Robolectric, SDK 29 and 36), one case per behaviour: `the ladder`, `grace`, `the channel`, `the default vibration`, `the budget exemption`, `quiet hours` | A CRITICAL template; materialise; then set the template row to GENTLE directly in the test database (no command), so the two values differ; run the real fire path, `Reconcile`, delivery | Each behaviour is the CRITICAL one: the second rung is armed five minutes on; the occurrence is `MISSED` at two hours and not before; the notification is on the Critical channel; the pattern is URGENT; it rings with the budget spent and inside quiet hours | Revert each site to `template.criticality` in turn; the case for that behaviour fails and no other mutation is needed to see it |
 | `EventLogReductionTest` `critical completion days read the occurrence` | The same divergence, over 30 days | The count is the one the occurrences' values give | Read the template in the caller |
 | `verifyCriticalityFromOccurrence` self test | Fixtures: a read in arming code, in delivery, in the materialiser, in the editor | Flagged, flagged, allowed, allowed | Narrow the pattern; fail closed on an empty source set |
+| `GentleDeliveryTest` `Gentle at Tier 3 starts no ringer and posts one notification` (SDK 29, 31, 33, 34, 36) | A Gentle occurrence fired through the real fire path with every capability granted | No ringer start, no ring session, no overlay launch; exactly one notification, with the occurrence's slot as id, on the Gentle channel, with no full screen intent and no delete intent, carrying the occurrence's three actions; `ALARM_FIRED` is written; the telemetry row's path is `PLAIN` | Return `RING` for Gentle in `resolveDelivery`; in `choose`, test the tier before the policy |
+| `the budget is unspent after a Gentle fire` | Budget 10; a Gentle fire, then, as the control that the counter works, a Standard fire | The count is 0 after the first and 1 after the second | Call `recordRing` for `NOTIFICATION` |
+| `Gentle in quiet hours, with the budget spent, and beyond the catch up window is as before` | Three fires | A silent notification on Quiet notices in each case | Check Gentle before quiet hours in `resolveDelivery` |
+| `a Gentle fire during a ringing Critical session leaves the session as it was` | Tier 3, a Critical occurrence ringing; a Gentle occurrence fires | The session's items, its notification and its ringer start count are byte for byte what they were; the Gentle occurrence has its own notification on the Gentle channel; acting on the Gentle one leaves the ring ringing | Let a `NOTIFICATION` rung join the session |
+| `the decision reads the occurrence, not the template` | An occurrence whose `criticality` is GENTLE with its template row set to CRITICAL directly in the test database, and the reverse | The first is a notification and the second rings | Pass the template's criticality to the policy |
+| `a stored vibration is ignored for Gentle and kept` | Store `URGENT` for a template; fire a Gentle occurrence of it, then a Standard one | No vibration for the first; `URGENT` for the second; the stored value is still there | Delete the stored pattern when the occurrence is Gentle |
+| `EscalationPolicyTest` additions (shared) | The table of criticality by quiet hours by budget | `NOTIFICATION` only for Gentle outside both; every other cell as before | Swap the order of the Gentle and budget checks |
+| `DeliveryTest` `each criticality rings on its own channel` (changed, authorised) | As before | Critical and Standard start the ringer on their channels; Gentle starts none and posts on the Gentle channel | (the mutations above) |
 
-**STOP points.** Any read whose right source is unclear. Any Phase 2 test that needs its expectation changed rather than its fixture.
+**Imports.** None new.
 
-**Docs.** `ARCHITECTURE.md` sections 3.1, 3.2, 4.2, 4.5; `CLAUDE.md` gains nothing. Traceability rows.
+**STOP points.** Any read whose right source is unclear. Any Phase 2 test, other than the one authorised above, that needs its expectation changed rather than its fixture.
+
+**Docs.** `ARCHITECTURE.md` sections 3.1, 3.2, 4.2 (Gentle's row is now true, and says where it is decided), 4.3, 4.5, 5.1 (the six paths: when the plain path is taken), 5.5 (vibration), 5.6; `CLAUDE.md`'s testing section gains the precedent (a document and a green test disagreed and nothing compared them); the Open items row is closed with the merge commit. Traceability rows.
+
+### PR 2b. `phase-3/ring-limit` (runs on Fable)
+
+**Why Fable.** It adds a timer to the ringer and a second way for a ring session to end, on the alarm path, and it changes what "Stop the sound" leaves behind. PR 6's state machine is built on its result.
+
+**Goal.** ADR 0090: a ring stops by itself after `MAX_RING`; that is a dismissal; the end of grace ends a ring; the evidence is kept.
+
+**Scope.** `RingPolicy.MAX_RING` (4 minutes, a placeholder, beside the ramp and backup constants); the cap's timer on the ringer's existing scheduler, restarted by every fire that rings; one dismissal path shared by the cap and "Stop the sound" (sound and vibration stop; the service leaves the foreground; the session's notification is reposted as an ordinary one, not ongoing, with no full screen intent and only alert once, with the occurrence's actions if the session never spread); the ring screen releasing keep screen on; `RingController.dropClosed()`, called after every `Reconcile` android dispatches, which drops occurrences that are no longer open, cancels their notifications and ends the ring if none is left; android store schema version 6 (`migrations/5.sqm`: `fire_telemetry.ring_ended_by_cap INTEGER`), the repository write, the count in `ReliabilityReport`, `ReliabilityText` and the export. **Out of scope:** per occurrence notifications (PR 6); any change to ladders, grace or the budget's rule.
+
+**Relies on.** ADR 0090; PR 2 merged (Gentle never rings, so the cap concerns Critical and Standard).
+
+| Test | Subject and setup | Assertion | Mutation that must fail it |
+|---|---|---|---|
+| `RingLimitTest` `MAX_RING is shorter than every gap between device rungs` (shared constants read from android's test) | `EscalationLadder.forOccurrence` for each criticality, filtered to the device's channels | For every pair of consecutive device rungs, the gap is greater than `MAX_RING`; the test fails closed if no ladder has two device rungs | Set `MAX_RING` to 5 minutes |
+| `the sound and the vibration stop at the cap` (SDK 29, 33, 34, 36; Tier 2 and Tier 3) | One Critical occurrence ringing; the ringer's scheduler advanced to one millisecond before `MAX_RING`, then past it | Before: the primary or backup player is playing and vibration is on. After: both stopped, the service is not in the foreground | Never schedule the cap |
+| `the backup sound still starts at two minutes` | Advance to 2 minutes, then to the cap | The backup replaces the primary at 2 minutes and both are silent after the cap | Cancel the backup when the cap is scheduled |
+| `the cap is a dismissal and writes nothing` | As above, with the event table and the occurrence row read before and after | No event added, the row byte equal, state still `PENDING`; `ensureArmed` then holds the next rung's alarm at five minutes from the first | Write `SKIPPED` at the cap; cancel the armed alarm |
+| `her actions stay after the cap` | One occurrence; then two (after PR 6 this case is re run there) | A notification with the session's id is still posted, is not ongoing, has no full screen intent, has only alert once set, and carries exactly the offered actions; pressing Taken writes ADR 0066's delta | Cancel the notification at the cap |
+| `Stop the sound leaves the same state as the cap` | Press it instead of waiting | The same assertions as the row above, and no event | Keep the old cancel in `stopSound` |
+| `the ring screen keeps the list and lets the display sleep` | The screen showing when the cap ends the sound | The items and their action buttons are still shown, the "sound is off" line is shown, the stop button is gone, and the window no longer has keep screen on | Finish the Activity at the cap |
+| `the repeat rung rings again, for a fresh cap` | Critical: the cap ends the first ring at 4 minutes; the repeat fires at 5 | A second ringer start; it is not a continuation; the sound stops again 4 minutes after the repeat's fire, not 4 minutes after the first | Keep one timer from the session's first start |
+| `a fire that continues or joins a sounding session restarts the cap` | A second occurrence fires 3 minutes into a ring | The sound is still playing 4 minutes after the first fire and stops 4 minutes after the second | Do not reschedule on a join |
+| `a repeat is a ring and spends the budget` | Standard, budget 10; the first ring capped, the repeat at 10 minutes | The count is 2; with the budget set to 1 the repeat is a silent notification | Treat a fire after a capped ring as a continuation |
+| `the end of grace ends the ring` | A Critical occurrence snoozed so that its snooze ends 2 minutes before its grace; it rings; the clock passes grace; the watchdog pass runs with the sound still inside its cap | After the pass: the occurrence is `MISSED`, the session has ended, the sound and vibration have stopped, its notification is cancelled | Do not call `dropClosed` after `Reconcile` |
+| `a ring cannot outlive grace by more than the cap with no pass at all` | The same, with no pass run; the scheduler advanced by `MAX_RING` | The sound has stopped | (the cap's own mutation, observed here) |
+| `a ring that ran out is recorded, and one she answered is not` | Two fires: one left to the cap, one acknowledged after a minute | `ring_ended_by_cap` is true on the first fire's telemetry row and false on the second's; the report's count is 1; the export carries the count and no timestamp | Set the flag in the dismissal path shared with "Stop the sound" (the pressed case would count) |
+| `AndroidStoreMigrationTest` addition | Store versions 1 to 5 with telemetry rows | Migrated to 6; old rows have null in the new column; nothing else changed | Drop the `ALTER TABLE` |
+
+**Imports.** None new.
+
+**STOP points.** Any Phase 2 test whose expectation, not its fixture, must change. Two are expected to need a decision and are named so that they are not met by surprise: `DeliveryTest` `a rung for an occurrence that is ringing continues the ring`, which fires a repeat at ten minutes into a ring that the cap will now have ended, and its assertion that the budget counts the occurrence once (ADR 0090 item 6 says a repeat after a capped ring is a ring of its own). Hand back with both and do not change them unasked.
+
+**Docs.** `ARCHITECTURE.md` sections 4.2 (a repeat is a new ring), 4.3 (what a repeat spends), 4.6, 5.5 (the cap beside the ramp and the backup sound), 5.7 and 5.10 (the evidence); `MANUAL_CHECKS.md` P2-20 and P2-21 (`MAX_RING` joins the placeholders a device judges) and P2-17; traceability.
+
 
 ### PR 3. `phase-3/template-edit` (Sonnet; shared only)
 
@@ -224,6 +325,7 @@ After the last step, materialise the whole remaining span and assert **convergen
 | `EditPassTest` `an edit of the armed occurrence's time re arms it` (SDK 29, 31, 33, 36) | One pending occurrence armed for tomorrow 08:00; edit to 09:00 through the pass | `ShadowAlarmManager` holds exactly one alarm, at 09:00, with the occurrence's slot; one new `ALARM_SCHEDULED` | Remove `ensureArmed` from the pass |
 | `deactivating a ringing reminder stops the ring` | Tier 3, one occurrence ringing; deactivate through the pass; **then run the watchdog pass (which dispatches `Reconcile`) after the occurrence's grace has ended** | The session has ended, the ringer stopped, `RING_ID` and the slot's notification are cancelled, no alarm is armed, the state is `WITHDRAWN` and the log holds no `COMPLETED`; after the watchdog pass there is no `MISSED` event, no silent notice and no `WATCHDOG_REPAIR` | Remove the call to `withdrawn` (the ringer is still running); leave the occurrence open in the pass (the watchdog pass writes `MISSED`) |
 | `deactivating one of two ringing leaves the other` | Two ringing | The other still rings with its actions | Call `sessions.end()` |
+| `a template edited from Gentle to Critical rings on its next occurrence and not on one that has come due` (ADR 0089; it needs the edit command, so it is here and not in PR 2) | A Gentle template with today's occurrence already come due (its instant passed, its notification posted) and tomorrow's pending; edit to Critical through the pass; deliver today's late alarm again and then tomorrow's fire | Today's occurrence keeps `criticality` GENTLE and its fire starts no ringer; tomorrow's is CRITICAL and its fire starts the ringer on the Critical channel with a full screen intent | Update every open occurrence's criticality (today rings); read the template in the policy (today rings) |
 | `a withdrawn occurrence's late alarm delivers nothing` | Withdraw, then deliver the old alarm's broadcast | No event, no notification, and `ensureArmed` ran | (guards Phase 2's terminal rule for the new state) Remove `WITHDRAWN` from the fire path's terminal check |
 | `ReliabilityReaderTest` `an edit raises no never fired rung` | Arm ahead; move by an edit; let the old instant pass by 20 minutes; and the same with a withdrawal | `neverFired` is 0 in both | Remove `WITHDRAWN` from the closing set; the second case reports 1. If the first case needs a change to `FireTiming`'s pairing rule, STOP |
 | `TemplateEditRaceTest` | As specified in PR 3 | | |
@@ -258,7 +360,7 @@ After the last step, materialise the whole remaining span and assert **convergen
 
 ### PR 6. `phase-3/notifications` (runs on Fable)
 
-**Why Fable.** ADR 0080 is a small state machine on the ring path, with platform behaviour read from AOSP and four device questions; an implementer must judge transitions the ADR could not enumerate.
+**Why Fable.** ADR 0080 is a small state machine on the ring path, with platform behaviour read from AOSP and four device questions; an implementer must judge transitions the ADR could not enumerate. It is built after PR 2 and PR 2b, because a session can now end by the cap and a Gentle fire never enters one.
 
 **Goal.** ADR 0080: the session spreads at the second occurrence, and the invariant holds through every join, action, refusal, stop and end.
 
@@ -266,7 +368,7 @@ After the last step, materialise the whole remaining span and assert **convergen
 |---|---|---|---|
 | `SpreadTest` `one occurrence keeps its buttons on the session notification` (SDK 29, 33, 34, 36; Tier 2 and Tier 3) | One fire | `RING_ID` has the three actions; no notification with the slot's id | Always spread |
 | `a second occurrence spreads the session` | Two fires | `RING_ID` has no actions and only alert once; each slot has a notification on its criticality's channel with exactly its offered actions, each an immutable explicit `PendingIntent` to the unexported receiver; neither has a full screen intent or a delete intent; `RING_ID` keeps the full screen intent in Tier 3 | Skip the per occurrence post; leave the buttons on `RING_ID` |
-| `the invariant holds along every path` | A table of event sequences (join, act on each, refuse, stop sound, last one acted on, a third joins after one left) | After each event: every ringing occurrence has exactly one notification carrying exactly its offered actions; a resolved one has none | Move the buttons back when one remains |
+| `the invariant holds along every path` | A table of event sequences: join; act on each; refuse; stop sound; last one acted on; a third joins after one left; **the cap ends the sound** (PR 2b: nothing is resolved, every notification and its actions stay, the session's notification becomes an ordinary one); **the cap ends the sound, then the next rung fires** (a new ring starts for the same occurrences: a session that had spread is spread again from its first fire, and no second notification appears for any occurrence); **a Gentle fire while the session rings** (ADR 0089: no join, no spread, its own notification); **grace ends for one of two** (PR 2b: it is dropped and its notification cancelled, the other keeps its own) | After each event: every occurrence that is ringing, or was ringing when the sound was dismissed and is still open, has exactly one notification carrying exactly its offered actions; a resolved one has none | Move the buttons back when one remains; on the rung after a cap, post a second notification for an occurrence that still has one |
 | `a button on a spread notification writes exactly its event` | Press each | The delta of ADR 0066 | (Phase 2's mutations, re run against the new notification) |
 | `a refused action refreshes the buttons where they are` | A fourth snooze on a spread notification | That notification is reposted without snooze | Refresh `RING_ID` only |
 
@@ -366,13 +468,15 @@ After the last step, materialise the whole remaining span and assert **convergen
 
 **Scope.** `ui/onboarding/*`; models over `PregnancyRepository`, `CreateTemplateCommand` with the edit pass, `SetupHost`, `SamsungStep`, `ReliabilityHost`; `onboarding_complete`; the gate; deletion of `SetupActivity`, `SamsungStepsActivity`, `ReliabilityCheckActivity`, their layouts and manifest entries; the tests of those three screens moved to the Compose screens with every assertion kept (the PR description maps each old test name to its new one, and any that has no new home is a STOP). **Before this PR ships:** the four A15 screenshots (section 7).
 
-**The three criticality lines on step 3 are health adjacent, are marked so for wave 2, and say what the build does** (checked by the planning session against `EscalationLadder.forOccurrence`, `EscalationPolicy.resolveDelivery`, `DeliveryPath.choose`, `RingerService.onStartCommand` and `onDestroy`, `RingController.stopSound`, `NotificationChannels` and `VibrationPattern.defaultFor`). The first draft's lines were not true: the ringer has no maximum ring time, so nothing "rings once", and a Gentle reminder does ring (section 1, C14 and C15). The lines:
+**The three criticality lines on step 3 are health adjacent, are marked so for wave 2, and say what the build does once PR 2 and PR 2b are merged** (Claude (technical review), third review; checked by the planning session against `EscalationLadder.forOccurrence`, `EscalationPolicy.resolveDelivery`, `DeliveryPath.choose`, `RingerService`, `RingController.stopSound` and the dismissal path of ADR 0090, `NotificationChannels` and `VibrationPattern.defaultFor`):
 
-- Critical: "Rings until you answer it or stop the sound. Quiet hours and the daily ring limit do not hold it back."
-- Standard: "Rings until you answer it or stop the sound. In quiet hours, or past the daily ring limit, it arrives as a silent notification instead."
-- Gentle, **as the build is today**: "Rings once, with a light vibration, until you answer it or stop the sound. Silent in quiet hours and past the daily ring limit. It does not repeat." Gentle, **if section 8 item 1 is decided the way `ARCHITECTURE.md` reads**: "A quiet notification. It does not ring." PR 10 writes the line that matches the build at its base commit and STOPs if section 8 item 1 is still open.
+- Critical: "Rings, and rings again 5 minutes later if you have not answered. Quiet hours and the daily ring limit do not hold it back."
+- Standard: "Rings, and rings again 10 minutes later if you have not answered. In quiet hours, or past the daily ring limit, it arrives as a silent notification instead."
+- Gentle: "A quiet notification. It does not ring."
 
-Each line is true only where reminders ring at all; on a phone at Tier 1 the permissions step's sentence says reminders arrive as notifications and may be late. `CriticalityCopyTest` ties the lines to the build so they cannot drift: for each criticality it drives a real fire on an exact tier and asserts what the line says (the ringer started or not; still sounding after ten minutes of test time with no action; silent inside quiet hours and with the budget spent, or not), and the test names the string resource it vouches for. Mutation: give the ringer a 60 second timeout (the Critical and Standard cases fail); exempt Standard from quiet hours (the Standard case fails).
+The minutes are not typed into the strings: each of the first two is a `plurals` resource whose number is the gap between the first and second device rung of `EscalationLadder` for that criticality, so the Hindi and Marathi forms agree with the number and a change to a ladder changes the line. The wording was checked against the build as it will be and none was changed: "rings again" is true because the cap (4 minutes) ends the first ring before the repeat (5 and 10 minutes), and the repeat rings whether the first ring was left to the cap or stopped with "Stop the sound"; "if you have not answered" is true because Taken and Skip end the ladder and Snooze replaces it with the snooze's end. One limit is not said in the Standard line and is left to its second sentence: the repeat is a ring of its own (ADR 0090 item 6), so quiet hours beginning, or the limit being reached, between the two silences the repeat.
+
+Each line is true only where reminders ring at all; on a phone at Tier 1 the permissions step's sentence says reminders arrive as notifications and may be late. `CriticalityCopyTest` ties the lines to the build so they cannot drift: for each criticality it drives real fires on an exact tier and asserts what the line says. Critical and Standard: the ringer starts; with no action the sound has stopped before the repeat's time; at the gap the ladder gives, a second ringer start; the number in the string, read from the resource with that gap, is the ladder's; Critical rings inside quiet hours and with the budget spent, Standard is a silent notification in each. Gentle: one notification on the Gentle channel and no ringer start, and no second rung. The test names the string resource each case vouches for. Mutations: change Critical's repeat to 7 minutes in `EscalationLadder` with the string's number typed as 5 (the number assertion fails, which is why it is not typed); remove the cap (the sound is still playing at the repeat, so the repeat is not a second start); exempt Standard from quiet hours; return `RING` for Gentle.
 
 **`onboarding_complete` and a restored phone** (ADR 0087 item 10). The flag is in `momtime_android_settings`, which is backed up. A phone restored from backup therefore opens Today, not onboarding, with her reminders restored and none of her grants: `RestoredPhoneTest`, in PR 13 with the banners, shows what she sees.
 
@@ -401,7 +505,7 @@ Each line is true only where reminders ring at all; on a phone at Tier 1 the per
 
 **Goal.** Design spec screens 7 to 10: Today with its actions and late marking, the starter schedule, the template list, the editor.
 
-**Scope.** `TodayModel` (ADR 0087 items 5 to 7), including the group "Missed yesterday"; `RemindersModel`, `EditorModel` over the commands and the edit pass; the editor's vibration choice writes `AndroidSettings.setVibration`; in `shared`: `BackfillCommand` (ADR 0087 item 7), the snooze rule in `OccurrenceActions.available` (it gains the occurrence's `scheduledInstant`; ADR 0087 item 6, accepted by Claude (technical review)), and `EditTemplateCommand.preview(edited, now)`, which returns what the edit would withdraw, which occurrences would keep today's time, and the local date of the first occurrence at the new time (the first date after today that the edited recurrence wants, from `RecurrenceExpander`, whether or not it is materialised yet), pure over the same rules as `dispatch`.
+**Scope.** `TodayModel` (ADR 0087 items 5 to 7), including the group "Missed yesterday"; `RemindersModel`, `EditorModel` over the commands and the edit pass; the editor's vibration choice, shown only while the chosen criticality is Critical or Standard (ADR 0089 item 7), writes `AndroidSettings.setVibration`; in `shared`: `BackfillCommand` (ADR 0087 item 7), the snooze rule in `OccurrenceActions.available` (it gains the occurrence's `scheduledInstant`; ADR 0087 item 6, accepted by Claude (technical review)), and `EditTemplateCommand.preview(edited, now)`, which returns what the edit would withdraw, which occurrences would keep today's time, and the local date of the first occurrence at the new time (the first date after today that the edited recurrence wants, from `RecurrenceExpander`, whether or not it is materialised yet), pure over the same rules as `dispatch`.
 
 **"Missed yesterday".** Under Today's list, a group holding the occurrences whose `localDate` is yesterday in the current zone and whose state is `MISSED` with no `COMPLETED_BACKFILLED` event, each with "Taken late". It is absent when empty. It is what makes late marking reachable for a Gentle reminder, which becomes missed at midnight and so never shows as missed on its own day, and for a late Standard one whose grace crosses midnight. Misses older than yesterday cannot be corrected in Phase 3: history is not built.
 
@@ -428,6 +532,7 @@ Each line is true only where reminders ring at all; on a phone at Tier 1 the per
 | `a read that meets corruption ends the process and posts nothing` | The corruption seam of `DatabaseCorruptionTest` under `TodayModel` | `ProcessEnd` called once; no state posted after | Catch the exception in the model |
 | `EditorModelTest` `save creates or edits through the commands and runs the pass` | Create; then edit the time | One template; the alarm moved | Write through the repository |
 | `the editor never writes a mission and shows no mission control` | Save every form state the generator produces | `MissionConfig.None` always; no node tagged mission | Add a mission chip |
+| `the vibration choice is offered only for Critical and Standard, and a stored one survives Gentle` | A reminder with `URGENT` stored; open the editor; choose Gentle; save; reopen; choose Standard | The control is present for Critical and Standard and absent for Gentle; saving as Gentle does not remove the stored pattern; back on Standard the control shows `URGENT` | Show the control always; clear the stored pattern on saving Gentle |
 | `doctor instructions and dosage are stored and shown verbatim` | Mixed script text with digits | Byte equal in the row, on Today and on the ring screen | Trim or normalise |
 | `the confirm dialog lists exactly what will be withdrawn` | Stop a reminder with two open occurrences; change weekdays | The dialog's rows equal `preview`; cancel writes nothing | Show the dialog after dispatch |
 | `an edit to a time already past today says so, and names the date the new time starts` | Three cases, each at 10:00 with today's reminder at 12:00 edited to 09:00: a Daily template; a Weekly template whose next wanted date is three days out; an EveryNDays template with n 5 | After saving, one line is shown, built from `preview` and one string resource with two placeholders: today's reminder stays at 12:00, and the new time starts on the date of the first occurrence at the new time, formatted by the platform's date formatter in the current locale. The date is tomorrow's for Daily, the date three days out for Weekly, and the anchored date for EveryNDays; the word "tomorrow" is in no string. With an edit to 15:00 the line is absent | Always format today plus one day (the Weekly and EveryNDays cases fail); show the line always |
@@ -541,6 +646,8 @@ Each line is true only where reminders ring at all; on a phone at Tier 1 the per
 | "Missed yesterday" on Today, so that late marking is reachable for a Gentle reminder and for one whose grace crossed midnight (Claude (technical review), second review) | 11 |
 | A restored phone opens Today and is told every missing grant (ADR 0087 item 10) | 13 |
 | The onboarding criticality lines checked against the build | 10 |
+| A Gentle reminder is a notification only (ADR 0089; Claude (technical review), third review) | 2, with the edit case in 4 and the editor's control in 11 |
+| A ring has a maximum length; the end of grace ends a ring; the evidence (ADR 0090; Claude (technical review), third review) | 2b, with its paths in 6 |
 | Late marking: "Taken late" on a missed occurrence, `COMPLETED_BACKFILLED` through `BackfillCommand`, once per occurrence, never on a withdrawn one, with nutrition tags (`ARCHITECTURE.md` section 4.5; Claude (technical review)) | 11 |
 | Schedule builder: create and edit, criticality, recurrence, tags, dosage, doctor instructions, inventory and refill threshold; no mission (deliverable, D7) | 3, 4, 11 |
 | Water: one tap logging, goal, progress, optional nudges (deliverable, D8) | 5, 12, 14 |
@@ -586,7 +693,7 @@ Nothing in Phase 3's section of `IMPLEMENTATION_PLAN.md` is unmapped. Each row i
 | What | Needed by | Note |
 |---|---|---|
 | Merge of this pull request | Before PR 1 | The dependency list with its eight sub modules, the fonts and the icons are approved (section 4) |
-| A decision on section 8 item 1 (does a Gentle reminder ring) | Before PR 10, whose Gentle line depends on it; better before PR 2, which is the natural home of the fix if it is to be fixed | |
+| Nothing further before PR 1: section 8 is resolved | | |
 | `android-screenshots` added to the required checks on `main` | When PR 7 merges | The new Open items row |
 | The four Galaxy A15 screenshots in `drawable-nodpi`, at most 1080 px wide and 400 KB each | Before PR 10 ships | The Open items row |
 | His brother: wave 1 translation (85 Phase 2 strings and plurals) | Handed over when PR 9 merges; wanted back before PR 16 | Early, on purpose: the health adjacent strings of the ring screen, the notices and the permissions are all in wave 1 |
@@ -598,9 +705,9 @@ Nothing in Phase 3's section of `IMPLEMENTATION_PLAN.md` is unmapped. Each row i
 
 ## 8. Open questions for review
 
-**Resolved in the second review, by Claude (technical review):** the eight sub modules are declared by name (C13); snooze is not offered before a reminder's time (C12); an edit to a time already past today leaves today's reminder at its old time, and the editor's line names the date the new time starts; `WITHDRAWN` is on Phase 4's carried list and the missions rule on Phase 5's.
+**None is open.** Resolved by Claude (technical review):
 
-**New, found in this revision. Neither is planned; both are Phase 2 behaviour, and the plan stops on them rather than choosing.**
+- In the second review: the eight sub modules are declared by name (C13); snooze is not offered before a reminder's time (C12); an edit to a time already past today leaves today's reminder at its old time, and the editor's line names the date the new time starts; `WITHDRAWN` is on Phase 4's carried list and the missions rule on Phase 5's.
+- In the third review: a Gentle reminder does not ring; `ARCHITECTURE.md` section 4.2 was right and the build wrong (C14, ADR 0089, PR 2). A ring has a maximum length, and the end of grace ends a ring (C15, ADR 0090, PR 2b).
 
-1. **A Gentle reminder rings (C14).** `ARCHITECTURE.md` section 4.2 says "t+0 notification only, no repeat"; the build starts the ringer for it on an exact tier, and a Phase 2 test asserts that it does. One of the two is wrong. If the document is right, the fix is small and on the alarm path: `DeliveryPath.choose` sends a Gentle rung to the plain notification path on the Gentle channel whatever the tier, with its own test and mutation, and `each criticality rings on its own channel` changes its expectation. The natural home is PR 2, which already runs on Fable and already touches every place criticality is read. If the build is right, `ARCHITECTURE.md` section 4.2 and the design spec's "A quiet notification" are corrected instead. Recommendation, for review: the document is right. A reminder she marked Gentle should not play the alarm sound until she answers it.
-2. **An unanswered ring never stops by itself (C15).** For Critical this may be intended. For Standard, and for Gentle if item 1 goes the other way, an unanswered ring sounds until the battery or her patience ends, because the repeat rung only continues a ring that is still sounding. Nothing in `CLAUDE.md` or `ARCHITECTURE.md` gives a maximum. If one is wanted it is a domain decision (what the occurrence's state is when the sound stops: still open, with the next rung and grace as they are) and belongs with item 1.
+**For review, as decisions of the planning session inside those two:** "Stop the sound" now leaves her actions in the notification shade, as the cap does (ADR 0090 item 3); a repeat after a capped ring spends the budget as a ring of its own (ADR 0090 item 6); a ring that ran out is recorded in the android store (ADR 0090 item 8); and two Phase 2 expectations that PR 2b will meet are named as STOPs there instead of being changed.
