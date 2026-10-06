@@ -175,7 +175,7 @@ internal fun armingModule(
         }
         single { DeliveryPolicyCommand(get(), get(), delivery.zone) }
         single { DeliveryDecider(get(), get()) }
-        single { ArmCandidates(get(), get(), get(), get()) }
+        single { ArmCandidates(get(), get(), get()) }
         single { AlarmLog(get(), get(), newId) }
         single { PlatformProbes(probe, bootCount, appVersion, uptime) }
         single { ArmingCoordinator(get(), get(), get(), get(), get(), get(), get(), get()) }
@@ -188,7 +188,6 @@ internal fun armingModule(
         single {
             ReliabilityReader(
                 occurrences = get(),
-                templates = get(),
                 events = get(),
                 telemetry = get(),
                 contexts = get(),

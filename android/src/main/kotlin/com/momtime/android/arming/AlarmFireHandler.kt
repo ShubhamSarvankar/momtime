@@ -9,16 +9,17 @@ import com.momtime.shared.engine.RungDelivery
 import kotlin.time.Instant
 
 /**
- * How a fired rung is to be presented (ADR 0056). [NORMAL] is "as the domain decided": a ring, or a silent
- * notification under quiet hours or the interruption budget. [SILENT_NOTICE] is a rung that fired beyond the
- * catch up window: a notification with no ring, no vibration and no heads up, so that nothing sounds hours
- * late and nothing is dropped.
+ * How a fired rung is to be presented (ADR 0056). [NORMAL] is "as the domain decided": a ring, a plain
+ * notification for a Gentle occurrence (ADR 0089), or a silent notification under quiet hours or the interruption
+ * budget. [SILENT_NOTICE] is a rung that fired beyond the catch up window: a notification with no ring, no
+ * vibration and no heads up, so that nothing sounds hours late and nothing is dropped.
  */
 enum class Presentation { NORMAL, SILENT_NOTICE }
 
 /**
  * The rung handed to delivery when an alarm fires, and how it is to be presented. [policy] is the domain's
- * decision for this rung (ring, or silent because of quiet hours or the budget, ADR 0060). [continuing] is true
+ * decision for this rung (ring, a plain notification for a Gentle occurrence, or silent because of quiet hours or
+ * the budget, ADR 0060, ADR 0089). [continuing] is true
  * when the occurrence is already ringing: the ring in progress goes on, with no restart and no second screen
  * (ADR 0062). [afterSnooze] is true when this is not a ladder rung but the end of a snooze (ADR 0066).
  */
@@ -87,8 +88,10 @@ sealed interface FireOutcome {
  *   fired) and is handed to delivery. While a snooze is running the expected "rung" is the snooze's end, and that
  *   writes `SNOOZE_ENDED` instead: a snooze is not a rung, so it must not be counted as one (ADR 0066), and the
  *   rungs that came due during it are armed once it has ended, by the count of rungs that really fired. Within
- *   the catch up window it is presented as the domain decides (a ring, or silent under quiet hours or the
- *   budget, ADR 0060); beyond the window, and still within grace, it is a silent notice (ADR 0056); and if its
+ *   the catch up window it is presented as the domain decides (a ring, a plain notification for a Gentle
+ *   occurrence, or silent under quiet hours or the budget, ADR 0060, ADR 0089), given the occurrence's own
+ *   criticality and never its template's (ADR 0079 item 6); beyond the window, and still within grace, it is a
+ *   silent notice (ADR 0056); and if its
  *   occurrence is already ringing the ring in progress continues (ADR 0062). This is the only place
  *   the catch up decision is made: the watchdog and boot arm the earliest rung that has not fired, for now,
  *   and leave it to this.
@@ -146,7 +149,7 @@ class AlarmFireHandler internal constructor(
         val now = log.now()
         val withinWindow = CatchUp.isWithinWindow(expected.instant, now)
         val presentation = if (withinWindow) Presentation.NORMAL else Presentation.SILENT_NOTICE
-        val decision = decider.decide(occurrence.id, candidate.criticality, now, mayRing = withinWindow)
+        val decision = decider.decide(occurrence.id, occurrence.criticality, now, mayRing = withinWindow)
         val fired =
             FiredRung(
                 occurrence.id,

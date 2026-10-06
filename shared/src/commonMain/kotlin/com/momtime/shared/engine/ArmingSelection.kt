@@ -1,13 +1,13 @@
 package com.momtime.shared.engine
 
 import com.momtime.shared.domain.Channel
-import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EscalationRung
 import com.momtime.shared.domain.Occurrence
 import kotlin.time.Instant
 
 /**
- * One occurrence as selection sees it: the occurrence, its criticality (which decides its ladder), and how
+ * One occurrence as selection sees it: the occurrence, whose own `criticality` decides its ladder (ADR 0079
+ * item 6: the template's is never read here, so a template edit cannot change a ladder in mid flight), and how
  * many of its rungs have fired. [snoozeEnd] is when the snooze that is running ends, or null if none is
  * ([OccurrenceActions.runningSnoozeEnd]). [firedCount] is the count of `ALARM_FIRED` events in the log, never a
  * comparison of a rung's instant with the current time (golden scenario 14): a device clock set backward
@@ -15,7 +15,6 @@ import kotlin.time.Instant
  */
 data class ArmCandidate(
     val occurrence: Occurrence,
-    val criticality: Criticality,
     val firedCount: Int,
     val snoozeEnd: Instant? = null,
 )
@@ -70,7 +69,7 @@ object ArmingSelection {
         val snoozeEnd = candidate.snoozeEnd
         if (snoozeEnd != null) return listOf(EscalationRung(snoozeEnd, Channel.RING)).filter { it.channel in channels }
         return NextRungResolver.remaining(
-            EscalationLadder.forOccurrence(candidate.occurrence.scheduledInstant, candidate.criticality),
+            EscalationLadder.forOccurrence(candidate.occurrence.scheduledInstant, candidate.occurrence.criticality),
             candidate.firedCount,
             channels,
         )

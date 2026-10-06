@@ -259,7 +259,9 @@ class DeliveryTest {
         assertEquals(2, f.budget.current().ringCount)
     }
 
-    // The right channel for each criticality, on the ring path.
+    // The right channel for each criticality: Critical and Standard on the ring path, Gentle as a plain
+    // notification on its own channel with no ringer (ADR 0089, the one Phase 2 expectation that PR 2 of Phase 3
+    // changed, by authorisation: before it, Gentle started the ringer on the Gentle channel).
     @Test
     fun `each criticality rings on its own channel`() {
         f.settings.updateRingGradeDailyBudget(10)
@@ -273,9 +275,12 @@ class DeliveryTest {
         f.fire(g)
 
         assertEquals(
-            listOf(NotificationChannels.CRITICAL, NotificationChannels.STANDARD, NotificationChannels.GENTLE),
+            listOf(NotificationChannels.CRITICAL, NotificationChannels.STANDARD),
             f.ringer.starts.map { it.channelId },
         )
+        assertEquals("Gentle is a plain notification", "PLAIN", path("g"))
+        assertEquals(NotificationChannels.GENTLE, f.channelOf(33))
+        assertFalse("Gentle starts no session", sessions.isActive)
     }
 
     // ADR 0062: a rung for an occurrence already ringing continues the ring. No second start, no second screen,

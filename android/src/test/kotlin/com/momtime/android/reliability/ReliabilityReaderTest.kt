@@ -580,7 +580,6 @@ class ReliabilityReaderTest {
         val direct =
             ReliabilityReader(
                 fixture.occurrences,
-                fixture.graph.get(),
                 fixture.events,
                 telemetry,
                 contexts,

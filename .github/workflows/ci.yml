@@ -116,4 +116,4 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor :android:verifyManifestPermissions :android:selfTestVerifyManifestPermissions :android:verifyRingUiBoundary :android:selfTestVerifyRingUiBoundary :android:verifyNoDebugComponents :android:selfTestVerifyNoDebugComponents
+      - run: ./gradlew :android:verifyNoGeneratedQueries :android:selfTestVerifyNoGeneratedQueries :android:verifySingleProcess :android:selfTestVerifySingleProcess :android:verifySqliteFloor :android:selfTestVerifySqliteFloor :android:verifyManifestPermissions :android:selfTestVerifyManifestPermissions :android:verifyRingUiBoundary :android:selfTestVerifyRingUiBoundary :android:verifyCriticalityFromOccurrence :android:selfTestVerifyCriticalityFromOccurrence :android:verifyNoDebugComponents :android:selfTestVerifyNoDebugComponents

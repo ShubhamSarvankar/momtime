@@ -3,7 +3,6 @@ package com.momtime.android.arming
 import com.momtime.shared.data.EventRepository
 import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.OccurrenceRepository
-import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.engine.AlarmEvents
@@ -12,14 +11,14 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * What selection reads: the occurrences that are open (pending, or snoozed), each with the criticality that decides
- * its ladder, the count of its `ALARM_FIRED` events, which is the record of the rungs that have fired, and the end
- * of the snooze that is running, if one is (ADR 0066). A snoozed occurrence is selected by its snooze's end, which
- * is how the one `ensureArmed` entry point arms a snooze and the watchdog repairs a lost one.
+ * What selection reads: the occurrences that are open (pending, or snoozed), each carrying the criticality that
+ * decides its ladder (its own, never its template's: ADR 0079 item 6), the count of its `ALARM_FIRED` events, which
+ * is the record of the rungs that have fired, and the end of the snooze that is running, if one is (ADR 0066). A
+ * snoozed occurrence is selected by its snooze's end, which is how the one `ensureArmed` entry point arms a snooze
+ * and the watchdog repairs a lost one. The template is not read here.
  */
 internal class ArmCandidates(
     private val occurrences: OccurrenceRepository,
-    private val templates: ScheduleTemplateRepository,
     private val events: EventRepository,
     private val actions: OccurrenceActionCommand,
 ) {
@@ -31,10 +30,6 @@ internal class ArmCandidates(
     fun of(occurrence: Occurrence): ArmCandidate =
         ArmCandidate(
             occurrence = occurrence,
-            criticality =
-                checkNotNull(templates.findById(occurrence.templateId)) {
-                    "occurrence ${occurrence.id} has no template"
-                }.criticality,
             firedCount = events.countByOccurrenceAndType(occurrence.id, EventType.ALARM_FIRED).toInt(),
             snoozeEnd = actions.runningSnoozeEnd(occurrence),
         )
