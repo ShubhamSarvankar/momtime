@@ -31,12 +31,11 @@ internal object StateBasedAdherenceOracle {
 
     fun criticalCompletionDays(
         occurrencesByDate: Map<LocalDate, List<Occurrence>>,
-        criticalityOf: (Occurrence) -> Criticality,
         windowDates: List<LocalDate>,
     ): Int =
         windowDates.count { date ->
             val criticalOccurrences =
-                occurrencesByDate[date].orEmpty().filter { criticalityOf(it) == Criticality.CRITICAL }
+                occurrencesByDate[date].orEmpty().filter { it.criticality == Criticality.CRITICAL }
             criticalOccurrences.isNotEmpty() && criticalOccurrences.all { it.state == OccurrenceState.COMPLETED }
         }
 }

@@ -576,6 +576,207 @@ val selfTestVerifyRingUiBoundary =
         }
     }
 
+// --- Criticality is read from the occurrence (ADR 0079 item 6). Every behaviour that depends on criticality (the
+// ladder, grace, the policy, the channel, the default vibration, the reductions) reads `occurrence.criticality`:
+// a template edit must never change a ladder in mid flight, end a grace in the past, or rewrite a day already
+// lived. So in the main sources of `shared` and `android`, a read of `.criticality` must be on a named
+// occurrence: the receiver written immediately before the dot is an identifier that ends in "occurrence"
+// (`occurrence.criticality`, `candidate.occurrence.criticality`, `occurrence?.criticality`). Any other receiver
+// (`template.criticality`, `it.criticality`, `findById(id)?.criticality`, `}.criticality`) is flagged, so a
+// template's value cannot reach a behaviour by a name or through a lambda. The template's criticality is read in
+// exactly four places, allowed by path:
+//   - OccurrenceMaterialiser, which copies it onto each new occurrence;
+//   - EditTemplateCommand (shared data; docs/phase-3-plan.md PR 3), which applies an edit to occurrences that
+//     have not come due;
+//   - the UI's editor package, com.momtime.android.ui.editor (docs/phase-3-plan.md PR 11), which shows and
+//     edits the template;
+//   - ScheduleTemplateRepository, which persists the template and decides nothing.
+// The two that do not exist yet are allowed by path now, so that adding them needs no change here; the check
+// does not fail on their absence. Test sources are not scanned: a test reads the template as its oracle.
+
+val criticalityAllowedPaths =
+    listOf(
+        "com/momtime/shared/engine/OccurrenceMaterialiser.kt",
+        "com/momtime/shared/data/EditTemplateCommand.kt",
+        "com/momtime/shared/data/ScheduleTemplateRepository.kt",
+        "com/momtime/android/ui/editor/",
+    )
+
+val sharedMainKotlinFiles =
+    listOf("commonMain", "jvmMain")
+        .map { rootProject.layout.projectDirectory.dir("shared/src/$it") }
+        .flatMap { dir -> fileTree(dir) { include("**/*.kt") }.files }
+
+val androidMainKotlinFiles =
+    listOf("main", "debug")
+        .map { layout.projectDirectory.dir("src/$it") }
+        .flatMap { dir -> fileTree(dir) { include("**/*.kt") }.files }
+
+/** Every `.criticality` read on a line, with the identifier written immediately before the dot (empty if none). */
+val criticalityReadPattern = Regex("""([A-Za-z0-9_]*)\s*\??\s*\.\s*criticality\b""")
+
+fun isCriticalityAllowed(
+    file: File,
+    allowed: List<String> = criticalityAllowedPaths,
+): Boolean = allowed.any { file.invariantSeparatorsPath.contains("/$it") }
+
+fun findTemplateCriticalityReads(
+    files: Iterable<File>,
+    allowed: List<String> = criticalityAllowedPaths,
+    pattern: Regex = criticalityReadPattern,
+): List<String> {
+    val offenders = mutableListOf<String>()
+    files.filterNot { isCriticalityAllowed(it, allowed) }.forEach { file ->
+        file.readLines().forEachIndexed { index, raw ->
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("*") || trimmed.startsWith("/*") || trimmed.startsWith("//")) return@forEachIndexed
+            val line = raw.substringBefore("//")
+            pattern.findAll(line).forEach { match ->
+                val receiver = match.groupValues[1]
+                if (!receiver.lowercase().endsWith("occurrence")) {
+                    offenders += "${file.invariantSeparatorsPath.substringAfter("/momtime/")}:${index + 1}: $trimmed"
+                }
+            }
+        }
+    }
+    return offenders
+}
+
+/** The sources the check reads, failing closed if either module contributed nothing. */
+fun criticalitySources(
+    shared: List<File>,
+    android: List<File>,
+): List<File> {
+    if (shared.isEmpty()) throw GradleException("verifyCriticalityFromOccurrence found no source under shared/src")
+    if (android.isEmpty()) throw GradleException("verifyCriticalityFromOccurrence found no source under android/src")
+    return shared + android
+}
+
+val verifyCriticalityFromOccurrence =
+    tasks.register("verifyCriticalityFromOccurrence") {
+        group = "verification"
+        description =
+            "Fails if a main source of shared or android reads .criticality on anything but an occurrence (ADR 0079)"
+        inputs.files(sharedMainKotlinFiles + androidMainKotlinFiles)
+        doLast {
+            val offenders =
+                findTemplateCriticalityReads(criticalitySources(sharedMainKotlinFiles, androidMainKotlinFiles))
+            if (offenders.isNotEmpty()) {
+                throw GradleException(
+                    "a read of .criticality that is not on a named occurrence (ADR 0079 item 6); behaviour reads " +
+                        "occurrence.criticality, and the template's is read only in the allowed places:\n" +
+                        offenders.joinToString("\n"),
+                )
+            }
+        }
+    }
+
+val selfTestVerifyCriticalityFromOccurrence =
+    tasks.register("selfTestVerifyCriticalityFromOccurrence") {
+        group = "verification"
+        description =
+            "Proves verifyCriticalityFromOccurrence flags each kind of template read and allows each named place"
+        doLast {
+            val root =
+                layout.buildDirectory
+                    .dir("criticality-fixture")
+                    .get()
+                    .asFile
+            root.deleteRecursively()
+
+            fun fixture(
+                path: String,
+                body: String,
+            ): File =
+                File(root, path).also {
+                    it.parentFile.mkdirs()
+                    it.writeText("package fixture\n\n$body\n")
+                }
+
+            val arming = "com/momtime/android/arming"
+            val mustBeFlagged =
+                mapOf(
+                    "a read in arming code" to
+                        fixture("$arming/A.kt", "val c = template.criticality"),
+                    "a read in delivery" to
+                        fixture(
+                            "com/momtime/android/delivery/B.kt",
+                            "val ch = idFor(templates.findById(id)!!.criticality)",
+                        ),
+                    "a read through a lambda" to
+                        fixture(
+                            "com/momtime/android/reliability/C.kt",
+                            "val m = templates.findAll().map { it.criticality }",
+                        ),
+                    "a read on a block's result" to
+                        fixture("$arming/D.kt", "val c = checkNotNull(templates.findById(id)) { \"x\" }.criticality"),
+                    "a read on a nullable lookup" to
+                        fixture("$arming/E.kt", "val c = templates.findById(id)?.criticality"),
+                    "a read in a shared command" to
+                        fixture(
+                            "com/momtime/shared/data/F.kt",
+                            "val event = evaluate(occurrence, template.criticality)",
+                        ),
+                    "the repository's read, in arming code" to
+                        fixture("$arming/G.kt", "criticality = template.criticality.name,"),
+                )
+            val mustPass =
+                mapOf(
+                    "the materialiser" to
+                        fixture("com/momtime/shared/engine/OccurrenceMaterialiser.kt", "val c = template.criticality"),
+                    "the edit command" to
+                        fixture("com/momtime/shared/data/EditTemplateCommand.kt", "val c = edited.criticality"),
+                    "the editor" to
+                        fixture("com/momtime/android/ui/editor/EditorModel.kt", "val c = template.criticality"),
+                    "the template repository" to
+                        fixture(
+                            "com/momtime/shared/data/ScheduleTemplateRepository.kt",
+                            "criticality = template.criticality.name,",
+                        ),
+                    "the occurrence, in arming code" to
+                        fixture("$arming/Ok.kt", "val c = occurrence.criticality"),
+                    "the candidate's occurrence" to
+                        fixture(
+                            "$arming/Ok2.kt",
+                            "forOccurrence(candidate.occurrence.scheduledInstant, candidate.occurrence.criticality)",
+                        ),
+                    "a nullable occurrence" to
+                        fixture("com/momtime/android/delivery/Ok3.kt", "val c = occurrence?.criticality"),
+                    "the enum itself" to
+                        fixture("$arming/Ok4.kt", "val c = Criticality.CRITICAL"),
+                    "a comment" to
+                        fixture("$arming/Ok5.kt", "// the template.criticality is never read here"),
+                    "a doc line" to
+                        fixture("$arming/Ok6.kt", " * reads template.criticality nowhere"),
+                )
+
+            val failures = mutableListOf<String>()
+            for ((what, file) in mustBeFlagged) {
+                val found = findTemplateCriticalityReads(listOf(file)).size
+                if (found != 1) failures += "not detected exactly once ($found): $what"
+            }
+            for ((what, file) in mustPass) {
+                val found = findTemplateCriticalityReads(listOf(file))
+                if (found.isNotEmpty()) failures += "was flagged: $what: $found"
+            }
+            // Fail closed: a module that contributed no source means the check read nothing.
+            val someFile = listOf(mustPass.getValue("the occurrence, in arming code"))
+            if (runCatching { criticalitySources(emptyList(), someFile) }.isSuccess) {
+                failures += "an empty shared source set was accepted"
+            }
+            if (runCatching { criticalitySources(someFile, emptyList()) }.isSuccess) {
+                failures += "an empty android source set was accepted"
+            }
+            root.deleteRecursively()
+            if (failures.isNotEmpty()) {
+                throw GradleException(
+                    "verifyCriticalityFromOccurrence self-test failed:\n" + failures.joinToString("\n"),
+                )
+            }
+            logger.lifecycle("verifyCriticalityFromOccurrence self-test passed.")
+        }
+    }
+
 // --- SQLite floor 3.22 for the android store's SQL (ADR 0042, ADR 0048): the same scan as shared.
 extra["sqliteFloorSqlDir"] = layout.projectDirectory.dir("src/main/sqldelight").asFile
 apply(from = rootProject.file("gradle/sqlite-floor.gradle.kts"))
@@ -1038,6 +1239,8 @@ tasks.named("check") {
         selfTestVerifyManifestPermissions,
         verifyRingUiBoundary,
         selfTestVerifyRingUiBoundary,
+        verifyCriticalityFromOccurrence,
+        selfTestVerifyCriticalityFromOccurrence,
         verifyNoDebugComponents,
         selfTestVerifyNoDebugComponents,
     )

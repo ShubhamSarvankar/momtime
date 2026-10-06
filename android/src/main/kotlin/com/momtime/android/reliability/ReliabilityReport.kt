@@ -14,7 +14,6 @@ import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.android.store.ReliabilityCheck
 import com.momtime.shared.data.EventRepository
 import com.momtime.shared.data.OccurrenceRepository
-import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.DeliveryCapability
 import com.momtime.shared.domain.Event
 import com.momtime.shared.domain.EventType
@@ -120,7 +119,6 @@ data class ReliabilityReport(
 @Suppress("LongParameterList")
 class ReliabilityReader internal constructor(
     private val occurrences: OccurrenceRepository,
-    private val templates: ScheduleTemplateRepository,
     private val events: EventRepository,
     private val telemetry: FireTelemetryRepository,
     private val contexts: ArmingContextRepository,
@@ -139,15 +137,14 @@ class ReliabilityReader internal constructor(
         val from = asOf - WINDOW
         val inWindow = occurrences.findInWindow(from, asOf + LOOKAHEAD)
         val log = inWindow.flatMap { events.findForOccurrence(it.id) }
-        val criticality = templates.findAll().associate { it.id to it.criticality }
         val bootInstants = boots.all()
         val zoneOf = inWindow.associate { it.id to it.timeZoneId }
 
+        // The reduction reads each occurrence's own criticality for its first rung and its grace (ADR 0079 item 6).
         val timings =
             FireTiming.compute(
                 occurrences = inWindow,
                 events = log,
-                criticalityOf = { checkNotNull(criticality[it.templateId]) { "occurrence without a template" } },
                 channels = DEVICE_CHANNELS,
                 asOf = asOf,
                 neverFiredAfter = NEVER_FIRED_AFTER,

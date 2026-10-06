@@ -217,8 +217,9 @@ class RingActionsTest {
 
     // --- an action that is not available is unavailable on the screen and refused if sent anyway
 
+    // A Standard occurrence: a Gentle one no longer rings (ADR 0089), and these cases are about the session.
     private fun snoozeThrice(id: String) {
-        f.due(id, Criticality.GENTLE, slot = 31)
+        f.due(id, Criticality.STANDARD, slot = 31)
         val a = f.arming.occurrences.findById(id)!!
         f.fire(a)
         var now = a.scheduledInstant

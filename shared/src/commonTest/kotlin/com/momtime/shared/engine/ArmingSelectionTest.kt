@@ -34,7 +34,6 @@ class ArmingSelectionTest {
             slot,
             criticality,
         ),
-        criticality,
         fired,
     )
 

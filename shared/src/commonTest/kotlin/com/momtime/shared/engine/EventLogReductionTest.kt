@@ -29,6 +29,7 @@ class EventLogReductionTest {
         id: String = "occ-${seq++}",
         state: OccurrenceState = OccurrenceState.PENDING,
         scheduled: Instant = base,
+        criticality: Criticality = Criticality.CRITICAL,
     ) = Occurrence(
         id = id,
         templateId = "tmpl",
@@ -37,7 +38,7 @@ class EventLogReductionTest {
         timeZoneId = zone,
         state = state,
         alarmSlot = 1,
-        criticality = Criticality.CRITICAL,
+        criticality = criticality,
     )
 
     private fun event(
@@ -83,9 +84,8 @@ class EventLogReductionTest {
         byDate: Map<LocalDate, List<Occurrence>>,
         events: List<Event>,
         window: List<LocalDate>,
-        criticality: Criticality = Criticality.CRITICAL,
         asOf: Instant = farFuture,
-    ) = EventLogReduction.criticalCompletionDays(byDate, events, { criticality }, window, asOf)
+    ) = EventLogReduction.criticalCompletionDays(byDate, events, window, asOf)
 
     @Test
     fun `adherence figures report three separate counts, never one collapsed percentage`() {
@@ -241,13 +241,40 @@ class EventLogReductionTest {
     @Test
     fun `a day with no critical occurrences does not count toward the 30-day metric`() {
         val date = base.toLocalDateTime(zone).date
-        val o = occ()
+        val o = occ(criticality = Criticality.STANDARD)
         val events = listOf(event(o, EventType.COMPLETED, base))
-        assertEquals(
-            0,
-            criticalDays(mapOf(date to listOf(o)), events, listOf(date), criticality = Criticality.STANDARD),
-        )
+        assertEquals(0, criticalDays(mapOf(date to listOf(o)), events, listOf(date)))
     }
+
+    // ADR 0079 item 6: whether an occurrence is critical is its own criticality, a snapshot taken when it was
+    // materialised. Thirty days, each with a completed Critical occurrence and a missed Standard one: every day
+    // counts, because the missed one is not critical. The reduction has no template to read and no caller that
+    // could pass one (its signature is what enforces the read), so the mutation that must fail this is the loss
+    // of the Critical filter, which counts the missed Standard occurrence and brings the count to zero.
+    @Test
+    fun `critical completion days read the occurrence`() {
+        val byDate = LinkedHashMap<LocalDate, List<Occurrence>>()
+        val events = mutableListOf<Event>()
+        repeat(30) { day ->
+            val scheduled = base + day.days
+            val critical = occ(id = "c-$day", scheduled = scheduled, criticality = Criticality.CRITICAL)
+            val standard = occ(id = "s-$day", scheduled = scheduled, criticality = Criticality.STANDARD)
+            byDate[critical.localDate] = listOf(critical, standard)
+            events += event(critical, EventType.COMPLETED, scheduled + 10.minutes)
+            events += missed(standard, Criticality.STANDARD, scheduled + 5.hours)
+        }
+        val window = byDate.keys.toList()
+        assertEquals(30, window.size)
+
+        assertEquals(30, criticalDays(byDate, events, window))
+
+        // The other way round: the missed occurrence is the Critical one, and no day counts.
+        val swapped = byDate.mapValues { (_, pair) -> pair.map { it.copy(criticality = swap(it.criticality)) } }
+        assertEquals(0, criticalDays(swapped, events, window))
+    }
+
+    private fun swap(criticality: Criticality) =
+        if (criticality == Criticality.CRITICAL) Criticality.STANDARD else Criticality.CRITICAL
 
     @Test
     fun `a day counts only when every critical occurrence that day is completed`() {
@@ -311,7 +338,6 @@ class EventLogReductionTest {
     private class History(
         val occurrences: List<Occurrence>,
         val events: List<Event>,
-        val criticality: Map<String, Criticality>,
     ) {
         fun latestEffectTime(): Instant =
             events.maxOfOrNull { it.effectiveAt ?: it.deviceTimestamp } ?: Instant.fromEpochMilliseconds(0)
@@ -320,7 +346,6 @@ class EventLogReductionTest {
     private fun generate(random: Random): History {
         val occurrences = mutableListOf<Occurrence>()
         val events = mutableListOf<Event>()
-        val criticality = HashMap<String, Criticality>()
         repeat(random.nextInt(0, 25)) {
             val scheduled = base + random.nextLong(0, 12L * 24 * 60).minutes
             val level = Criticality.entries[random.nextInt(Criticality.entries.size)]
@@ -333,9 +358,9 @@ class EventLogReductionTest {
                     Fate.SKIPPED -> OccurrenceState.SKIPPED
                     Fate.MISSED -> OccurrenceState.MISSED
                 }
-            val o = occ(id = "g-${seq++}", state = state, scheduled = scheduled)
+            // The level is the occurrence's own, as it is in production (ADR 0079 item 6).
+            val o = occ(id = "g-${seq++}", state = state, scheduled = scheduled, criticality = level)
             occurrences += o
-            criticality[o.id] = level
             val at = scheduled + random.nextLong(0, 90).minutes
             when (fate) {
                 Fate.OPEN -> Unit
@@ -348,7 +373,7 @@ class EventLogReductionTest {
                 }
             }
         }
-        return History(occurrences, events, criticality)
+        return History(occurrences, events)
     }
 
     // Oracle property (ADR 0040): with no backfill and asOf at or after every effect time, the
@@ -367,10 +392,9 @@ class EventLogReductionTest {
             )
             val byDate = h.occurrences.groupBy { it.localDate }
             val window = byDate.keys.toList() + LocalDate(2030, 1, 1)
-            val criticalityOf = { o: Occurrence -> checkNotNull(h.criticality[o.id]) }
             assertEquals(
-                StateBasedAdherenceOracle.criticalCompletionDays(byDate, criticalityOf, window),
-                EventLogReduction.criticalCompletionDays(byDate, h.events, criticalityOf, window, asOf),
+                StateBasedAdherenceOracle.criticalCompletionDays(byDate, window),
+                EventLogReduction.criticalCompletionDays(byDate, h.events, window, asOf),
                 "critical completion days diverged from the oracle at run=$run",
             )
         }

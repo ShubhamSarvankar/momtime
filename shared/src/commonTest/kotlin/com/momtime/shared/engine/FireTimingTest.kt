@@ -34,6 +34,7 @@ class FireTimingTest {
     private val farAsOf = rung + 48.hours
     private var seq = 0
 
+    /** A STANDARD occurrence: its first rung is at [rung] and its grace ends four hours after it. */
     private val occurrence =
         Occurrence(
             id = "occ",
@@ -43,7 +44,7 @@ class FireTimingTest {
             timeZoneId = TimeZone.UTC,
             state = OccurrenceState.PENDING,
             alarmSlot = 1,
-            criticality = Criticality.CRITICAL,
+            criticality = Criticality.STANDARD,
         )
 
     private fun event(
@@ -78,7 +79,6 @@ class FireTimingTest {
     ) = FireTiming.compute(
         occurrences,
         events,
-        { Criticality.STANDARD },
         channelsArg,
         asOf,
         neverFiredAfter,
@@ -293,6 +293,32 @@ class FireTimingTest {
         val result = compute(listOf(scheduled("s1", rung - 1.hours)))
         eq(listOf(UnfiredRung("occ", "s1", rung, rung + 4.hours)), result.neverFiredRungs)
         eq(1, result.neverFired)
+    }
+
+    // ADR 0079 item 6: the grace the exclusion is asked about is the occurrence's own. The phone is off from before
+    // the rung until three hours after it (the caller's excuse: the first boot after the rung began after grace
+    // ended, ADR 0070). A Critical occurrence's grace ended at two hours, so it is excused; a Standard one's ends
+    // at four, so it is not. A grace computed from any fixed criticality gives the two the same answer.
+    @Test
+    fun `a never fired rung is excused by the occurrence's own grace`() {
+        val critical = occurrence.copy(id = "critical", criticality = Criticality.CRITICAL)
+        val standard = occurrence.copy(id = "standard", criticality = Criticality.STANDARD)
+        val bootAfter = rung + 3.hours
+        val events =
+            listOf(
+                event(EventType.ALARM_SCHEDULED, rung - 1.hours, "s1", "critical"),
+                event(EventType.ALARM_SCHEDULED, rung - 1.hours, "s2", "standard"),
+            )
+
+        val result =
+            compute(
+                events,
+                occurrences = listOf(critical, standard),
+                unfiredExclusion = { if (bootAfter > it.graceEnd) Exclusion.OFF_THROUGH_GRACE else null },
+            )
+
+        eq("Critical is excused", mapOf(Exclusion.OFF_THROUGH_GRACE to 1), result.neverFiredExcluded)
+        eq("Standard is not", listOf(UnfiredRung("standard", "s2", rung, rung + 4.hours)), result.neverFiredRungs)
     }
 
     @Test
