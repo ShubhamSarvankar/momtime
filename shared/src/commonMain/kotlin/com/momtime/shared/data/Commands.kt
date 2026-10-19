@@ -17,6 +17,10 @@ import kotlin.time.Instant
  * Each `MISSED` event is written together with its state change in one transaction
  * ([OccurrenceRepository.transition]), and carries `effectiveAt`, the grace expiry, so when this runs does
  * not change what adherence reports.
+ *
+ * Grace is decided by the occurrence's own criticality, never its template's (ADR 0079 item 6), so an edit of
+ * the template cannot end a grace in the past. The template is still looked up, as a guard that the occurrence
+ * is not an orphan: nothing is read from it.
  */
 class ReconcileCommand(
     private val occurrences: OccurrenceRepository,
@@ -28,10 +32,11 @@ class ReconcileCommand(
     fun dispatch(now: Instant): Int {
         var missed = 0
         for (occurrence in occurrences.findOpen()) {
-            // An occurrence whose template is gone has no criticality, so it has no grace to expire.
-            val template = templates.findById(occurrence.templateId) ?: continue
+            // An occurrence whose template is gone is left alone: the pass carries on with the others.
+            templates.findById(occurrence.templateId) ?: continue
             val hasTerminalEvent = events.findForOccurrence(occurrence.id).any { it.eventType in TERMINAL_EVENTS }
-            val event = Reconcile.evaluate(occurrence, template.criticality, now, hasTerminalEvent, newId) ?: continue
+            val event =
+                Reconcile.evaluate(occurrence, occurrence.criticality, now, hasTerminalEvent, newId) ?: continue
             occurrences.transition(occurrence.id, OccurrenceState.MISSED, event)
             missed++
         }

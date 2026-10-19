@@ -9,8 +9,9 @@ import com.momtime.shared.domain.Criticality
  * A vibration pattern for a ring (ADR 0065): alternating off and on durations in milliseconds, starting with an
  * off (the platform's waveform convention), repeated until the ring stops. Android only: it is not in the shared
  * schema, the domain or the event log (invariant 5). The default for a template is its criticality's pattern, and
- * she may choose another per template (settings screen: Phase 3). The patterns are placeholders for hardware to
- * judge (`MANUAL_CHECKS.md`).
+ * she may choose another per template (settings screen: Phase 3). A Gentle occurrence does not ring and vibrates
+ * nothing (ADR 0089 item 7): its default is [NONE], and the choice is offered for Critical and Standard only. The
+ * patterns are placeholders for hardware to judge (`MANUAL_CHECKS.md`).
  */
 @Suppress("MagicNumber") // the patterns are data: durations in milliseconds
 enum class VibrationPattern(
@@ -22,19 +23,20 @@ enum class VibrationPattern(
     /** Two pulses and a pause: for `STANDARD`. */
     STEADY(longArrayOf(0, 500, 500, 500, 1500)),
 
-    /** One short pulse and a long pause: for `GENTLE`. */
+    /** One short pulse and a long pause: a choice for `CRITICAL` and `STANDARD`, no criticality's default. */
     LIGHT(longArrayOf(0, 200, 1800)),
 
-    /** She turned vibration off for this template. */
+    /** She turned vibration off for this template, or the occurrence is `GENTLE`. */
     NONE(longArrayOf()),
     ;
 
     companion object {
+        /** The pattern a ring of [criticality] vibrates with unless she chose another: none for `GENTLE`. */
         fun defaultFor(criticality: Criticality): VibrationPattern =
             when (criticality) {
                 Criticality.CRITICAL -> URGENT
                 Criticality.STANDARD -> STEADY
-                Criticality.GENTLE -> LIGHT
+                Criticality.GENTLE -> NONE
             }
 
         /** The pattern named [name], or null if none is. */

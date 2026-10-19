@@ -20,14 +20,14 @@ import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.OccurrenceRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
-import com.momtime.shared.domain.ScheduleTemplate
+import com.momtime.shared.domain.Occurrence
 import kotlin.time.Instant
 
 /**
  * Delivery: everything from a fire to what she sees and hears (ADR 0060, ADR 0061, ADR 0062). The fire path has
- * decided how the rung is presented and what the domain says (a ring, or silent under quiet hours or the budget),
- * and whether a ring is already going. This chooses the path from that and from the capability resolution
- * ([DeliveryPath.choose]) and takes it:
+ * decided how the rung is presented and what the domain says (a ring, a plain notification for a Gentle
+ * occurrence, or silent under quiet hours or the budget), and whether a ring is already going. This chooses the
+ * path from that and from the capability resolution ([DeliveryPath.choose]) and takes it:
  *
  * - **RING**, **HEADS_UP**, **AUDIO_ONLY**: the rung joins the ring session. The first occurrence starts the
  *   ringer service, which plays the sound and holds the ring notification; another occurrence joins the session
@@ -35,12 +35,15 @@ import kotlin.time.Instant
  *   platform refuses the ringer, the same notification is posted instead and the session ends, so the next rung
  *   tries again, and the refusal is recorded. Never a crash. Without a full screen intent, and with the overlay
  *   permission, the ring screen is opened through the overlay route.
- * - **PLAIN**: Tier 1. A notification on the criticality channel, replacing the one for the same occurrence.
+ * - **PLAIN**: Tier 1, or a Gentle occurrence on any tier (ADR 0089). A notification on the criticality channel,
+ *   replacing the one for the same occurrence. No ringer, no full screen intent, no ring session.
  * - **SILENT_NOTICE**, **SILENT**: a silent notification on the Quiet notices channel (ADR 0064).
  *
- * A row of device telemetry is written first (the android store, never fatal), then updated by what the ringer
- * did, and records whether the alarm stream was muted. Every notification carries the actions the domain offered
- * for its occurrence (ADR 0066). Nothing here writes to the event log or changes an occurrence.
+ * The channel and the default vibration follow the occurrence's own criticality, never its template's (ADR 0079
+ * item 6); the template supplies only what is shown (title, dosage, instructions), which is display and may
+ * change at once. A row of device telemetry is written first (the android store, never fatal), then updated by
+ * what the ringer did, and records whether the alarm stream was muted. Every notification carries the actions the
+ * domain offered for its occurrence (ADR 0066). Nothing here writes to the event log or changes an occurrence.
  */
 internal class AndroidDeliveryPort(
     private val context: Context,
@@ -77,7 +80,7 @@ internal class AndroidDeliveryPort(
                     RingNotifications.reminder(
                         context,
                         item,
-                        NotificationChannels.idFor(template.criticality),
+                        NotificationChannels.idFor(occurrence.criticality),
                         late = false,
                     ),
                 )
@@ -92,18 +95,18 @@ internal class AndroidDeliveryPort(
                     ),
                 )
             DeliveryPath.RING, DeliveryPath.HEADS_UP, DeliveryPath.AUDIO_ONLY ->
-                ring(path, item, template, eventId, resolution.overlayAvailable)
+                ring(path, item, occurrence, eventId, resolution.overlayAvailable)
         }
     }
 
     private fun ring(
         path: DeliveryPath,
         item: RingItem,
-        template: ScheduleTemplate,
+        occurrence: Occurrence,
         eventId: String,
         overlayAvailable: Boolean,
     ) {
-        val channel = NotificationChannels.idFor(template.criticality)
+        val channel = NotificationChannels.idFor(occurrence.criticality)
         val fullScreen = path == DeliveryPath.RING
         sessions.style = RingStyle(channel, fullScreen)
         when (sessions.join(item)) {
@@ -114,7 +117,7 @@ internal class AndroidDeliveryPort(
                     RingNotifications.ring(context, sessions.items(), channel, fullScreen),
                 )
             RingJoin.STARTED -> {
-                val vibration = services.settings.vibrationFor(template.id, template.criticality)
+                val vibration = services.settings.vibrationFor(occurrence.templateId, occurrence.criticality)
                 startRinger(RingerRequest(channel, fullScreen, eventId, vibration), path, overlayAvailable)
             }
         }

@@ -97,18 +97,21 @@ object EventLogReduction {
      * "Days in the last 30 where all critical tasks were completed" (CLAUDE.md — no punitive
      * streaks; a count of qualifying days, not a consecutive-day counter that resets to zero).
      * A day with no critical occurrences at all does not count as qualifying. A critical
-     * occurrence with no counted terminal event as of [asOf] is not completed.
+     * occurrence with no counted terminal event as of [asOf] is not completed. Whether an occurrence is
+     * critical is its own `criticality` (ADR 0079 item 6): a day already lived keeps the criticality it had.
      */
     fun criticalCompletionDays(
         occurrencesByDate: Map<LocalDate, List<Occurrence>>,
         events: List<Event>,
-        criticalityOf: (Occurrence) -> Criticality,
         windowDates: List<LocalDate>,
         asOf: Instant,
     ): Int {
         val outcomes = outcomes(events, asOf)
         return windowDates.count { date ->
-            val critical = occurrencesByDate[date].orEmpty().filter { criticalityOf(it) == Criticality.CRITICAL }
+            val critical =
+                occurrencesByDate[date].orEmpty().filter { occurrence ->
+                    occurrence.criticality == Criticality.CRITICAL
+                }
             critical.isNotEmpty() && critical.all { outcomes[it.id] == Outcome.COMPLETED }
         }
     }

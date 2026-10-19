@@ -174,6 +174,31 @@ class ChannelsTest {
             DeliveryPath.SILENT_NOTICE,
             DeliveryPath.choose(rung(presentation = Presentation.SILENT_NOTICE), resolution(exact = false)),
         )
+        // The domain's NOTIFICATION (a Gentle occurrence, ADR 0089) is the plain path on every tier.
+        assertEquals(DeliveryPath.PLAIN, DeliveryPath.choose(rung(policy = RungDelivery.NOTIFICATION), resolution()))
+        assertEquals(
+            DeliveryPath.PLAIN,
+            DeliveryPath.choose(rung(policy = RungDelivery.NOTIFICATION), resolution(fullScreen = false)),
+        )
+        assertEquals(
+            DeliveryPath.PLAIN,
+            DeliveryPath.choose(
+                rung(policy = RungDelivery.NOTIFICATION),
+                resolution(fullScreen = false, notifications = false),
+            ),
+        )
+        assertEquals(
+            DeliveryPath.PLAIN,
+            DeliveryPath.choose(rung(policy = RungDelivery.NOTIFICATION), resolution(exact = false)),
+        )
+        assertEquals(
+            "beyond the window a Gentle rung is a silent notice like any other",
+            DeliveryPath.SILENT_NOTICE,
+            DeliveryPath.choose(
+                rung(presentation = Presentation.SILENT_NOTICE, policy = RungDelivery.NOTIFICATION),
+                resolution(),
+            ),
+        )
         // A rung that continues a ring in progress keeps ringing whatever it would have been alone.
         assertEquals(
             DeliveryPath.RING,
@@ -182,6 +207,10 @@ class ChannelsTest {
         assertEquals(
             DeliveryPath.RING,
             DeliveryPath.choose(rung(policy = RungDelivery.SILENT_NOTIFICATION, continuing = true), resolution()),
+        )
+        assertEquals(
+            DeliveryPath.RING,
+            DeliveryPath.choose(rung(policy = RungDelivery.NOTIFICATION, continuing = true), resolution()),
         )
         assertTrue(DeliveryPath.RING.rings && DeliveryPath.HEADS_UP.rings && DeliveryPath.AUDIO_ONLY.rings)
         assertFalse(DeliveryPath.PLAIN.rings || DeliveryPath.SILENT.rings || DeliveryPath.SILENT_NOTICE.rings)

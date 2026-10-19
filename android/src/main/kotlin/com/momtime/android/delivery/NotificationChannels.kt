@@ -16,7 +16,9 @@ import com.momtime.shared.domain.Criticality
  * - **Critical** and **Standard** are importance high, because a heads up notification and a full screen intent
  *   both need it. Critical carries the alarm tone on the alarm stream, so a Tier 1 reminder, which has no ringer
  *   behind it, is still heard; Standard carries the default notification sound.
- * - **Gentle** is importance low: no sound, no heads up. It is for occurrences she made gentle, and only those.
+ * - **Gentle** is importance low: no sound, no heads up. It is for occurrences she made gentle, and only those: a
+ *   Gentle occurrence is a notification on this channel and never a ring (ADR 0089). Which channel is the
+ *   occurrence's own criticality's, never its template's (ADR 0079 item 6).
  * - **Quiet notices** is importance low too, and is where every silent presentation goes, whatever the criticality
  *   of its occurrence: a rung beyond the catch up window, and one held back by quiet hours or the interruption
  *   budget. It is not Gentle, because a late dose of a critical medicine arriving silently on the channel she is

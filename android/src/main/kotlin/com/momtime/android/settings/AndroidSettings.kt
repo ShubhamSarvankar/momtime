@@ -42,14 +42,18 @@ class AndroidSettings(
 
     /**
      * The pattern the ring of [templateId] vibrates with: hers if she chose one, otherwise the default for
-     * [criticality]. An unknown stored name reads as the default, so a value from a newer version cannot crash.
+     * [criticality], the occurrence's own. A Gentle occurrence vibrates nothing whatever is stored (ADR 0089 item
+     * 7); the stored choice is kept, not deleted, so that a template edited back to Critical or Standard vibrates as
+     * she chose. An unknown stored name reads as the default, so a value from a newer version cannot crash.
      */
     fun vibrationFor(
         templateId: String,
         criticality: Criticality,
-    ): VibrationPattern =
-        prefs.getString(vibrationKey(templateId), null)?.let(VibrationPattern::fromName)
+    ): VibrationPattern {
+        if (criticality == Criticality.GENTLE) return VibrationPattern.NONE
+        return prefs.getString(vibrationKey(templateId), null)?.let(VibrationPattern::fromName)
             ?: VibrationPattern.defaultFor(criticality)
+    }
 
     /** Chooses [pattern] for [templateId], or goes back to the criticality's default with null. */
     fun setVibration(

@@ -107,11 +107,13 @@ class VibrationTest {
 
     // --- the patterns
 
+    // Gentle's default is none (ADR 0089 item 7): a Phase 2 expectation changed in PR 2 of Phase 3, by
+    // authorisation; before it, Gentle's default was LIGHT.
     @Test
     fun `the default pattern follows the criticality`() {
         assertEquals(VibrationPattern.URGENT, VibrationPattern.defaultFor(Criticality.CRITICAL))
         assertEquals(VibrationPattern.STEADY, VibrationPattern.defaultFor(Criticality.STANDARD))
-        assertEquals(VibrationPattern.LIGHT, VibrationPattern.defaultFor(Criticality.GENTLE))
+        assertEquals(VibrationPattern.NONE, VibrationPattern.defaultFor(Criticality.GENTLE))
         assertEquals(
             "three different defaults",
             3,
@@ -133,10 +135,12 @@ class VibrationTest {
 
     // --- her choices, and the defaults
 
+    // A Gentle occurrence vibrates nothing (ADR 0089 item 7): the second line is a Phase 2 expectation changed in
+    // PR 2 of Phase 3, by authorisation; before it, Gentle read LIGHT.
     @Test
     fun `a template vibrates with its criticality's pattern until she chooses another`() {
         assertEquals(VibrationPattern.URGENT, settings.vibrationFor("t1", Criticality.CRITICAL))
-        assertEquals(VibrationPattern.LIGHT, settings.vibrationFor("t1", Criticality.GENTLE))
+        assertEquals(VibrationPattern.NONE, settings.vibrationFor("t1", Criticality.GENTLE))
 
         settings.setVibration("t1", VibrationPattern.NONE)
 

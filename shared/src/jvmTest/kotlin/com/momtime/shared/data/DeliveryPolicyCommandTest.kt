@@ -49,6 +49,12 @@ class DeliveryPolicyCommandTest {
         assertEquals(RungDelivery.RING, policy.decide(Criticality.STANDARD, afternoon))
     }
 
+    // ADR 0089: a Gentle rung outside quiet hours and within the budget is a notification, through the command.
+    @Test
+    fun `a gentle rung is a notification`() {
+        assertEquals(RungDelivery.NOTIFICATION, policy.decide(Criticality.GENTLE, afternoon))
+    }
+
     @Test
     fun `quiet hours silence a standard rung and never a critical one`() {
         settings.updateQuietHours(QuietHours(LocalTime(22, 0), LocalTime(6, 0)))

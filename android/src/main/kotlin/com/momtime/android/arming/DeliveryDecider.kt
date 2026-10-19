@@ -21,9 +21,11 @@ internal data class DeliveryDecision(
  * Phase 1's resolution to her settings and today's count.
  *
  * - An occurrence already in the ring session is **continuing**: its ring goes on, no decision is asked and
- *   nothing is spent, because it is one interruption and not two.
- * - Otherwise, if the rung may ring ([mayRing]: it is within the catch up window), the domain decides. A rung
- *   that is to ring spends the budget once.
+ *   nothing is spent, because it is one interruption and not two. A Gentle occurrence never joins a session
+ *   (ADR 0089), so it is never continuing.
+ * - Otherwise, if the rung may ring ([mayRing]: it is within the catch up window), the domain decides, given the
+ *   occurrence's own criticality (ADR 0079 item 6). A rung that is to ring spends the budget once; a plain
+ *   notification (a Gentle occurrence) and a silent one spend nothing.
  * - A rung beyond the window is a silent notice whatever the policy says, so the domain is not asked and nothing
  *   is spent: it does not interrupt her.
  */

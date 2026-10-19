@@ -82,7 +82,6 @@ object FireTiming {
     fun compute(
         occurrences: List<Occurrence>,
         events: List<Event>,
-        criticalityOf: (Occurrence) -> Criticality,
         channels: Set<Channel>,
         asOf: Instant,
         neverFiredAfter: Duration,
@@ -135,7 +134,8 @@ object FireTiming {
                 }
             }
             if (fired == 0) {
-                val criticality = criticalityOf(occurrence)
+                // The occurrence's own criticality decides its first rung and its grace (ADR 0079 item 6).
+                val criticality = occurrence.criticality
                 val first = firstRung(occurrence, criticality, channels) ?: continue
                 if (first + neverFiredAfter > asOf) continue
                 if (log.any { it.deviceTimestamp <= first && it.eventType in USER_CLOSES_BEFORE_RUNG }) continue
