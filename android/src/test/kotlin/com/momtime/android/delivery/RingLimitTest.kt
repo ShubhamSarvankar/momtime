@@ -619,20 +619,26 @@ class RingLimitTest {
 
     // ---------------------------------------------------------------- the evidence
 
-    // Three fires: one left to the cap, one acknowledged after a minute, and one whose sound she stops after a minute
-    // (the third decided by Claude (technical review), so that a flag set on the shared dismissal path is seen).
+    // Three fires: one acknowledged after a minute, one left to the cap, and one whose sound she stops after a minute
+    // (the third decided by Claude (technical review), so that a flag set on the shared dismissal path is seen). The
+    // acknowledged fire comes first and alone, so that her answer is what ends its session: a flag set whenever a
+    // session ends would mark it. (Acknowledged after another occurrence had been capped and was still listed, her
+    // answer left that session sounding for the other, and a flag set at a session's end had nothing to mark.)
     @Test
     fun `a ring that ran out is recorded, and one she answered is not`() {
-        val a = f.due("a", Criticality.CRITICAL, slot = 31)
-        f.fire(a)
-        f.scheduler.advance(RingPolicy.MAX_RING)
-
-        val b = f.due("b", Criticality.CRITICAL, scheduled = t0 + 10.minutes, slot = 32)
+        val b = f.due("b", Criticality.CRITICAL, slot = 31)
         f.fire(b)
         f.scheduler.advance(1.minutes)
-        f.arming.clock.now = t0 + 11.minutes
+        f.arming.clock.now = t0 + 1.minutes
         controller.act("b", OccurrenceAction.ACKNOWLEDGE)
         assertEquals(OccurrenceState.COMPLETED, state("b"))
+        assertFalse("her answer ended the session", sessions.isActive)
+        assertTrue("and nothing is listed", sessions.items().isEmpty())
+
+        val a = f.due("a", Criticality.CRITICAL, scheduled = t0 + 10.minutes, slot = 32)
+        f.fire(a)
+        f.scheduler.advance(RingPolicy.MAX_RING)
+        assertFalse("the cap ended a's sound", sessions.isActive)
 
         val c = f.due("c", Criticality.CRITICAL, scheduled = t0 + 20.minutes, slot = 33)
         f.fire(c)
@@ -652,6 +658,6 @@ class RingLimitTest {
         val json = ReliabilityExport.toJson(report, DeviceInfo("Pixel 7", 36, "0.1.0", 1))
         assertEquals("the export carries the count", 1, JSONObject(json).getInt("capEndedRings"))
         assertFalse("and no timestamp", Regex("\"(firedAt|scheduledAt|time|timestamp)\"").containsMatchIn(json))
-        assertFalse(json.contains((t0 + 4.minutes).toEpochMilliseconds().toString()))
+        assertFalse(json.contains((t0 + 14.minutes).toEpochMilliseconds().toString()))
     }
 }
