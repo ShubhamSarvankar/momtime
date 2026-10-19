@@ -31,10 +31,11 @@ An Android medication, supplement, hydration and routine adherence app for pregn
 - **Phase 3 plan:** #26, merged. ADRs 0073 to 0090 accepted.
 - **PR 1, `phase-3/schema-v6`:** #28, merged. Schema version 6.
 - **PR 2, `phase-3/occurrence-criticality`:** #29, merged. Every behaviour reads `occurrence.criticality`; `verifyCriticalityFromOccurrence` with nine fixtures and its name rule's blind spot stated; Gentle is a notification only (ADR 0089). Eight Phase 3 expectation changes so far (PR 1 three, PR 2 five), each authorised.
+- **PR 2b, `phase-3/ring-limit`:** #31, merged. `RingPolicy.MAX_RING` 4 minutes, a placeholder; the cap and "Stop the sound" are one dismissal that keeps her notification with its actions and writes nothing; the ring session keeps an occurrence listed after its sound stops, and a repeat after the sound stopped rings again and spends again; `dropClosed` after each of the four `Reconcile` sites; `fire_telemetry.ring_ended_by_cap`, android store version 6, a count in the report and the export. No expectation change (still eight); the store migration tests' version literal moved to 6 as the section specified.
 
 ## Next
 
-PR 2b, `phase-3/ring-limit`, on Fable (ADR 0090). Confirm `main` is green first.
+PR 3, `phase-3/template-edit`, on Sonnet (ADR 0079 rules 1 to 7 and 9; `shared` only). Confirm `main` is green first.
 
 ## PR sequence
 
@@ -42,8 +43,8 @@ PR 2b, `phase-3/ring-limit`, on Fable (ADR 0090). Confirm `main` is green first.
 |---|---|---|---|
 | 1 | `phase-3/schema-v6` | Sonnet | Merged (#28) |
 | 2 | `phase-3/occurrence-criticality` | Fable | Merged (#29) |
-| 2b | `phase-3/ring-limit` | Fable | Next |
-| 3 | `phase-3/template-edit` | Sonnet | |
+| 2b | `phase-3/ring-limit` | Fable | Merged (#31) |
+| 3 | `phase-3/template-edit` | Sonnet | Next |
 | 4 | `phase-3/edit-pass` | Fable | |
 | 5 | `phase-3/reductions` | Sonnet | |
 | 6 | `phase-3/notifications` | Fable | |

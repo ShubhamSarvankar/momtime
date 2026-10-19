@@ -289,7 +289,7 @@ Done in full for the third revision and set out here in the fourth, because its 
 
 **STOP points.** Any Phase 2 test whose expectation, not its fixture, must change. If a Phase 2 test is found that does assert the notification is cancelled by "Stop the sound", that one expectation is authorised to change (the correction above) and is named in the pull request description; anything else is a STOP. None was found.
 
-**Docs.** `ARCHITECTURE.md` sections 4.2 (a repeat is a new ring), 4.3 (what a repeat spends), 4.6 (the cap is a dismissal; the end of grace ends a ring), 5.5 (the cap beside the ramp and the backup sound), 5.7 (the screen and the session after the sound stops) and 5.10 (the evidence); `MANUAL_CHECKS.md` P2-20 and P2-21 (`MAX_RING` joins the placeholders a device judges) and P2-17 (the notification kept across the detach, the stop and the repost); `IMPLEMENTATION_PLAN.md` (the Open items row and the Phase 3 status line); traceability row A25 and the section "PR 2b: a ring has a maximum length" (R-1 to R-20); `docs/REVIEW_HANDOFF.md`.
+**Docs.** `ARCHITECTURE.md` sections 4.2 (a repeat is a new ring), 4.3 (what a repeat spends), 4.6 (the cap is a dismissal; the end of grace ends a ring), 5.5 (the cap beside the ramp and the backup sound), 5.7 (the screen and the session after the sound stops) and 5.10 (the evidence); `MANUAL_CHECKS.md` P2-20 and P2-21 (`MAX_RING` joins the placeholders a device judges) and P2-17 (the notification kept across the detach, the stop and the repost); `IMPLEMENTATION_PLAN.md` (the Open items row and the Phase 3 status line); traceability row A25 and the section "PR 2b: a ring has a maximum length" (R-1 to R-21); `docs/REVIEW_HANDOFF.md`.
 
 ### PR 3. `phase-3/template-edit` (Sonnet; shared only)
 
