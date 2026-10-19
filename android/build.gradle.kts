@@ -583,8 +583,12 @@ val selfTestVerifyRingUiBoundary =
 // occurrence: the receiver written immediately before the dot is an identifier that ends in "occurrence"
 // (`occurrence.criticality`, `candidate.occurrence.criticality`, `occurrence?.criticality`). Any other receiver
 // (`template.criticality`, `it.criticality`, `findById(id)?.criticality`, `}.criticality`) is flagged, so a
-// template's value cannot reach a behaviour by a name or through a lambda. The template's criticality is read in
-// exactly four places, allowed by path:
+// template's value cannot reach a behaviour by a name or through a lambda. The check trusts names, not types,
+// and fails safe: a template under any other name (`t.criticality`) is flagged, and `it` in a lambda is flagged
+// whatever the lambda ranges over, a false positive that is accepted (main code names the parameter, as
+// `criticalCompletionDays` does). Its one blind spot is a template held in a variable whose name ends in
+// "occurrence" (`templateOfOccurrence.criticality` would pass); no main source does that, and review reads for it.
+// The template's criticality is read in exactly four places, allowed by path:
 //   - OccurrenceMaterialiser, which copies it onto each new occurrence;
 //   - EditTemplateCommand (shared data; docs/phase-3-plan.md PR 3), which applies an edit to occurrences that
 //     have not come due;
@@ -719,6 +723,13 @@ val selfTestVerifyCriticalityFromOccurrence =
                         ),
                     "the repository's read, in arming code" to
                         fixture("$arming/G.kt", "criticality = template.criticality.name,"),
+                    "a template under another name" to
+                        fixture("$arming/T.kt", "val t = templates.findById(id)!!\nval c = t.criticality"),
+                    "it in a lambda over occurrences (a false positive the check accepts)" to
+                        fixture(
+                            "com/momtime/shared/engine/H.kt",
+                            "val n = occurrences.count { it.criticality == Criticality.CRITICAL }",
+                        ),
                 )
             val mustPass =
                 mapOf(
