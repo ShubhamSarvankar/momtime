@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.content.Context
 import com.momtime.android.ring.RingItem
 import com.momtime.android.ring.RingSessions
-import com.momtime.android.ring.RingStyle
 import com.momtime.shared.data.ActionResult
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.engine.OccurrenceAction
@@ -18,7 +17,9 @@ import com.momtime.shared.engine.OccurrenceAction
  * nothing else (invariant 3). `ensureArmed` runs after it, inside the same exclusion the fire path and the
  * watchdog use, so neither ever reads the half done state, and arms what is next: for a snooze, the snooze's end.
  * Then the occurrence leaves the ring session and its notification is cancelled; when it was the last one in the
- * session the session ends and the ringer stops, which stops the sound and the vibration. An action the domain
+ * session the session ends, the cap is cancelled and the ringer stops, which stops the sound and the vibration. After
+ * the sound has stopped (the cap, "Stop the sound"; ADR 0090) the session's ordinary notification follows what is
+ * still listed and goes when nothing is. An action the domain
  * refuses is refused visibly: the offered actions are refreshed on the screen and on the notification, so a
  * button that no longer works is gone and not left to do nothing.
  */
@@ -26,6 +27,7 @@ internal class RingActionDispatcher(
     private val context: Context,
     private val sessions: RingSessions,
     private val ringer: RingerLauncher,
+    private val cap: RingCap,
     private val domain: RingDomain,
 ) {
     private val notifications: NotificationManager get() = context.getSystemService(NotificationManager::class.java)
@@ -57,11 +59,10 @@ internal class RingActionDispatcher(
         notifications.cancel(occurrence.alarmSlot)
         val resolved = sessions.resolve(occurrence.id)
         if (resolved.ended) {
+            cap.cancel()
             ringer.stop()
-            notifications.cancel(RingNotifications.RING_ID)
-        } else if (resolved.remaining > 0) {
-            refreshRingNotification()
         }
+        SessionNotifications.refresh(context, sessions)
     }
 
     /**
@@ -75,7 +76,7 @@ internal class RingActionDispatcher(
             // It is terminal now (acted on elsewhere, or its grace ended): nothing is due for it.
             taken(occurrence)
         } else {
-            refreshRingNotification()
+            SessionNotifications.refresh(context, sessions)
             repostReminder(occurrence, offered)
         }
     }
@@ -100,14 +101,6 @@ internal class RingActionDispatcher(
         notifications.notify(
             occurrence.alarmSlot,
             RingNotifications.reminder(context, item, posted.notification.channelId, late),
-        )
-    }
-
-    private fun refreshRingNotification() {
-        val style: RingStyle = sessions.style ?: return
-        notifications.notify(
-            RingNotifications.RING_ID,
-            RingNotifications.ring(context, sessions.items(), style.channelId, style.fullScreenIntent),
         )
     }
 }

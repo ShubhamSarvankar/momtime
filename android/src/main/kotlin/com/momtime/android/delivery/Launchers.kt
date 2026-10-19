@@ -32,7 +32,12 @@ internal class PlatformRingerLauncher(
         context.startForegroundService(RingerService.startIntent(context, request))
     }
 
+    /**
+     * Detaches the notification first, so that the stop does not cancel it (the dismissal keeps it, ADR 0090 item 3),
+     * then stops the service, which stops the sound and the vibration.
+     */
     override fun stop() {
+        RingerService.running?.detach()
         context.stopService(Intent(context, RingerService::class.java))
     }
 }

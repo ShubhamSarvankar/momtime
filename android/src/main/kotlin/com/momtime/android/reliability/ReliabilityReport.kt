@@ -77,6 +77,8 @@ data class ReliabilityReport(
     val missedOccurrences: Int,
     val watchdogRepairs: Int,
     val mutedFires: Int,
+    /** Rings in the window that ran their whole length unanswered (ADR 0090 item 8): a count, and no banner yet. */
+    val capEndedRings: Int,
     val storeFailures: Map<String, Long>,
     val corruption: CorruptionMarker?,
     val checks: List<ReliabilityCheck>,
@@ -176,6 +178,7 @@ class ReliabilityReader internal constructor(
             }
         val firesInWindow = log.filter { it.eventType == EventType.ALARM_FIRED && it.deviceTimestamp in from..asOf }
         val muted = firesInWindow.count { telemetry.findForEvent(it.id)?.alarmStreamMuted == true }
+        val capEnded = firesInWindow.count { telemetry.findForEvent(it.id)?.ringEndedByCap == true }
         return ReliabilityReport(
             asOf = asOf,
             windowDays = WINDOW_DAYS,
@@ -191,6 +194,7 @@ class ReliabilityReader internal constructor(
             missedOccurrences = log.count { it.eventType == EventType.MISSED && it.inWindow(from, asOf) },
             watchdogRepairs = log.count { it.eventType == EventType.WATCHDOG_REPAIR && it.inWindow(from, asOf) },
             mutedFires = muted,
+            capEndedRings = capEnded,
             storeFailures = failureCounts(),
             corruption = corruption(),
             checks = checks(),

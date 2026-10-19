@@ -84,6 +84,10 @@
         <item quantity="one">%d alarm had to be set again after it was lost.</item>
         <item quantity="other">%d alarms had to be set again after they were lost.</item>
     </plurals>
+    <plurals name="report_cap_ended">
+        <item quantity="one">%d reminder rang for its full length and was not answered.</item>
+        <item quantity="other">%d reminders rang for their full length and were not answered.</item>
+    </plurals>
     <plurals name="report_store_failures">
         <item quantity="one">%d problem was found saving what this screen reads.</item>
         <item quantity="other">%d problems were found saving what this screen reads.</item>

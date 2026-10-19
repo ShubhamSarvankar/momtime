@@ -21,6 +21,7 @@ import com.momtime.android.arming.PlatformAlarmProbe
 import com.momtime.android.arming.PlatformAppVersion
 import com.momtime.android.arming.PlatformProbes
 import com.momtime.android.arming.RecordingDeliveryPort
+import com.momtime.android.arming.SessionSweep
 import com.momtime.android.arming.Watchdog
 import com.momtime.android.capability.PlatformCapabilityReader
 import com.momtime.android.delivery.AndroidDeliveryPort
@@ -28,6 +29,7 @@ import com.momtime.android.delivery.DeliveryServices
 import com.momtime.android.delivery.OverlayLauncher
 import com.momtime.android.delivery.PlatformOverlayLauncher
 import com.momtime.android.delivery.PlatformRingerLauncher
+import com.momtime.android.delivery.RingCap
 import com.momtime.android.delivery.RingController
 import com.momtime.android.delivery.RingDomain
 import com.momtime.android.delivery.RingerLauncher
@@ -150,12 +152,14 @@ internal fun armingModule(
         single { RecordingDeliveryPort() }
         single { RingSessions() }
         single { AndroidSettings(context) }
+        // The ringer's one scheduler: the ramp, the backup sound and the cap (ADR 0090 item 5) all run on it.
+        single<SoundScheduler> { delivery.scheduler ?: MainLooperScheduler() }
         single<AlarmSound> {
             delivery.sound
                 ?: RingSound(
                     context,
                     delivery.players ?: MediaPlayers(context),
-                    delivery.scheduler ?: MainLooperScheduler(),
+                    get(),
                     VolumeRamp(),
                 ) { get<AndroidSettings>().backupSoundDelay() }
         }
@@ -164,8 +168,10 @@ internal fun armingModule(
         single<RingerLauncher> { delivery.ringer ?: PlatformRingerLauncher(context) }
         single<OverlayLauncher> { delivery.overlay ?: PlatformOverlayLauncher(context) }
         single { RingDomain(get(), get(), get(), get()) { get<AlarmLog>().now() } }
-        single { RingController(context, get(), get(), get(), get(), get(), get()) }
-        single { DeliveryServices(get(), get(), get(), get(), get(), get(), get()) { get<AlarmLog>().now() } }
+        single { RingCap(get()) { eventId -> get<RingController>().capExpired(eventId) } }
+        single { RingController(context, get(), get(), get(), get(), get(), get(), get()) }
+        single<SessionSweep> { get<RingController>() }
+        single { DeliveryServices(get(), get(), get(), get(), get(), get(), get(), get()) { get<AlarmLog>().now() } }
         single<DeliveryPort> {
             if (delivery.enabled) {
                 AndroidDeliveryPort(context, get(), get(), get(), get(), get())
@@ -179,11 +185,11 @@ internal fun armingModule(
         single { AlarmLog(get(), get(), newId) }
         single { PlatformProbes(probe, bootCount, appVersion, uptime) }
         single { ArmingCoordinator(get(), get(), get(), get(), get(), get(), get(), get()) }
-        single { AlarmFireHandler(get(), get(), get(), get(), get(), get()) }
+        single { AlarmFireHandler(get(), get(), get(), get(), get(), get(), get()) }
         single { ReconcileCommand(get(), get(), get(), newId) }
         single { MaterialiseCommand(get(), get(), newId) }
-        single { Watchdog(get(), get(), get(), get(), get(), get()) }
-        single { AppStart(get(), get(), get(), get(), get()) }
+        single { Watchdog(get(), get(), get(), get(), get(), get(), get()) }
+        single { AppStart(get(), get(), get(), get(), get(), get()) }
         single { CanaryRunner(context, get(), get(), get(), get(), get(), get(), newId) }
         single {
             ReliabilityReader(
@@ -221,7 +227,7 @@ internal fun armingModule(
         }
         single<DeviceZone> { DeviceZone(delivery.zone) }
         single { TimeZoneChangeCommand(get(), get(), get()) }
-        single { TimeZonePass(get(), get(), get(), get(), get(), get()) }
+        single { TimeZonePass(get(), get(), get(), get(), get(), get(), get()) }
         single {
             WorkPasses(
                 get(),

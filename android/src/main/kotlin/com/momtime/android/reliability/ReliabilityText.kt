@@ -63,6 +63,7 @@ internal object ReliabilityText {
         lines += counted(resources, R.plurals.report_never_fired, report.neverFired)
         lines += counted(resources, R.plurals.report_missed, report.missedOccurrences)
         lines += counted(resources, R.plurals.report_repairs, report.watchdogRepairs)
+        lines += counted(resources, R.plurals.report_cap_ended, report.capEndedRings)
         lines +=
             counted(
                 resources,

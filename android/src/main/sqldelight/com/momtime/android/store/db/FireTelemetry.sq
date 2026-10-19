@@ -15,6 +15,9 @@ CREATE TABLE fire_telemetry (
     ringer_started INTEGER,
     alarm_stream_muted INTEGER,
     clock_changes INTEGER,
+    -- Whether the ring this fire started or restarted ran its whole length unanswered (ADR 0090 item 8, version 6).
+    -- 1 on the row of the fire the cap last ran from; 0 on every other row this version writes; null from before.
+    ring_ended_by_cap INTEGER,
 
     CHECK (resolved_tier IN ('TIER_1', 'TIER_2', 'TIER_3')),
     CHECK (watchdog_repair IN (0, 1)),
@@ -24,11 +27,14 @@ CREATE TABLE fire_telemetry (
 insertFireTelemetry:
 INSERT INTO fire_telemetry(
     event_id, resolved_tier, screen_on, audio_focus_obtained, battery_pct, doze_state,
-    watchdog_repair, boot_count, delivery_path, ringer_started, alarm_stream_muted, clock_changes
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    watchdog_repair, boot_count, delivery_path, ringer_started, alarm_stream_muted, clock_changes, ring_ended_by_cap
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateRinger:
 UPDATE fire_telemetry SET ringer_started = ?, audio_focus_obtained = ? WHERE event_id = ?;
+
+updateRingEndedByCap:
+UPDATE fire_telemetry SET ring_ended_by_cap = 1 WHERE event_id = ?;
 
 selectFireTelemetryForEvent:
 SELECT * FROM fire_telemetry WHERE event_id = ?;

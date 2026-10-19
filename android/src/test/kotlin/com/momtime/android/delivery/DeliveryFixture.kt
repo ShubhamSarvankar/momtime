@@ -10,6 +10,7 @@ import com.momtime.android.arming.t0
 import com.momtime.android.di.DeliveryWiring
 import com.momtime.android.ringer.AlarmSound
 import com.momtime.android.ringer.AlarmVibration
+import com.momtime.android.ringer.FakeScheduler
 import com.momtime.android.ringer.VibrationPattern
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
@@ -93,11 +94,16 @@ internal class FakeVibration : AlarmVibration {
 /**
  * The production graph with the real delivery port over a real database, the shadowed platform, and fakes for the
  * three things a test cannot have (the ringer service launch, the overlay, the speaker). The capability inputs are
- * driven through the platform's own shadows, the way PR 2's tests do.
+ * driven through the platform's own shadows, the way PR 2's tests do. The ringer's scheduler, on which the ramp, the
+ * backup sound and the cap run (ADR 0090), is a fake the test advances by hand. A test that drives the real ringer
+ * service and the real sound over fake players passes its own [ringerOverride] and [soundOverride].
  */
 internal class DeliveryFixture(
     val context: Context,
     fullScreenIntent: Boolean = true,
+    val scheduler: FakeScheduler = FakeScheduler(),
+    soundOverride: AlarmSound? = null,
+    ringerOverride: RingerLauncher? = null,
 ) {
     val ringer = FakeRinger()
     val overlay = FakeOverlay()
@@ -114,10 +120,11 @@ internal class DeliveryFixture(
             delivery =
                 DeliveryWiring(
                     enabled = true,
-                    ringer = ringer,
+                    ringer = ringerOverride ?: ringer,
                     overlay = overlay,
-                    sound = sound,
+                    sound = soundOverride ?: sound,
                     vibration = vibration,
+                    scheduler = scheduler,
                     zone = { deviceZone },
                     fullScreenIntentApi = { fullScreen },
                 ),

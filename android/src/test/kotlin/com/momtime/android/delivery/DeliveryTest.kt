@@ -5,6 +5,7 @@ import android.os.Build
 import com.momtime.android.arming.FireOutcome
 import com.momtime.android.arming.Presentation
 import com.momtime.android.ring.RingSessions
+import com.momtime.android.ringer.RingPolicy
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.OccurrenceState
@@ -284,11 +285,23 @@ class DeliveryTest {
     }
 
     // ADR 0062: a rung for an occurrence already ringing continues the ring. No second start, no second screen,
-    // ALARM_FIRED still written, and the budget counts the occurrence once.
+    // ALARM_FIRED still written, and the budget counts the occurrence once. "Ringing" means the session's sound is on
+    // (ADR 0090 item 6), so the fixture puts a's repeat inside a sounding session: a's own sound ends at the cap, four
+    // minutes in; b fires at seven minutes and starts the sound again, with a still in the session and unanswered; so
+    // the sound is on when a's repeat fires at ten. The expectations for a are Phase 2's; b's start and b's spend are
+    // b's own (its fixture changed in Phase 3's PR 2b, its expectations did not).
     @Test
     fun `a rung for an occurrence that is ringing continues the ring`() {
         val a = f.due("a", Criticality.STANDARD, slot = 31)
+        val b = f.due("b", Criticality.CRITICAL, scheduled = a.scheduledInstant + 7.minutes, slot = 32)
         f.fire(a)
+        f.scheduler.advance(RingPolicy.MAX_RING)
+        assertFalse("a's own sound ended at the cap", sessions.isActive)
+        f.scheduler.advance(3.minutes)
+        f.fire(b)
+        assertTrue("b started the sound again with a still unanswered", sessions.isActive)
+        assertEquals("a is still listed, unanswered", listOf("a", "b"), sessions.items().map { it.occurrenceId })
+        f.scheduler.advance(3.minutes)
 
         val again =
             f.fire(
@@ -298,10 +311,18 @@ class DeliveryTest {
             ) as FireOutcome.Fired
 
         assertTrue("it is a continuation", again.rung.continuing)
-        assertEquals("no second start", 1, f.ringer.starts.size)
+        assertEquals("no second start for a: a's and b's only", 2, f.ringer.starts.size)
+        assertEquals(
+            "the second start was b's",
+            f.arming
+                .eventsOf("b", EventType.ALARM_FIRED)
+                .single()
+                .id,
+            f.ringer.starts[1].eventId,
+        )
         assertEquals("ALARM_FIRED is still written", 2, f.arming.count(EventType.ALARM_FIRED, "a"))
-        assertEquals("the budget counts it once", 1, f.budget.current().ringCount)
-        assertEquals(1, sessions.items().size)
+        assertEquals("the budget counts a once, and b once as its own", 2, f.budget.current().ringCount)
+        assertEquals(listOf("a", "b"), sessions.items().map { it.occurrenceId })
         assertEquals(0, f.overlay.launches)
     }
 

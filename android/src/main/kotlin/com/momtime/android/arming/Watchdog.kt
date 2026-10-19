@@ -66,7 +66,8 @@ data class WatchdogResult(
  * One watchdog pass (ARCHITECTURE.md section 5.3, ADR 0058), run by the `WorkManager` job every 15 minutes.
  *
  * 1. Dispatch `Reconcile`, so an occurrence whose grace expired while the app was closed is derived to `MISSED`
- *    even if no alarm ever fires for it.
+ *    even if no alarm ever fires for it; then the ring session drops what is no longer open, so a ring does not
+ *    outlive its occurrence's grace (ADR 0090 item 7).
  * 2. Resolve capability and compare what the system and the armed record say with the rung the domain expects.
  * 3. Write `WATCHDOG_REPAIR` only if there is positive evidence that the armed alarm was lost.
  * 4. Call `ensureArmed`, which is idempotent: on a correct state it replaces the alarm with identical
@@ -76,6 +77,7 @@ data class WatchdogResult(
  * path rings it when it fires (ADR 0056). The pass runs exclusive of the fire path, so it never reads a fire
  * that is half done as a lost alarm.
  */
+@Suppress("LongParameterList")
 class Watchdog internal constructor(
     private val reconcile: ReconcileCommand,
     private val coordinator: ArmingCoordinator,
@@ -83,10 +85,12 @@ class Watchdog internal constructor(
     private val armed: ArmedAlarmRepository,
     private val resolver: CapabilityResolver,
     private val probes: PlatformProbes,
+    private val sweep: SessionSweep,
 ) {
     fun run(): WatchdogResult =
         coordinator.exclusive {
             val missed = reconcile.dispatch(log.now())
+            sweep.dropClosed()
             // Capability is read before anything is armed, so what the armed record says is compared with the
             // platform as it is now. The pass below reads it again, and arms through that.
             val capability = resolver.resolve()

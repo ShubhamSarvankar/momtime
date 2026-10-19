@@ -9,6 +9,7 @@ import com.momtime.android.store.BootInstant
 import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.CheckOutcome
 import com.momtime.android.store.ClockChangeRepository
+import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
 import com.momtime.android.store.ReliabilityCheckRepository
 import com.momtime.android.store.StoreFailureRepository
@@ -29,8 +30,9 @@ import kotlin.time.Instant
 /**
  * The android store's forward migrations (ADR 0048, ADR 0058, ADR 0060, ADR 0065): version 1 to 2 gives the armed
  * record the app's version code, version 2 to 3 gives the device telemetry row the delivery path and whether the
- * ringer started, version 3 to 4 gives it whether the alarm stream was muted, and version 4 to 5 adds the reliability
- * tables and the clock change count (ADR 0070). The starting point is the
+ * ringer started, version 3 to 4 gives it whether the alarm stream was muted, version 4 to 5 adds the reliability
+ * tables and the clock change count (ADR 0070), and version 5 to 6 gives the telemetry row whether its ring ran its
+ * whole length unanswered (ADR 0090). The starting point is the
  * committed baseline snapshot (`databases/1.db`), the schema a version 1 install holds, never a regenerated one
  * (ADR 0035); a later version is that baseline with the migrations before it applied as written. The framework
  * migrates from `user_version`.
@@ -102,7 +104,7 @@ class AndroidStoreMigrationTest {
     private fun graphOf(name: String) = TestGraph(context, storeName = name).also { graphs.add(it) }
 
     @Test
-    fun `a version 1 store migrates to 5 and keeps its rows`() {
+    fun `a version 1 store migrates to 6 and keeps its rows`() {
         val name = "s-v1.db"
         store(name, 1) { seedRows(it, withVersion = false) }
 
@@ -123,12 +125,12 @@ class AndroidStoreMigrationTest {
         assertNull("a row from before the muted flag was kept has none", old.alarmStreamMuted)
 
         val driver = graph.storeFactory.createDriver {}
-        assertEquals("5", driver.pragma("user_version"))
+        assertEquals("6", driver.pragma("user_version"))
         assertEquals("1", driver.pragma("foreign_keys"))
     }
 
     @Test
-    fun `a version 2 store migrates to 5 and keeps its rows and its version code`() {
+    fun `a version 2 store migrates to 6 and keeps its rows and its version code`() {
         val name = "s-v2.db"
         store(name, 2) { seedRows(it, withVersion = true) }
 
@@ -139,11 +141,11 @@ class AndroidStoreMigrationTest {
         assertNull(old.deliveryPath)
         assertNull(old.ringerStarted)
         assertNull(old.alarmStreamMuted)
-        assertEquals("5", graph.storeFactory.createDriver {}.pragma("user_version"))
+        assertEquals("6", graph.storeFactory.createDriver {}.pragma("user_version"))
     }
 
     @Test
-    fun `a version 3 store migrates to 5 and keeps its rows and its path`() {
+    fun `a version 3 store migrates to 6 and keeps its rows and its path`() {
         val name = "s-v3.db"
         store(name, 3) { db ->
             seedRows(db, withVersion = true)
@@ -159,11 +161,11 @@ class AndroidStoreMigrationTest {
         assertEquals("RING", kept.deliveryPath)
         assertEquals(true, kept.ringerStarted)
         assertNull("a row from before the muted flag was kept has none", kept.alarmStreamMuted)
-        assertEquals("5", graph.storeFactory.createDriver {}.pragma("user_version"))
+        assertEquals("6", graph.storeFactory.createDriver {}.pragma("user_version"))
     }
 
     @Test
-    fun `a version 4 store migrates to 5 and keeps its rows`() {
+    fun `a version 4 store migrates to 6 and keeps its rows`() {
         val name = "s-v4.db"
         store(name, 4) { db ->
             seedRows(db, withVersion = true)
@@ -178,16 +180,16 @@ class AndroidStoreMigrationTest {
         val kept = checkNotNull(graph.get<FireTelemetryRepository>().findForEvent("v4"))
         assertEquals(true, kept.alarmStreamMuted)
         assertNull("a row from before the clock change count was kept has none", kept.clockChanges)
-        assertEquals("5", graph.storeFactory.createDriver {}.pragma("user_version"))
+        assertEquals("6", graph.storeFactory.createDriver {}.pragma("user_version"))
     }
 
-    // Every store a past version of the app could have left behind reaches version 5 with the reliability tables
+    // Every store a past version of the app could have left behind reaches version 6 with the reliability tables
     // there and working (ADR 0070): the check's history, the persisted failure counts, the arming context and the
     // clock change count, and the telemetry's new column. A migration step that is missing leaves a table that is not
     // there, which the repositories report as a failure, which the strict store of the tests throws.
     @Test
-    fun `a store from every prior version reaches 5 with the reliability tables ready`() {
-        for (version in 1..4) {
+    fun `a store from every prior version reaches 6 with the reliability tables ready`() {
+        for (version in 1..5) {
             val name = "s-reliability-v$version.db"
             store(name, version) { seedRows(it, withVersion = version >= 2) }
 
@@ -226,7 +228,53 @@ class AndroidStoreMigrationTest {
             assertNull("the old row has none", telemetry.findForEvent("old")?.clockChanges)
 
             val driver = graph.storeFactory.createDriver {}
-            assertEquals("v$version", "5", driver.pragma("user_version"))
+            assertEquals("v$version", "6", driver.pragma("user_version"))
+            assertEquals("v$version", emptyList<String>(), driver.foreignKeyViolations())
+        }
+    }
+
+    // Version 5 to 6 (ADR 0090 item 8): `fire_telemetry.ring_ended_by_cap`. A store from every prior version, each with
+    // a telemetry row, reaches 6; the old row has null in the new column and nothing else about it changed; a row this
+    // version writes is false until the cap marks it. A migration step that is missing leaves a column that is not
+    // there, which the strict store of the tests throws on.
+    @Test
+    fun `a store from every prior version reaches 6 and old telemetry rows have no cap flag`() {
+        for (version in 1..5) {
+            val name = "s-cap-v$version.db"
+            store(name, version) { seedRows(it, withVersion = version >= 2) }
+
+            val graph = graphOf(name)
+            val telemetry = graph.get<FireTelemetryRepository>()
+            val old = checkNotNull(telemetry.findForEvent("old"))
+            assertNull("v$version: a row from before has no cap flag", old.ringEndedByCap)
+            assertEquals(
+                "v$version: nothing else about the old row changed",
+                FireTelemetry(
+                    eventId = "old",
+                    resolvedTier = DeliveryCapability.TIER_2,
+                    screenOn = true,
+                    audioFocusObtained = false,
+                    batteryPct = 40,
+                    dozeState = "IDLE",
+                    watchdogRepair = false,
+                    bootCount = 3,
+                    deliveryPath = null,
+                    ringerStarted = null,
+                    alarmStreamMuted = null,
+                    clockChanges = null,
+                    ringEndedByCap = null,
+                ),
+                old,
+            )
+
+            assertEquals(true, telemetry.insert(old.copy(eventId = "new", ringEndedByCap = false)))
+            assertEquals("v$version: a new row is false", false, telemetry.findForEvent("new")?.ringEndedByCap)
+            assertEquals(true, telemetry.recordRingEndedByCap("new"))
+            assertEquals("v$version: until the cap marks it", true, telemetry.findForEvent("new")?.ringEndedByCap)
+            assertNull("v$version: the old row is untouched", telemetry.findForEvent("old")?.ringEndedByCap)
+
+            val driver = graph.storeFactory.createDriver {}
+            assertEquals("v$version", "6", driver.pragma("user_version"))
             assertEquals("v$version", emptyList<String>(), driver.foreignKeyViolations())
         }
     }
@@ -268,7 +316,7 @@ class AndroidStoreMigrationTest {
     }
 
     @Test
-    fun `a new store is created at version 5`() {
+    fun `a new store is created at version 6`() {
         val graph = TestGraph(context, storeName = "s-new.db").also { graphs.add(it) }
         val repo = graph.get<ArmedAlarmRepository>()
         val record =
@@ -282,6 +330,6 @@ class AndroidStoreMigrationTest {
             )
         assertEquals(true, repo.replace(record))
         assertEquals(record, repo.current())
-        assertEquals("5", graph.storeFactory.createDriver {}.pragma("user_version"))
+        assertEquals("6", graph.storeFactory.createDriver {}.pragma("user_version"))
     }
 }

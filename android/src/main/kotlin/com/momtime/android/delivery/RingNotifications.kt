@@ -48,6 +48,26 @@ internal object RingNotifications {
         items: List<RingItem>,
         channelId: String,
         fullScreenIntent: Boolean,
+    ): Notification = session(context, items, channelId, sounding = true, fullScreenIntent = fullScreenIntent)
+
+    /**
+     * The same session's notification once its sound has stopped, by the cap or by "Stop the sound" (ADR 0090
+     * item 3): her way to answer stays in front of her. Not ongoing, no full screen intent, and only alert once, so
+     * that replacing the ring notification under the same id makes no new sound. It carries the occurrence's
+     * actions if the session never spread, exactly as the ring notification did.
+     */
+    fun dismissed(
+        context: Context,
+        items: List<RingItem>,
+        channelId: String,
+    ): Notification = session(context, items, channelId, sounding = false, fullScreenIntent = false)
+
+    private fun session(
+        context: Context,
+        items: List<RingItem>,
+        channelId: String,
+        sounding: Boolean,
+        fullScreenIntent: Boolean,
     ): Notification {
         val screen = ringScreen(context)
         val builder =
@@ -55,7 +75,8 @@ internal object RingNotifications {
                 .Builder(context, channelId)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setCategory(Notification.CATEGORY_ALARM)
-                .setOngoing(true)
+                .setOngoing(sounding)
+                .setOnlyAlertOnce(!sounding)
                 .setAutoCancel(false)
                 .setContentIntent(screen)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)

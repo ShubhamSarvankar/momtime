@@ -29,39 +29,44 @@ data class RingStyle(
 data class RingResolved(
     /** True if the occurrence was in what the screen lists. */
     val wasListed: Boolean,
-    /** How many occurrences are left in the session that is going. */
+    /** How many occurrences are still listed. */
     val remaining: Int,
-    /** True if this was the last one in a session that was going, so the session ended with it. */
+    /** True if this was the last one listed while the sound was on, so the ring ended with it. */
     val ended: Boolean,
 )
 
 /** What joining the session did. */
 enum class RingJoin {
-    /** No session was going: this occurrence started one. */
+    /**
+     * The sound was off: this fire starts it. The occurrence may already have been listed, after the cap or "Stop the
+     * sound" (ADR 0090 item 6), or this may be the first occurrence due; either way the ringer starts.
+     */
     STARTED,
 
-    /** The occurrence was already in the session: the ring in progress continues. */
+    /** The sound is on and the occurrence is listed: the ring in progress continues. */
     CONTINUED,
 
-    /** A session was going and this occurrence was not in it: it joined, and no second session began. */
+    /** The sound is on and the occurrence was not listed: it joined, and no second ringer began. */
     JOINED,
 }
 
 /**
- * The ring session (ADR 0062): one at a time, covering every occurrence that is currently due. A fire for an
- * occurrence already in the session continues it (no restart, no second screen); a fire for another occurrence
- * joins it. The session ends when the sound is stopped, and when nothing in it is left unacknowledged: acting on
- * an occurrence (acknowledge, snooze or skip) takes it out of the session and leaves the others ringing
- * (ADR 0066). After it ends the screen still lists what was due, until the next session starts.
+ * The ring session (ADR 0062, ADR 0090): the occurrences that are currently due, and whether the sound is on for
+ * them. One at a time. A fire for an occurrence that is listed while the sound is on continues the ring (no restart,
+ * no second screen); a fire for another occurrence while the sound is on joins it; a fire while the sound is off
+ * starts the sound again, for a listed occurrence or a new one, and is a ring of its own. The sound stops when the
+ * cap ends it, when she presses "Stop the sound", and when nothing listed is left: acting on an occurrence
+ * (acknowledge, snooze or skip) takes it off the list and leaves the others ringing (ADR 0066), and an occurrence
+ * that is no longer open is dropped (ADR 0090 item 7). An occurrence stays listed after the sound stops, until it is
+ * acted on or dropped: the screen keeps showing what is due, with its actions, and so does the notification.
  *
  * This is state held in memory by the process. It holds no repository and no store type, so the ring screen,
  * which reads it, can be kept from reaching either (`verifyRingUiBoundary`).
  */
 class RingSessions {
     private val lock = Any()
-    private var active = false
-    private val inSession = mutableListOf<RingItem>()
-    private var shown: List<RingItem> = emptyList()
+    private var sounding = false
+    private val listed = mutableListOf<RingItem>()
     private val listeners = mutableListOf<() -> Unit>()
 
     /**
@@ -71,39 +76,29 @@ class RingSessions {
     @Volatile
     var style: RingStyle? = null
 
-    /** True if a ring session is going, which is to say the sound is playing for it. */
-    val isActive: Boolean get() = synchronized(lock) { active }
+    /** True while the session's sound is on. */
+    val isActive: Boolean get() = synchronized(lock) { sounding }
 
-    /** True if [occurrenceId] is in the session that is going. */
+    /** True if [occurrenceId] is listed and the sound is on: a fire for it continues the ring (ADR 0090 item 6). */
     fun isRinging(occurrenceId: String): Boolean =
-        synchronized(lock) { active && inSession.any { it.occurrenceId == occurrenceId } }
+        synchronized(lock) { sounding && listed.any { it.occurrenceId == occurrenceId } }
 
-    /** What the screen lists: the session's occurrences, or what they were when the last session ended. */
-    fun items(): List<RingItem> = synchronized(lock) { shown }
+    /** What the screen lists: every occurrence that is due, whether or not the sound is on. */
+    fun items(): List<RingItem> = synchronized(lock) { listed.toList() }
 
     fun join(item: RingItem): RingJoin {
         val result =
             synchronized(lock) {
-                val index = inSession.indexOfFirst { it.occurrenceId == item.occurrenceId }
+                val index = listed.indexOfFirst { it.occurrenceId == item.occurrenceId }
+                // Listed already, or listed now, with the freshest text and actions either way.
+                if (index >= 0) listed[index] = item else listed += item
                 when {
-                    !active -> {
-                        active = true
-                        inSession.clear()
-                        inSession += item
-                        shown = listOf(item)
+                    !sounding -> {
+                        sounding = true
                         RingJoin.STARTED
                     }
-                    index >= 0 -> {
-                        // The same occurrence at its next rung: the ring continues, with the freshest text.
-                        inSession[index] = item
-                        shown = inSession.toList()
-                        RingJoin.CONTINUED
-                    }
-                    else -> {
-                        inSession += item
-                        shown = inSession.toList()
-                        RingJoin.JOINED
-                    }
+                    index >= 0 -> RingJoin.CONTINUED
+                    else -> RingJoin.JOINED
                 }
             }
         changed()
@@ -111,18 +106,17 @@ class RingSessions {
     }
 
     /**
-     * Takes [occurrenceId] out of the session and off the screen's list: she has acted on it, so it is no longer
-     * due. The others in the session keep ringing; if it was the last one the session ends with it.
+     * Takes [occurrenceId] off the list: she has acted on it, or it is no longer open, so it is no longer due. The
+     * others keep ringing; if it was the last one listed while the sound was on, the ring ends with it.
      */
     fun resolve(occurrenceId: String): RingResolved {
         val result =
             synchronized(lock) {
-                val listed = shown.any { it.occurrenceId == occurrenceId }
-                inSession.removeAll { it.occurrenceId == occurrenceId }
-                shown = shown.filterNot { it.occurrenceId == occurrenceId }
-                val ended = active && inSession.isEmpty()
-                if (ended) active = false
-                RingResolved(listed, inSession.size, ended)
+                val wasListed = listed.any { it.occurrenceId == occurrenceId }
+                listed.removeAll { it.occurrenceId == occurrenceId }
+                val ended = sounding && listed.isEmpty()
+                if (ended) sounding = false
+                RingResolved(wasListed, listed.size, ended)
             }
         changed()
         return result
@@ -134,19 +128,15 @@ class RingSessions {
         actions: Set<OccurrenceAction>,
     ) {
         synchronized(lock) {
-            val index = inSession.indexOfFirst { it.occurrenceId == occurrenceId }
-            if (index >= 0) inSession[index] = inSession[index].copy(actions = actions)
-            shown = shown.map { if (it.occurrenceId == occurrenceId) it.copy(actions = actions) else it }
+            val index = listed.indexOfFirst { it.occurrenceId == occurrenceId }
+            if (index >= 0) listed[index] = listed[index].copy(actions = actions)
         }
         changed()
     }
 
-    /** Ends the session. The screen keeps listing what was due. */
+    /** Ends the ring: the sound is off. What is due stays listed until it is acted on or dropped. */
     fun end() {
-        synchronized(lock) {
-            active = false
-            inSession.clear()
-        }
+        synchronized(lock) { sounding = false }
         changed()
     }
 
