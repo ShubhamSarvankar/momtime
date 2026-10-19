@@ -219,6 +219,7 @@ class RingLimitTest {
 
         r.scheduler.advance(2.minutes)
 
+        assertEquals("the backup started at two minutes", 1, r.players.of(RingSoundKind.BACKUP).size)
         val backup = r.players.of(RingSoundKind.BACKUP).single()
         assertTrue("the backup plays at two minutes", backup.started && !backup.stopped)
         assertTrue(
@@ -265,6 +266,13 @@ class RingLimitTest {
         assertEquals(log, f.arming.eventLog("a"))
     }
 
+    /** The session's notification, asserted to be still posted: a dismissal that cancelled it fails here. */
+    private fun stillPosted(message: String): Notification {
+        val notification = f.posted(RingNotifications.RING_ID)
+        assertNotNull(message, notification)
+        return notification!!
+    }
+
     private fun assertOrdinary(notification: Notification) {
         assertEquals("not ongoing", 0, notification.flags and Notification.FLAG_ONGOING_EVENT)
         assertNull("no full screen intent", notification.fullScreenIntent)
@@ -296,7 +304,7 @@ class RingLimitTest {
         f.fire(a)
         f.scheduler.advance(RingPolicy.MAX_RING)
 
-        val one = checkNotNull(f.posted(RingNotifications.RING_ID)) { "the notification is gone after the cap" }
+        val one = stillPosted("the notification is gone after the cap")
         assertOrdinary(one)
         assertEquals("exactly the offered actions", threeActions, labels(one))
         val before = f.arming.eventLog("a")
@@ -312,10 +320,10 @@ class RingLimitTest {
         val c = f.due("c", Criticality.STANDARD, scheduled = t0 + 1.hours, slot = 33)
         f.fire(b)
         f.fire(c)
-        assertTrue("none while ringing with two", labels(checkNotNull(f.posted(RingNotifications.RING_ID))).isEmpty())
+        assertTrue("none while ringing with two", labels(stillPosted("the notification, with two ringing")).isEmpty())
         f.scheduler.advance(RingPolicy.MAX_RING)
 
-        val two = checkNotNull(f.posted(RingNotifications.RING_ID))
+        val two = stillPosted("the notification is gone after the cap, with two")
         assertOrdinary(two)
         assertTrue("none after the cap with two", labels(two).isEmpty())
         val screen =
@@ -339,7 +347,7 @@ class RingLimitTest {
         assertEquals(OccurrenceState.COMPLETED, state("b"))
         assertEquals(OccurrenceState.PENDING, state("c"))
         assertEquals("c has no event of its own but the re arm", 0, f.arming.count(EventType.COMPLETED, "c"))
-        val left = checkNotNull(f.posted(RingNotifications.RING_ID)) { "c is still waiting" }
+        val left = stillPosted("c is still waiting")
         assertOrdinary(left)
         assertEquals("now c alone, so its actions fit", threeActions, labels(left))
     }
@@ -366,7 +374,7 @@ class RingLimitTest {
 
         assertFalse(sessions.isActive)
         assertEquals(1, f.ringer.stops)
-        val n = checkNotNull(f.posted(RingNotifications.RING_ID)) { "the notification is gone after Stop the sound" }
+        val n = stillPosted("the notification is gone after Stop the sound")
         assertOrdinary(n)
         assertEquals(threeActions, labels(n))
         assertEquals("no event", log, f.arming.eventLog("a"))
