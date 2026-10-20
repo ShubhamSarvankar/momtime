@@ -416,6 +416,45 @@ class RingLimitTest {
         assertEquals("the display may sleep", 0, screen.window.attributes.flags and keep)
     }
 
+    // The screen opened from the kept notification after the cap, with the sound off and one occurrence still open
+    // (added in the close out of PR 2b, as Claude (technical review) asked): it shows what is due with its actions,
+    // and it starts nothing. The screen is opened the way a tap on the notification opens it, by its content intent.
+    @Test
+    fun `the ring screen opened from the kept notification shows the list and starts nothing`() {
+        val a = f.due("a", Criticality.CRITICAL, slot = 31)
+        f.fire(a)
+        f.scheduler.advance(RingPolicy.MAX_RING)
+        assertFalse("the cap ended the sound", sessions.isActive)
+        val kept = stillPosted("the notification is gone after the cap")
+        val starts = f.ringer.starts.size
+        val log = f.arming.eventLog("a")
+        val app = shadowOf(RuntimeEnvironment.getApplication())
+        app.clearStartedServices()
+
+        val opening = shadowOf(kept.contentIntent).savedIntent
+        assertEquals("it opens the ring screen", RingActivity::class.java.name, opening.component?.className)
+        val screen =
+            Robolectric
+                .buildActivity(RingActivity::class.java, opening)
+                .create()
+                .start()
+                .resume()
+                .visible()
+                .get()
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        assertEquals("the item and its actions are shown", listOf("ack:a", "snooze:a", "skip:a"), buttonTags(screen))
+        assertEquals(View.VISIBLE, screen.findViewById<View>(R.id.ring_sound_stopped).visibility)
+        assertEquals("no stop button", View.GONE, screen.findViewById<View>(R.id.ring_stop_sound).visibility)
+        assertNull("the screen started no service", app.nextStartedService)
+        assertEquals("the ringer was not started", starts, f.ringer.starts.size)
+        assertFalse("the sound is still off", sessions.isActive)
+        val keep = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        assertEquals("keep screen on is not set", 0, screen.window.attributes.flags and keep)
+        assertEquals("no event was written", log, f.arming.eventLog("a"))
+        assertEquals(OccurrenceState.PENDING, state("a"))
+    }
+
     // ---------------------------------------------------------------- a fresh cap per fire that rings
 
     @Test
