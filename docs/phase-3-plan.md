@@ -248,7 +248,7 @@ Done in full for the third revision and set out here in the fourth, because its 
 
 ### PR 2b. `phase-3/ring-limit` (runs on Fable)
 
-*Corrected in PR 2b to match what was built, as Claude (technical review) asked: the three decisions on the section below, each with its note; the four `Reconcile` sites as four cases; the session model the continuation needs; the fixture's scheduler; the version literal of the store's migration tests; and the test names as they are.*
+*Corrected in PR 2b to match what was built, as Claude (technical review) asked: the three decisions on the section below, each with its note; the four `Reconcile` sites as four cases; the session model the continuation needs; the fixture's scheduler; the version literal of the store's migration tests; and the test names as they are. In the close out: the ring screen test the review asked for (decision 4), and the export's version left at 1 with a STOP, since ADR 0070 names no rule for when it changes.*
 
 **Why Fable.** It adds a timer to the ringer and a second way for a ring session to end, on the alarm path, and it changes what "Stop the sound" leaves behind. PR 6's state machine is built on its result.
 
@@ -263,6 +263,7 @@ Done in full for the third revision and set out here in the fourth, because its 
 1. `a ring that ran out is recorded, and one she answered is not` gains a third fire whose sound she stops with "Stop the sound" after a minute, flag false, so that the specified mutation (set the flag on the shared dismissal path) can fail it; the acknowledged case carries a second mutation, set the flag whenever a session ends. *Built as decided; the test has three fires and two mutations. The acknowledged fire is the first and fires alone, so that her answer is what ends its session: in the first shape, acknowledged after another occurrence had been capped and was still listed, her answer left that session sounding for the other, and the second mutation did nothing (zero failures at `edd811b`), which is a failure of the mutation, not a pass. The test was reshaped and every mutation re run on the final code commit.*
 2. `a fire that continues or joins a sounding session restarts the cap` makes its first occurrence Standard, and a continuation has its own case, `a fire that continues a sounding session restarts the cap`. One site serves a start, a join and a continuation, so one mutation of it fails both cases and no other. *Built as decided; one site, one mutation, two cases.*
 3. `her actions stay after the cap`, with two occurrences before PR 6: after the cap the session's notification carries exactly the actions it carried while ringing, none with two (ADR 0066), and each occurrence's actions stay on the ring screen. *Built as decided; the code and ADR 0090 agree.*
+4. (The close out.) The ring screen opened from the kept notification on a silent session gets its own test and mutation, `the ring screen opened from the kept notification shows the list and starts nothing` (row below; traceability R-22). *Built as asked.* The export's `SCHEMA_VERSION`: asked to quote ADR 0070's rule for when it changes, the close out found none (its only words are "one versioned JSON document"), so the version stays 1 and the rule is handed back as a STOP, not decided here.
 
 | Test | Subject and setup | Assertion | Mutation that must fail it |
 |---|---|---|---|
@@ -290,7 +291,7 @@ Done in full for the third revision and set out here in the fourth, because its 
 
 **STOP points.** Any Phase 2 test whose expectation, not its fixture, must change. If a Phase 2 test is found that does assert the notification is cancelled by "Stop the sound", that one expectation is authorised to change (the correction above) and is named in the pull request description; anything else is a STOP. None was found.
 
-**Docs.** `ARCHITECTURE.md` sections 4.2 (a repeat is a new ring), 4.3 (what a repeat spends), 4.6 (the cap is a dismissal; the end of grace ends a ring), 5.5 (the cap beside the ramp and the backup sound), 5.7 (the screen and the session after the sound stops) and 5.10 (the evidence); `MANUAL_CHECKS.md` P2-20 and P2-21 (`MAX_RING` joins the placeholders a device judges) and P2-17 (the notification kept across the detach, the stop and the repost); `IMPLEMENTATION_PLAN.md` (the Open items row and the Phase 3 status line); traceability row A25 and the section "PR 2b: a ring has a maximum length" (R-1 to R-21); `docs/REVIEW_HANDOFF.md`.
+**Docs.** `ARCHITECTURE.md` sections 4.2 (a repeat is a new ring), 4.3 (what a repeat spends), 4.6 (the cap is a dismissal; the end of grace ends a ring), 5.5 (the cap beside the ramp and the backup sound), 5.7 (the screen and the session after the sound stops) and 5.10 (the evidence); `MANUAL_CHECKS.md` P2-20 and P2-21 (`MAX_RING` joins the placeholders a device judges) and P2-17 (the notification kept across the detach, the stop and the repost); `IMPLEMENTATION_PLAN.md` (the Open items row and the Phase 3 status line); traceability row A25 and the section "PR 2b: a ring has a maximum length" (R-1 to R-22); `docs/REVIEW_HANDOFF.md`.
 
 ### PR 3. `phase-3/template-edit` (Sonnet; shared only)
 
