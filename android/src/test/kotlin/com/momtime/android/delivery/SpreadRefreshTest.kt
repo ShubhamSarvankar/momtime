@@ -214,6 +214,29 @@ internal class SpreadRefreshTest : SpreadSupport() {
     @Test
     @Suppress("LongMethod")
     fun `an edit reaches every notification that is still showing, and brings back none she dismissed`() {
+        // The swiped case first, so that a repost without the active notifications check fails it by name: a Gentle
+        // notification she took away before the edit is not brought back.
+        val swiped = fixture()
+        swiped.notifications.cancelAll()
+        swiped.fire(swiped.due("a", Criticality.GENTLE, slot = 31))
+        assertNotNull(swiped.posted(31))
+        swiped.notifications.cancel(31)
+        val logBefore = swiped.arming.eventLog("a")
+
+        edit(swiped, "tmpl-a")
+
+        assertNull("the swiped notification is not brought back", swiped.posted(31))
+        assertEquals("nothing is posted", 0, count(swiped))
+        assertEquals("no event", logBefore, swiped.arming.eventLog("a"))
+        assertEquals(
+            "the template is edited all the same",
+            "Iron, with food",
+            swiped.arming.graph
+                .get<ScheduleTemplateRepository>()
+                .findById("tmpl-a")
+                ?.title,
+        )
+
         for (kind in kinds) {
             if (kind.needsExactLoss && !canLoseExact) continue
             val fx = fixture()
@@ -255,28 +278,6 @@ internal class SpreadRefreshTest : SpreadSupport() {
             fixtures.remove(fx)
             fx.close()
         }
-
-        // The swiped case: a Gentle notification she took away before the edit is not brought back.
-        val fx = fixture()
-        fx.notifications.cancelAll()
-        fx.fire(fx.due("a", Criticality.GENTLE, slot = 31))
-        assertNotNull(fx.posted(31))
-        fx.notifications.cancel(31)
-        val log = fx.arming.eventLog("a")
-
-        edit(fx, "tmpl-a")
-
-        assertNull("the swiped notification is not brought back", fx.posted(31))
-        assertEquals("nothing is posted", 0, count(fx))
-        assertEquals("no event", log, fx.arming.eventLog("a"))
-        assertEquals(
-            "the template is edited all the same",
-            "Iron, with food",
-            fx.arming.graph
-                .get<ScheduleTemplateRepository>()
-                .findById("tmpl-a")
-                ?.title,
-        )
     }
 
     // ---------------------------------------------------------------- an edit reaches a spread session's own
