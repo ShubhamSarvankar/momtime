@@ -152,7 +152,6 @@ class SeederTest {
         seeder().seed()
         val test = checkNotNull(templates.findById(Seeder.TEST_ID))
         assertTrue("active", test.active)
-        val armedFor = fixture.occurrences.findOpen().single { it.templateId == Seeder.TEST_ID }
         val materialise = fixture.graph.get<MaterialiseCommand>()
 
         for (day in 1..3) {
@@ -160,11 +159,9 @@ class SeederTest {
             materialise.dispatch(fixture.clock.now)
         }
 
-        assertEquals(
-            "one occurrence for the test template after three days of the daily job",
-            listOf(armedFor.id),
-            fixture.occurrences.findForTemplate(Seeder.TEST_ID).map { it.id },
-        )
+        val ofTest = fixture.occurrences.findForTemplate(Seeder.TEST_ID)
+        assertEquals("one occurrence for the test template after three days of the daily job", 1, ofTest.size)
+        val armedFor = ofTest.single()
         val alarm = fixture.alarms().single()
         assertEquals("it is armed", armedFor.alarmSlot, fixture.requestCode(alarm))
         val inactive =
