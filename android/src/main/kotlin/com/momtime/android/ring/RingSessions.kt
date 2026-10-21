@@ -60,12 +60,18 @@ enum class RingJoin {
  * that is no longer open is dropped (ADR 0090 item 7). An occurrence stays listed after the sound stops, until it is
  * acted on or dropped: the screen keeps showing what is due, with its actions, and so does the notification.
  *
+ * **Spread** (ADR 0080 item 3): the moment a second occurrence is listed the session has spread, and every listed
+ * occurrence has a notification of its own that carries its actions, while the session's notification carries none.
+ * It stays spread until nothing is listed any more, whether or not the sound is on in between, so the buttons never
+ * move back to the session's notification when one occurrence remains.
+ *
  * This is state held in memory by the process. It holds no repository and no store type, so the ring screen,
  * which reads it, can be kept from reaching either (`verifyRingUiBoundary`).
  */
 class RingSessions {
     private val lock = Any()
     private var sounding = false
+    private var spread = false
     private val listed = mutableListOf<RingItem>()
     private val listeners = mutableListOf<() -> Unit>()
 
@@ -78,6 +84,12 @@ class RingSessions {
 
     /** True while the session's sound is on. */
     val isActive: Boolean get() = synchronized(lock) { sounding }
+
+    /**
+     * True once a second occurrence has been listed, until nothing is listed (ADR 0080 item 3): each listed
+     * occurrence's actions are on a notification of its own and the session's notification carries none.
+     */
+    val isSpread: Boolean get() = synchronized(lock) { spread }
 
     /** True if [occurrenceId] is listed and the sound is on: a fire for it continues the ring (ADR 0090 item 6). */
     fun isRinging(occurrenceId: String): Boolean =
@@ -92,6 +104,7 @@ class RingSessions {
                 val index = listed.indexOfFirst { it.occurrenceId == item.occurrenceId }
                 // Listed already, or listed now, with the freshest text and actions either way.
                 if (index >= 0) listed[index] = item else listed += item
+                if (listed.size > 1) spread = true
                 when {
                     !sounding -> {
                         sounding = true
@@ -116,6 +129,8 @@ class RingSessions {
                 listed.removeAll { it.occurrenceId == occurrenceId }
                 val ended = sounding && listed.isEmpty()
                 if (ended) sounding = false
+                // The session is over when nothing is listed; only then can a later one start unspread.
+                if (listed.isEmpty()) spread = false
                 RingResolved(wasListed, listed.size, ended)
             }
         changed()

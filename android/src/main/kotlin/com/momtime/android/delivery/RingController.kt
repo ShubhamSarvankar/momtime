@@ -37,9 +37,10 @@ internal class RingDomain(
  * (invariant 3). The controller then calls `ensureArmed` (inside the same exclusion the fire path and the watchdog
  * use, so neither ever reads the half done state), which arms what is next: for a snooze, the snooze's end. Then it
  * takes the occurrence out of the ring session and cancels its notification. Acting on one occurrence leaves the
- * others ringing; when the last one in the session is acted on the session ends and the sound and the vibration
- * stop. An action the domain refuses is refused visibly: the offered actions are refreshed, on the screen and on
- * the notification, so a button that no longer works is gone, never silently ignored.
+ * others ringing, each with its own notification once the session has spread (ADR 0080); when the last one in the
+ * session is acted on the session ends and the sound and the vibration stop. An action the domain refuses is
+ * refused visibly: the offered actions are refreshed, on the screen and on the notification that carries them, so
+ * a button that no longer works is gone, never silently ignored.
  *
  * **Dismissal** (ADR 0090): "Stop the sound" and the cap are one path. The session ends and the service stops, so
  * the sound and the vibration stop and the service leaves the foreground; the session's notification is reposted as
@@ -120,23 +121,38 @@ internal class RingController(
     /**
      * A template edit changed what is shown (ADR 0079 item 4): every listed occurrence of [templateId] takes the
      * template's title, dosage and instructions as they are now, which the screen renders at once, and the
-     * session's notification is replaced under its id with the same actions and without alerting again. The ring
-     * is not touched: the sound, the cap and the service are as they were, and nothing is written.
+     * session's notification is replaced under its id with the same actions and without alerting again. Every
+     * notification of the template's open occurrences that is still showing takes the new text too, with the same
+     * id, actions and channel and only alert once: a per occurrence notification of a session that has spread, a
+     * plain one at Tier 1, a Gentle one, a silent notice (decided by Claude (technical review) in PR 4's close out,
+     * built in PR 6); one she swiped away is not brought back. The ring is not touched: the sound, the cap and the
+     * service are as they were, and nothing is written.
      */
     override fun edited(templateId: String) {
         val template = domain.templates.findById(templateId) ?: return
-        val shown =
-            sessions.items().filter { item ->
-                domain.occurrences.findById(item.occurrenceId)?.templateId == templateId
-            }
-        if (shown.isEmpty()) return
-        shown.forEach {
-            sessions.describe(it.occurrenceId, template.title, template.dosage, template.doctorInstructions)
+        val open = domain.occurrences.findForTemplate(templateId).filterNot { it.isTerminal }
+        val listed = sessions.items().associateBy { it.occurrenceId }
+        val shown = open.filter { it.id in listed }
+        shown.forEach { sessions.describe(it.id, template.title, template.dosage, template.doctorInstructions) }
+        if (shown.isNotEmpty()) SessionNotifications.refresh(context, sessions, alertOnce = true)
+        open.forEach { occurrence ->
+            val actions = listed[occurrence.id]?.actions ?: domain.actions.available(occurrence.id, domain.now())
+            val item =
+                RingItem(
+                    occurrence.id,
+                    template.title,
+                    template.dosage,
+                    template.doctorInstructions,
+                    occurrence.alarmSlot,
+                    actions,
+                )
+            SlotNotifications.refresh(context, sessions, occurrence, item)
         }
-        SessionNotifications.refresh(context, sessions, alertOnce = true)
     }
 
     override fun items(): List<RingItem> = sessions.items()
+
+    override val spread: Boolean get() = sessions.isSpread
 
     override fun act(
         occurrenceId: String,
@@ -171,7 +187,7 @@ internal class RingController(
         sessions.end()
         notifications.notify(
             RingNotifications.RING_ID,
-            RingNotifications.ring(context, sessions.items(), channelId, fullScreenIntent),
+            RingNotifications.ring(context, sessions.items(), channelId, fullScreenIntent, spread = sessions.isSpread),
         )
     }
 }

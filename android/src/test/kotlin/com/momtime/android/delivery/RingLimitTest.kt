@@ -314,18 +314,31 @@ class RingLimitTest {
         assertNull("acted on, the notification goes", f.posted(RingNotifications.RING_ID))
         assertTrue(sessions.items().isEmpty())
 
-        // Two occurrences (before PR 6, ADR 0066's rule): the session's notification carries exactly the actions it
-        // carried while ringing, which is none; each occurrence's actions are on the ring screen.
+        // Two occurrences (ADR 0080, run again in PR 6 as this section said; its expectation changed there, by
+        // authorisation of Claude (technical review)): the session has spread, so after the cap the session's
+        // notification is ordinary and carries no actions, and each occurrence's own notification is still posted
+        // with exactly its offered actions, not ongoing, with no full screen intent and only alert once, as it was
+        // before the cap; each occurrence's actions are on the ring screen too. Taken on one writes ADR 0066's delta
+        // and leaves the other's notification as it was: the buttons never move back to the session's notification.
         val b = f.due("b", Criticality.CRITICAL, scheduled = t0 + 1.hours, slot = 32)
         val c = f.due("c", Criticality.STANDARD, scheduled = t0 + 1.hours, slot = 33)
         f.fire(b)
         f.fire(c)
         assertTrue("none while ringing with two", labels(stillPosted("the notification, with two ringing")).isEmpty())
+        val ownOfC = checkNotNull(f.posted(33)) { "c's own notification, posted at the spread" }
         f.scheduler.advance(RingPolicy.MAX_RING)
 
         val two = stillPosted("the notification is gone after the cap, with two")
         assertOrdinary(two)
         assertTrue("none after the cap with two", labels(two).isEmpty())
+        for ((slot, name) in listOf(32 to "b", 33 to "c")) {
+            val own = checkNotNull(f.posted(slot)) { "$name's own notification is still posted after the cap" }
+            assertEquals("$name: exactly its offered actions", threeActions, labels(own))
+            assertEquals("$name: not ongoing", 0, own.flags and Notification.FLAG_ONGOING_EVENT)
+            assertNull("$name: no full screen intent", own.fullScreenIntent)
+            assertTrue("$name: only alert once", own.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        }
+        assertSame(c, "as it was before the cap", ownOfC)
         val screen =
             Robolectric
                 .buildActivity(RingActivity::class.java)
@@ -347,9 +360,28 @@ class RingLimitTest {
         assertEquals(OccurrenceState.COMPLETED, state("b"))
         assertEquals(OccurrenceState.PENDING, state("c"))
         assertEquals("c has no event of its own but the re arm", 0, f.arming.count(EventType.COMPLETED, "c"))
+        assertNull("b's own notification goes with b", f.posted(32))
+        assertSame(c, "as it was, after Taken on b", ownOfC)
         val left = stillPosted("c is still waiting")
         assertOrdinary(left)
-        assertEquals("now c alone, so its actions fit", threeActions, labels(left))
+        assertTrue("the session stays spread: the session's notification carries none", labels(left).isEmpty())
+    }
+
+    /** c's own notification is still posted and is what [expected] was: the same actions, flags, channel and title. */
+    private fun assertSame(
+        c: Occurrence,
+        message: String,
+        expected: Notification,
+    ) {
+        val own = checkNotNull(f.posted(c.alarmSlot)) { "c's own notification is gone, $message" }
+        assertEquals("c's own: actions $message", labels(expected), labels(own))
+        assertEquals("c's own: flags $message", expected.flags, own.flags)
+        assertEquals("c's own: channel $message", expected.channelId, own.channelId)
+        assertEquals(
+            "c's own: title $message",
+            expected.extras.getCharSequence(Notification.EXTRA_TITLE),
+            own.extras.getCharSequence(Notification.EXTRA_TITLE),
+        )
     }
 
     private fun buttonTags(activity: android.app.Activity): List<String> {

@@ -42,15 +42,19 @@ internal object RingNotifications {
      * The notification for a ring session: ongoing, an alarm, on [channelId]. With [fullScreenIntent] the ring
      * screen is launched over the lock screen; without it this is a heads up, or nothing visible at all if
      * notifications are denied. With [alertOnce] it replaces the one already showing without alerting again: a
-     * change of her text under a ring that is already sounding (ADR 0079 item 4).
+     * change of her text under a ring that is already sounding (ADR 0079 item 4). Once the session has [spread]
+     * (ADR 0080 item 3) it carries no occurrence buttons, because each occurrence's notification carries its own,
+     * and it is only alert once whenever it is rebuilt, because the per occurrence notifications are what alert.
      */
+    @Suppress("LongParameterList")
     fun ring(
         context: Context,
         items: List<RingItem>,
         channelId: String,
         fullScreenIntent: Boolean,
         alertOnce: Boolean = false,
-    ): Notification = session(context, items, channelId, sounding = true, fullScreenIntent, alertOnce)
+        spread: Boolean = false,
+    ): Notification = session(context, items, channelId, sounding = true, fullScreenIntent, alertOnce || spread, spread)
 
     /**
      * The same session's notification once its sound has stopped, by the cap or by "Stop the sound" (ADR 0090
@@ -62,7 +66,9 @@ internal object RingNotifications {
         context: Context,
         items: List<RingItem>,
         channelId: String,
-    ): Notification = session(context, items, channelId, sounding = false, fullScreenIntent = false, alertOnce = true)
+        spread: Boolean = false,
+    ): Notification =
+        session(context, items, channelId, sounding = false, fullScreenIntent = false, alertOnce = true, spread)
 
     @Suppress("LongParameterList")
     private fun session(
@@ -72,6 +78,7 @@ internal object RingNotifications {
         sounding: Boolean,
         fullScreenIntent: Boolean,
         alertOnce: Boolean,
+        spread: Boolean,
     ): Notification {
         val screen = ringScreen(context)
         val builder =
@@ -86,17 +93,51 @@ internal object RingNotifications {
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
         if (fullScreenIntent) builder.setFullScreenIntent(screen, true)
         describe(builder, context, items)
-        // One occurrence's buttons fit on its notification. With several the screen has each one's own.
-        if (items.size == 1) addActions(builder, context, items.single())
+        // One occurrence's buttons fit on its notification, until the session spreads: from then on each occurrence's
+        // own notification carries them (ADR 0080), and the buttons never move back here.
+        if (items.size == 1 && !spread) addActions(builder, context, items.single())
         return builder.build()
     }
 
-    /** A reminder that arrives as a notification and nothing else: Tier 1, or a silent presentation. */
+    /**
+     * One occurrence's own notification in a session that has spread (ADR 0080 item 3): under its slot, on its
+     * criticality's channel, an alarm, opening the ring screen, with exactly its offered actions; no full screen
+     * intent (the session's notification keeps that), no delete intent, not ongoing, and only alert once, so that a
+     * repost of it (a refused action, an edit, a ring that starts again) makes no new sound; its first post alerts
+     * as its channel says (ADR 0080 item 5). It is not auto cancelled by a tap, which opens the ring screen; a swipe
+     * takes it away and nothing brings it back before the occurrence's next ring.
+     */
+    fun occurrence(
+        context: Context,
+        item: RingItem,
+        channelId: String,
+    ): Notification {
+        val builder =
+            Notification
+                .Builder(context, channelId)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setCategory(Notification.CATEGORY_ALARM)
+                .setOngoing(false)
+                .setOnlyAlertOnce(true)
+                .setAutoCancel(false)
+                .setContentIntent(ringScreen(context))
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
+        describe(builder, context, listOf(item))
+        addActions(builder, context, item)
+        return builder.build()
+    }
+
+    /**
+     * A reminder that arrives as a notification and nothing else: Tier 1, or a silent presentation. With
+     * [alertOnce] it is a repost of one that is showing (its actions refreshed, or its text edited) and makes no
+     * new sound; a rung's own post leaves it off, so that a repeat is heard.
+     */
     fun reminder(
         context: Context,
         item: RingItem,
         channelId: String,
         late: Boolean,
+        alertOnce: Boolean = false,
     ): Notification {
         val builder =
             Notification
@@ -104,6 +145,7 @@ internal object RingNotifications {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setCategory(if (late) Notification.CATEGORY_REMINDER else Notification.CATEGORY_ALARM)
                 .setAutoCancel(true)
+                .setOnlyAlertOnce(alertOnce)
                 .setContentIntent(ringScreen(context))
         describe(builder, context, listOf(item))
         addActions(builder, context, item)

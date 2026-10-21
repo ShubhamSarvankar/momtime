@@ -23,8 +23,10 @@ internal fun interface SessionSweep {
     /**
      * The template [templateId] was edited: what the ring session shows of its occurrences (title, dosage, the
      * doctor's instructions) follows the template at once (ADR 0079 item 4), on the screen and on the session's
-     * notification, which is replaced under its id with the same actions and without alerting again. Nothing is
-     * written and no sound starts. A sweep that is not the ring controller has nothing to show.
+     * notification, which is replaced under its id with the same actions and without alerting again; and so does
+     * every notification of the template's open occurrences that is still showing, in or out of the session (a per
+     * occurrence one, a plain one at Tier 1, a Gentle one, a silent notice), while one she swiped away stays gone.
+     * Nothing is written and no sound starts. A sweep that is not the ring controller has nothing to show.
      */
     fun edited(templateId: String) = Unit
 }

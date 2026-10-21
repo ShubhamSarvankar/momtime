@@ -35,7 +35,8 @@ import kotlin.time.Instant
  *   the three restarts the cap (ADR 0090 item 5): the session sounds for up to `MAX_RING` from this fire. If the
  *   platform refuses the ringer, the same notification is posted instead, the cap is cancelled and the session
  *   ends, so the next rung tries again, and the refusal is recorded. Never a crash. Without a full screen intent,
- *   and with the overlay permission, the ring screen is opened through the overlay route.
+ *   and with the overlay permission, the ring screen is opened through the overlay route. What each fire leaves
+ *   under the occurrence's slot is [present]: exactly one notification carries its actions (ADR 0080 item 4).
  * - **PLAIN**: Tier 1, or a Gentle occurrence on any tier (ADR 0089). A notification on the criticality channel,
  *   replacing the one for the same occurrence. No ringer, no full screen intent, no ring session.
  * - **SILENT_NOTICE**, **SILENT**: a silent notification on the Quiet notices channel (ADR 0064).
@@ -110,21 +111,65 @@ internal class AndroidDeliveryPort(
         val channel = NotificationChannels.idFor(occurrence.criticality)
         val fullScreen = path == DeliveryPath.RING
         sessions.style = RingStyle(channel, fullScreen)
+        val listedBefore = sessions.items().any { it.occurrenceId == occurrence.id }
+        val spreadBefore = sessions.isSpread
         val joined = sessions.join(item)
         // One site for a start, a continuation and a join: each is a fire that rings, and each starts a fresh cap.
         services.cap.restart(eventId)
+        if (joined != RingJoin.CONTINUED) present(item, listedBefore, spreadBefore)
         when (joined) {
             RingJoin.CONTINUED -> Unit
             RingJoin.JOINED ->
                 context.getSystemService(NotificationManager::class.java).notify(
                     RingNotifications.RING_ID,
-                    RingNotifications.ring(context, sessions.items(), channel, fullScreen),
+                    RingNotifications.ring(context, sessions.items(), channel, fullScreen, spread = sessions.isSpread),
                 )
             RingJoin.STARTED -> {
                 val vibration = services.settings.vibrationFor(occurrence.templateId, occurrence.criticality)
                 startRinger(RingerRequest(channel, fullScreen, eventId, vibration), path, overlayAvailable)
             }
         }
+    }
+
+    /**
+     * What a fire that starts or joins a ring leaves under the slots (ADR 0080 items 1, 3 and 4): while an
+     * occurrence is ringing, exactly one notification carries its actions.
+     *
+     * - The session has not spread (one occurrence listed): the session's notification carries its actions, so a
+     *   notification it already had under its slot (a silent one under quiet hours, a plain one at Tier 1, a
+     *   notice) is cancelled, or there would be two.
+     * - This fire spreads the session: every listed occurrence gets its own notification, replacing whatever its
+     *   slot had.
+     * - It joins a session that had spread: the joiner gets its own.
+     * - It rings again for an occurrence already listed (a ring of its own after the cap, ADR 0090 item 6): its own
+     *   notification is left as it is if it is showing, and posted again if she swiped it away, as a repeat rung
+     *   posts a reminder again (ADR 0066). Nothing is posted twice for one occurrence.
+     */
+    private fun present(
+        item: RingItem,
+        listedBefore: Boolean,
+        spreadBefore: Boolean,
+    ) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        when {
+            !sessions.isSpread -> manager.cancel(item.alarmSlot)
+            !spreadBefore -> sessions.items().forEach { listed -> postOwn(manager, listed) }
+            !listedBefore -> postOwn(manager, item)
+            manager.activeNotifications.none { it.id == item.alarmSlot } -> postOwn(manager, item)
+            else -> Unit
+        }
+    }
+
+    /** Posts [listed]'s own notification under its slot, on its own criticality's channel (ADR 0079 item 6). */
+    private fun postOwn(
+        manager: NotificationManager,
+        listed: RingItem,
+    ) {
+        val occurrence = occurrences.findById(listed.occurrenceId) ?: return
+        manager.notify(
+            listed.alarmSlot,
+            RingNotifications.occurrence(context, listed, NotificationChannels.idFor(occurrence.criticality)),
+        )
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -142,7 +187,13 @@ internal class AndroidDeliveryPort(
             services.telemetry.recordRinger(request.eventId, started = false, audioFocus = null)
             context.getSystemService(NotificationManager::class.java).notify(
                 RingNotifications.RING_ID,
-                RingNotifications.ring(context, sessions.items(), request.channelId, request.fullScreenIntent),
+                RingNotifications.ring(
+                    context,
+                    sessions.items(),
+                    request.channelId,
+                    request.fullScreenIntent,
+                    spread = sessions.isSpread,
+                ),
             )
             services.cap.cancel()
             sessions.end()

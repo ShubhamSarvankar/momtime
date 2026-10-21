@@ -96,14 +96,22 @@ internal class FakeVibration : AlarmVibration {
  * three things a test cannot have (the ringer service launch, the overlay, the speaker). The capability inputs are
  * driven through the platform's own shadows, the way PR 2's tests do. The ringer's scheduler, on which the ramp, the
  * backup sound and the cap run (ADR 0090), is a fake the test advances by hand. A test that drives the real ringer
- * service and the real sound over fake players passes its own [ringerOverride] and [soundOverride].
+ * service and the real sound over fake players passes its own [ringerOverride] and [soundOverride]. A test of a
+ * process death builds a second fixture over the first one's database files ([name], [storeName], with the
+ * pregnancy already seeded and ids of its own, since a new process generates fresh ones), the way a new process
+ * opens what the dead one left.
  */
+@Suppress("LongParameterList")
 internal class DeliveryFixture(
     val context: Context,
     fullScreenIntent: Boolean = true,
     val scheduler: FakeScheduler = FakeScheduler(),
     soundOverride: AlarmSound? = null,
     ringerOverride: RingerLauncher? = null,
+    val name: String = "t-${java.util.UUID.randomUUID().toString().take(8)}.db",
+    val storeName: String = "s-${java.util.UUID.randomUUID().toString().take(8)}.db",
+    seedPregnancy: Boolean = true,
+    idPrefix: String = "gen",
 ) {
     val ringer = FakeRinger()
     val overlay = FakeOverlay()
@@ -117,6 +125,10 @@ internal class DeliveryFixture(
     val arming =
         ArmingFixture(
             context,
+            name = name,
+            storeName = storeName,
+            seedPregnancy = seedPregnancy,
+            idPrefix = idPrefix,
             delivery =
                 DeliveryWiring(
                     enabled = true,
