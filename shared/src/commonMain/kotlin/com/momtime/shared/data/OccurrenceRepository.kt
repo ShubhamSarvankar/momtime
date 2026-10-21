@@ -37,11 +37,6 @@ interface OccurrenceRepository {
 
     fun findById(id: String): Occurrence?
 
-    fun findByTemplateAndDate(
-        templateId: String,
-        date: LocalDate,
-    ): Occurrence?
-
     /** The occurrence that owns [slot], or null if none does (after a reset or a restore, none may). */
     fun findByAlarmSlot(slot: Int): Occurrence?
 
@@ -91,6 +86,17 @@ interface OccurrenceRepository {
         zone: TimeZone,
     )
 
+    /**
+     * What a template edit does to an open occurrence that has not come due (ADR 0079 item 5): a new instant and the
+     * template's criticality. Its id, local date, zone, `alarmSlot` and state are untouched and no event is written.
+     * The caller never passes a terminal occurrence, and the schema refuses it if it does.
+     */
+    fun applyEdit(
+        occurrenceId: String,
+        scheduledInstant: Instant,
+        criticality: Criticality,
+    )
+
     /** Allocates the next monotonic alarmSlot, transactionally (ADR 0018/0031). */
     fun allocateNextAlarmSlot(): Int
 }
@@ -135,15 +141,6 @@ class SqlDelightOccurrenceRepository(
     override fun findById(id: String): Occurrence? =
         database.occurrenceQueries
             .selectOccurrenceById(id)
-            .executeAsOneOrNull()
-            ?.toDomain()
-
-    override fun findByTemplateAndDate(
-        templateId: String,
-        date: LocalDate,
-    ): Occurrence? =
-        database.occurrenceQueries
-            .selectOccurrenceByTemplateAndDate(templateId, date.toDb())
             .executeAsOneOrNull()
             ?.toDomain()
 
@@ -205,6 +202,14 @@ class SqlDelightOccurrenceRepository(
         zone: TimeZone,
     ) {
         database.occurrenceQueries.updateOccurrenceSchedule(scheduledInstant.toDb(), zone.toDb(), occurrenceId)
+    }
+
+    override fun applyEdit(
+        occurrenceId: String,
+        scheduledInstant: Instant,
+        criticality: Criticality,
+    ) {
+        database.occurrenceQueries.updateOccurrenceEdit(scheduledInstant.toDb(), criticality.name, occurrenceId)
     }
 
     override fun allocateNextAlarmSlot(): Int =

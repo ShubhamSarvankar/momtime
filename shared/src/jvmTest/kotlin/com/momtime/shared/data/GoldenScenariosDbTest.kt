@@ -2,6 +2,7 @@ package com.momtime.shared.data
 
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.DueDateRevision
+import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.MissionConfig
 import com.momtime.shared.domain.NutritionTag
 import com.momtime.shared.domain.Occurrence
@@ -11,16 +12,23 @@ import com.momtime.shared.domain.PregnancyPhase
 import com.momtime.shared.domain.Recurrence
 import com.momtime.shared.domain.ScheduleTemplate
 import com.momtime.shared.domain.TaskType
+import com.momtime.shared.engine.RecurrenceExpander
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.plus
+import kotlinx.datetime.toLocalDateTime
 import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
@@ -109,69 +117,153 @@ class GoldenScenariosDbTest {
         windowEnd: Instant,
     ): List<Occurrence> = occurrenceRepo.materialiseWindow(template, windowStart, windowEnd) { nextId("occ") }
 
-    // Golden scenario 12 + required property: materialisation is idempotent under arbitrary
-    // repetition, not just twice. Each step is a randomly chosen real operation: materialise
-    // over a random, usually overlapping window, deactivate the template, or reactivate it
-    // (deactivation makes the materialiser skip the template, as the daily worker does for
-    // inactive templates). Across many seeds this asserts that at every step there are no
-    // duplicate dates or alarmSlots, that a row already materialised is never changed or
-    // re-issued under a new id or slot, and that a final full-window pass converges to exactly
-    // the expected set.
-    //
-    // The repository exposes no general template-edit operation yet, so `active` is the only
-    // template field that can change between passes here. Edits to timeOfDay and recurrence are
-    // covered by golden scenario 1, not by this property.
+    // Golden scenario 12 + required property (ADR 0079): materialisation and template edits interleaved. Every step
+    // is a real operation through a production command: materialise a random window, move the clock forward, edit
+    // `timeOfDay`, edit the recurrence, deactivate, reactivate (and materialise), complete a random open occurrence.
+    // Until Phase 3 the only edit was a toggle of `active`, so this property never saw a row move.
     @Test
-    fun `materialisation is idempotent under random windows and activation toggles - property test`() {
-        val fullStart = Instant.parse("2026-01-01T00:00:00Z")
-        val fullDays = 20
-        val fullEnd = fullStart + fullDays.days
-
+    fun `scenario 12 materialisation and template edits interleaved - property test`() {
+        var editsThatMoved = 0
+        var editsThatWithdrew = 0
+        var reactivationsThatCreated = 0
         for (seed in 1..20) {
-            setUp()
-            val random = Random(seed)
-            val pregnancy = seedPregnancy(Instant.fromEpochMilliseconds(0))
-            val template = seedTemplate(pregnancy.id)
-            val firstSeen = mutableMapOf<String, Triple<LocalDate, Instant, Int>>()
-
-            repeat(40) { step ->
-                val context = "seed=$seed step=$step"
-                when (random.nextInt(4)) {
-                    0 -> templateRepo.setActive(template.id, false)
-                    1 -> templateRepo.setActive(template.id, true)
-                    else -> {
-                        val start = fullStart + random.nextLong(0, fullDays * 24L).hours
-                        val end = minOf(start + random.nextLong(1, 10 * 24L).hours, fullEnd)
-                        val before = occurrenceRepo.datesAlreadyMaterialisedForTemplate(template.id)
-                        val created = materialiseOnce(checkNotNull(templateRepo.findById(template.id)), start, end)
-                        // An engine that re-issued a date would also throw in the plain INSERT
-                        // (ADR 0036); asserting on its own output names the cause.
-                        val reissued = created.filter { it.localDate in before }
-                        assertEquals(emptyList(), reissued, "engine re-issued already-materialised dates, $context")
+            val f = TemplateEditFixture()
+            try {
+                val steps = EditSteps(f, Random(seed), "t")
+                val seen = mutableMapOf<String, Occurrence>()
+                val frozen = mutableSetOf<String>()
+                val idOfSlot = mutableMapOf<Int, String>()
+                repeat(60) { step ->
+                    steps.step()
+                    val context = "seed=$seed step=$step"
+                    val rows = f.occurrences.findForTemplate("t")
+                    // 1: no two rows that are not withdrawn share a template and date.
+                    val live = rows.filter { it.state != OccurrenceState.WITHDRAWN }
+                    assertEquals(
+                        live.size,
+                        live.map { it.localDate }.toSet().size,
+                        "two live rows for a date, $context",
+                    )
+                    for (row in rows) {
+                        // 2: no two rows share a slot or an id, and neither is seen later on a different date.
+                        val first = seen[row.id]
+                        assertEquals(row.id, idOfSlot.getOrPut(row.alarmSlot) { row.id }, "slot shared, $context")
+                        if (first != null) {
+                            assertEquals(first.localDate, row.localDate, "an id moved to another date, $context")
+                            assertEquals(first.alarmSlot, row.alarmSlot, "a slot changed, $context")
+                            if (row.id in frozen) {
+                                // 3: terminal or come due: equal ever after, but for a transition to a terminal state.
+                                val transitioned = !first.isTerminal && row.isTerminal
+                                val expected = if (transitioned) first.copy(state = row.state) else first
+                                assertEquals(expected, row, "a row that was terminal or come due changed, $context")
+                            } else {
+                                // 4: every other row changed only in instant, criticality or by a transition.
+                                val comparable =
+                                    row.copy(
+                                        scheduledInstant = first.scheduledInstant,
+                                        criticality = first.criticality,
+                                        state = first.state,
+                                    )
+                                assertEquals(
+                                    first,
+                                    comparable,
+                                    "a row changed in a column an edit may not change, $context",
+                                )
+                            }
+                        }
+                        seen[row.id] = row
+                        if (row.isTerminal ||
+                            row.scheduledInstant <= steps.now ||
+                            row.state == OccurrenceState.SNOOZED
+                        ) {
+                            frozen += row.id
+                        }
                     }
+                    assertEquals(seen.size, rows.size, "a row vanished, $context")
                 }
-
-                val occurrences = occurrenceRepo.findForTemplate(template.id)
-                val count = occurrences.size
-                val dates = occurrences.map { it.localDate }.toSet()
-                val slots = occurrences.map { it.alarmSlot }.toSet()
-                val ids = occurrences.map { it.id }.toSet()
-                assertEquals(count, dates.size, "duplicate date, $context")
-                assertEquals(count, slots.size, "duplicate alarmSlot, $context")
-                assertEquals(count, ids.size, "duplicate id, $context")
-
-                occurrences.forEach { occurrence ->
-                    val snapshot = Triple(occurrence.localDate, occurrence.scheduledInstant, occurrence.alarmSlot)
-                    val earlier = firstSeen.getOrPut(occurrence.id) { snapshot }
-                    assertEquals(earlier, snapshot, "${occurrence.id} changed after first materialisation, $context")
-                }
-                assertEquals(firstSeen.size, occurrences.size, "an occurrence vanished or was re-issued, $context")
+                editsThatMoved += steps.editsThatMoved
+                editsThatWithdrew += steps.editsThatWithdrew
+                reactivationsThatCreated += steps.reactivationsThatCreated
+                assertConvergesAndNothingIsMissedByAnEdit(f, steps, seed)
+            } finally {
+                f.close()
             }
-
-            templateRepo.setActive(template.id, true)
-            materialiseOnce(checkNotNull(templateRepo.findById(template.id)), fullStart, fullEnd)
-            assertEquals(fullDays, occurrenceRepo.findForTemplate(template.id).size, "did not converge, seed=$seed")
         }
+        assertTrue(editsThatMoved > 0, "no edit moved a row over 20 seeds: the generator does not reach the case")
+        assertTrue(editsThatWithdrew > 0, "no edit withdrew a row over 20 seeds")
+        assertTrue(reactivationsThatCreated > 0, "no reactivation created a row over 20 seeds")
+    }
+
+    private fun assertConvergesAndNothingIsMissedByAnEdit(
+        f: TemplateEditFixture,
+        steps: EditSteps,
+        seed: Int,
+    ) {
+        f.occurrences.materialiseWindow(
+            checkNotNull(f.templates.findById("t")),
+            EditSteps.START,
+            EditSteps.END,
+            f.newId,
+        )
+        // One last edit of the time, after the span is full of rows: the last thing that happened to the template is a
+        // change of time, so a row left at an earlier time (or at the time of the edit before) cannot be hidden by a
+        // later edit that moved it.
+        steps.finalTimeEdit()
+        val template = checkNotNull(f.templates.findById("t"))
+        // Convergence over the dates after the current date in the template's zone: an edit to a time already past
+        // keeps today's time (ADR 0079 item 5), so today is not part of it.
+        val today = steps.now.toLocalDateTime(f.zone).date
+        val rows = f.occurrences.findForTemplate("t")
+        val actual =
+            rows.filter { !it.isTerminal && it.localDate > today }.associate {
+                it.localDate to
+                    it.scheduledInstant
+            }
+        val endDate = EditSteps.END.toLocalDateTime(f.zone).date
+        val closed = rows.filter { it.state != OccurrenceState.WITHDRAWN && it.isTerminal }.map { it.localDate }.toSet()
+        val expected =
+            if (!template.active) {
+                emptyMap()
+            } else {
+                RecurrenceExpander
+                    .expand(template.recurrence, today.plus(DatePeriod(days = 1)), endDate)
+                    .filter { it !in closed }
+                    .associateWith { f.at(it, template.timeOfDay.hour, template.timeOfDay.minute) }
+            }
+        assertEquals(expected, actual, "open rows after today are the final template's expansion, seed=$seed")
+
+        // The step that would miss a row because of an edit: after the grace of every row in the span.
+        val late = EditSteps.END + (3 * 24L).hours
+        f.reconcile.dispatch(late)
+        val byId = f.allOccurrences().associateBy { it.id }
+        for (event in f.allEvents()) {
+            val occurrence = byId.getValue(checkNotNull(event.occurrenceId))
+            if (event.eventType != EventType.MISSED) continue
+            assertNotEquals(
+                OccurrenceState.WITHDRAWN,
+                occurrence.state,
+                "a withdrawn row has a MISSED event, seed=$seed",
+            )
+            val grace =
+                when (occurrence.criticality) {
+                    Criticality.CRITICAL -> 2.hours
+                    Criticality.STANDARD -> 4.hours
+                    Criticality.GENTLE -> null
+                }
+            assertEquals(
+                grace?.let { occurrence.scheduledInstant + it }
+                    ?: f.at(occurrence.localDate.plus(DatePeriod(days = 1)), 0),
+                event.effectiveAt,
+                "a miss dated by something other than its own grace, seed=$seed",
+            )
+        }
+        assertEquals(
+            emptyList(),
+            f.allEvents().filter {
+                it.eventType == EventType.MISSED &&
+                    byId.getValue(it.occurrenceId!!).state == OccurrenceState.WITHDRAWN
+            },
+        )
     }
 
     // Golden scenario 1: template edit after some occurrences are terminal leaves terminal
@@ -200,9 +292,21 @@ class GoldenScenariosDbTest {
         occurrenceRepo.transition(first.id, OccurrenceState.COMPLETED, completedEvent)
         val completedBefore = occurrenceRepo.findById(first.id)!!
 
-        // "Edit" the template (criticality change) and re-materialise the same window.
-        templateRepo.setActive(template.id, true)
-        materialiseOnce(template, windowStart, windowEnd)
+        // Edit the template's time and criticality through the command, then re-materialise the same window.
+        val editCommand =
+            EditTemplateCommand(
+                templateRepo,
+                occurrenceRepo,
+                eventRepo,
+                SqlDelightTransactor(database),
+            ) { nextId("evt") }
+        val edited =
+            editCommand.dispatch(
+                template.copy(timeOfDay = LocalTime(9, 0), criticality = Criticality.GENTLE),
+                windowStart,
+            )
+        assertEquals(2, assertIs<EditResult.Edited>(edited).moved, "the two open occurrences took the edit")
+        materialiseOnce(checkNotNull(templateRepo.findById(template.id)), windowStart, windowEnd)
 
         val completedAfter = occurrenceRepo.findById(first.id)!!
         assertEquals(completedBefore, completedAfter, "terminal occurrence changed after re-materialisation")

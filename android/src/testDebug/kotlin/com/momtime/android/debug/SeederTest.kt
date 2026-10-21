@@ -9,10 +9,10 @@ import com.momtime.shared.data.OccurrenceRepository
 import com.momtime.shared.data.PregnancyRepository
 import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.Criticality
+import com.momtime.shared.domain.Recurrence
 import kotlinx.datetime.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,7 +68,17 @@ class SeederTest {
 
         val test = checkNotNull(templates.findById(Seeder.TEST_ID))
         assertEquals(Criticality.CRITICAL, test.criticality)
-        assertFalse("a one off: the daily job never adds a second day", test.active)
+        assertTrue("active, as every reminder is (ADR 0079 item 11)", test.active)
+        val dueDate =
+            fixture.occurrences
+                .findOpen()
+                .single { it.templateId == Seeder.TEST_ID }
+                .localDate
+        assertEquals(
+            "a one off: every 3650 days from the day it is due, so the daily job never adds a second day",
+            Recurrence.EveryNDays(3650, dueDate),
+            test.recurrence,
+        )
         val testOccurrences = open.filter { it.templateId == Seeder.TEST_ID }
         assertEquals(1, testOccurrences.size)
 

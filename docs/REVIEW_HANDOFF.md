@@ -30,12 +30,13 @@ An Android medication, supplement, hydration and routine adherence app for pregn
 - **Phase 2:** automated layers closed (#25). Complete only when the Phase 7 device checks pass.
 - **Phase 3 plan:** #26, merged. ADRs 0073 to 0090 accepted.
 - **PR 1, `phase-3/schema-v6`:** #28, merged. Schema version 6.
-- **PR 2, `phase-3/occurrence-criticality`:** #29, merged. Every behaviour reads `occurrence.criticality`; `verifyCriticalityFromOccurrence` with nine fixtures and its name rule's blind spot stated; Gentle is a notification only (ADR 0089). Eight Phase 3 expectation changes so far (PR 1 three, PR 2 five), each authorised.
-- **PR 2b, `phase-3/ring-limit`:** #31, merged. `RingPolicy.MAX_RING` 4 minutes, a placeholder; the cap and "Stop the sound" are one dismissal that keeps her notification with its actions and writes nothing; the ring session keeps an occurrence listed after its sound stops, and a repeat after the sound stopped rings again and spends again; `dropClosed` after each of the four `Reconcile` sites; `fire_telemetry.ring_ended_by_cap`, android store version 6, a count in the report and the export. No expectation change (still eight); the store migration tests' version literal moved to 6 as the section specified, a fixture change, not counted. Close out: the ring screen opened from the kept notification on a silent session is tested (traceability R-22); every reader of the session's `isActive` needs "the sound is on" (listed in the pull request). `ReliabilityExport.SCHEMA_VERSION` stays 1, decided in the close out (an added field, no reader outside the device before Phase 5); when the version changes in general is an Open items row in `IMPLEMENTATION_PLAN.md` for Phase 5. No STOP in PR 2b.
+- **PR 2, `phase-3/occurrence-criticality`:** #29, merged. Every behaviour reads `occurrence.criticality`; `verifyCriticalityFromOccurrence` with nine fixtures and its name rule's blind spot stated; Gentle is a notification only (ADR 0089). Ten Phase 3 expectation changes so far (PR 1 three, PR 2 five, PR 3 two), each authorised.
+- **PR 2b, `phase-3/ring-limit`:** #31, merged. `RingPolicy.MAX_RING` 4 minutes, a placeholder; the cap and "Stop the sound" are one dismissal that keeps her notification with its actions and writes nothing; the ring session keeps an occurrence listed after its sound stops, and a repeat after the sound stopped rings again and spends again; `dropClosed` after each of the four `Reconcile` sites; `fire_telemetry.ring_ended_by_cap`, android store version 6, a count in the report and the export. No expectation change (still eight); the store migration tests' version literal moved to 6 as the section specified, a fixture change, not counted. Close out: the ring screen opened from the kept notification on a silent session is tested (traceability R-22); every reader of the session's `isActive` needs "the sound is on" (listed in the pull request). `ReliabilityExport.SCHEMA_VERSION` stays 1, decided in the close out (an added field, no reader outside the device before Phase 5); when the version changes in general is an Open items row in `IMPLEMENTATION_PLAN.md` for Phase 5. One STOP in PR 2b's close out (when `ReliabilityExport.SCHEMA_VERSION` changes), answered there by Claude (technical review).
+- **PR 3, `phase-3/template-edit`:** #32, merged. `EditTemplateCommand` (ADR 0079 rules 1 to 7 and 9) and `CreateTemplateCommand` in `shared`: the only way a template changes after it is created, in one transaction; `setActive` and `findByTemplateAndDate` are gone; open occurrences the template no longer wants become `WITHDRAWN`, a wanted one that has come due is untouched, one that has not takes the new time and criticality unless the new instant is before now. Golden scenarios 1 and 12 are real (`TemplateEditScenarioTest`, the rebuilt property test). Not registered in Koin: PR 4 registers them in `ArmingModule` beside `TimeZoneChangeCommand`. Two Phase 1 or Phase 2 expectations changed (the Seeder's, and scenario 12's assertion that a materialised row's instant never changes, replaced by the plan's assertions 1 to 4 when the property test was rebuilt; both authorised), so ten in all; the tests deleted with `findByTemplateAndDate` are tests removed with their subject, not expectation changes. Nothing in `android/src/main` changed.
 
 ## Next
 
-PR 3, `phase-3/template-edit`, on Sonnet (ADR 0079 rules 1 to 7 and 9; `shared` only). Confirm `main` is green first.
+PR 4, `phase-3/edit-pass`, on Fable (the android pass after an edit: ADR 0079 items 8 and 10, `TemplateEditPass`, the registration of both commands, `TemplateEditRaceTest`, `SeederTest`'s remaining parts). Confirm `main` is green first.
 
 ## PR sequence
 
@@ -44,8 +45,8 @@ PR 3, `phase-3/template-edit`, on Sonnet (ADR 0079 rules 1 to 7 and 9; `shared` 
 | 1 | `phase-3/schema-v6` | Sonnet | Merged (#28) |
 | 2 | `phase-3/occurrence-criticality` | Fable | Merged (#29) |
 | 2b | `phase-3/ring-limit` | Fable | Merged (#31) |
-| 3 | `phase-3/template-edit` | Sonnet | Next |
-| 4 | `phase-3/edit-pass` | Fable | |
+| 3 | `phase-3/template-edit` | Sonnet | Merged (#32) |
+| 4 | `phase-3/edit-pass` | Fable | Next |
 | 5 | `phase-3/reductions` | Sonnet | |
 | 6 | `phase-3/notifications` | Fable | |
 | 7 | `phase-3/ui-foundation` | Sonnet | |
