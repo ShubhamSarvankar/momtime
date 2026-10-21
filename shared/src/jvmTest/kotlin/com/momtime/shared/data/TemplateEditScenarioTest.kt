@@ -134,7 +134,12 @@ class TemplateEditScenarioTest {
 
         val result = f.edit.dispatch(template.copy(active = false), f.at(day, 10))
 
-        assertEquals(2, assertIs<EditResult.Edited>(result).withdrawn.size)
+        // The step that would write MISSED if a withdrawn occurrence were still open: after both graces. It comes
+        // first, so that a mutation which leaves one open fails here, on what it would produce.
+        val missed = f.reconcile.dispatch(f.at(after, 20))
+        assertEquals(0, missed, "a withdrawn occurrence is never missed")
+        assertEquals(emptyList(), f.allEvents().filter { it.eventType == EventType.MISSED })
+        assertEquals(AdherenceFigures(completed = 1, missed = 0, skipped = 0), f.figures(f.at(after, 20)))
         for (id in listOf(today.id, tomorrow.id)) {
             assertEquals(OccurrenceState.WITHDRAWN, f.occurrences.findById(id)?.state)
             val withdrawal = f.events.findForOccurrence(id).single { it.eventType == EventType.WITHDRAWN }
@@ -142,11 +147,7 @@ class TemplateEditScenarioTest {
             assertEquals(EventPayload.None, withdrawal.payload)
         }
         assertEquals(yesterdayBefore, f.occurrences.findById(yesterday.id), "yesterday is untouched")
-        // The step that would write MISSED if a withdrawn occurrence were still open: after both graces.
-        val missed = f.reconcile.dispatch(f.at(after, 20))
-        assertEquals(0, missed)
-        assertEquals(emptyList(), f.allEvents().filter { it.eventType == EventType.MISSED })
-        assertEquals(AdherenceFigures(completed = 1, missed = 0, skipped = 0), f.figures(f.at(after, 20)))
+        assertEquals(2, assertIs<EditResult.Edited>(result).withdrawn.size)
     }
 
     @Test
@@ -162,13 +163,21 @@ class TemplateEditScenarioTest {
                 f.at(day, 7),
             )
 
-        assertEquals(setOf(day, afterThat), assertIs<EditResult.Edited>(result).withdrawn.map { it.localDate }.toSet())
-        assertEquals(OccurrenceState.PENDING, f.occurrences.findById(wednesday.id)?.state, "the wanted date is open")
-        // The step that would miss a withdrawn date: after the grace of all three.
+        // The step that would miss a withdrawn date: after the grace of all three. It comes first, so that a mutation
+        // which leaves an unwanted date open fails here, on the miss it produces.
         f.reconcile.dispatch(f.at(day.plus(DatePeriod(days = 3)), 0))
         val missed = f.allEvents().filter { it.eventType == EventType.MISSED }
         assertEquals(listOf(wednesday.id), missed.map { it.occurrenceId }, "only the wanted, unanswered date is missed")
         assertEquals(AdherenceFigures(0, 1, 0), f.figures(f.at(day.plus(DatePeriod(days = 3)), 0)))
+        assertEquals(setOf(day, afterThat), assertIs<EditResult.Edited>(result).withdrawn.map { it.localDate }.toSet())
+        assertEquals(
+            setOf(OccurrenceState.WITHDRAWN),
+            f.occurrences
+                .findForTemplate("t")
+                .filter { it.localDate != after }
+                .map { it.state }
+                .toSet(),
+        )
     }
 
     @Test
@@ -182,7 +191,7 @@ class TemplateEditScenarioTest {
         f.edit.dispatch(b.copy(active = false), f.at(day, 10))
         val withdrawn = f.allOccurrences()
         assertEquals(6, withdrawn.size)
-        assertTrue(withdrawn.all { it.state == OccurrenceState.WITHDRAWN })
+        assertTrue(withdrawn.all { it.state == OccurrenceState.WITHDRAWN }, "setup: both templates are deactivated")
         val eventsBefore = f.allEvents()
 
         f.edit.dispatch(a, f.at(day, 10, 5))
