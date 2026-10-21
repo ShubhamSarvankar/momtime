@@ -80,6 +80,13 @@ class NutritionReductionTest {
 
     // The probes sit on completed occurrences, after the completion, because a count that is wrongly added for them
     // would carry no tags and so would not show; what shows is a probe displacing the completion that has the tags.
+    // Which sequences the app can produce (terminal states are immutable, so nothing follows a completion that closes
+    // the occurrence):
+    //  - COMPLETED, then MISSION_VERIFIED and MISSION_BYPASSED: reachable once Phase 5 writes them beside a completion.
+    //  - COMPLETED, then WITHDRAWN: unreachable log, guards the reduction's rule.
+    //  - COMPLETED, then SKIPPED: unreachable log, guards the reduction's rule.
+    //  - COMPLETED, then MISSED: unreachable log, guards the reduction's rule.
+    //  - A lone SKIPPED, MISSED or WITHDRAWN: reachable.
     @Test
     fun `mission events, skips, misses and withdrawals count nothing`() {
         val mission = occ(base)
@@ -106,9 +113,11 @@ class NutritionReductionTest {
                     EventPayload.MissionResult(MissionResultType.BARCODE),
                 ),
                 // A completion with a withdrawal after it: a withdrawal is not an outcome, so the completion stands.
+                // Unreachable log, guards the reduction's rule.
                 completed(withdrawnAfter, base, NutritionTag.FRUIT),
                 event(withdrawnAfter, EventType.WITHDRAWN, base + 1.hours),
                 // A completion with a later skip or a later miss: the later outcome wins, and neither carries a tag.
+                // Unreachable log, guards the reduction's rule.
                 completed(skippedAfter, base, NutritionTag.PROTEIN),
                 event(skippedAfter, EventType.SKIPPED, base + 1.hours),
                 completed(missedAfter, base, NutritionTag.DAIRY),
