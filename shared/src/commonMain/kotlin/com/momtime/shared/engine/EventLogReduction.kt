@@ -29,7 +29,11 @@ object EventLogReduction {
         val skipped: Int,
     )
 
-    private enum class Outcome { COMPLETED, SKIPPED, MISSED }
+    /**
+     * The outcome of an occurrence as the log gives it. The order is the tie order: completion, then skip, then miss.
+     * Shared by adherence and by the nutrition reduction (ADR 0086), which must not keep a rule of its own.
+     */
+    internal enum class Outcome { COMPLETED, SKIPPED, MISSED }
 
     private fun Event.effectTime(): Instant = effectiveAt ?: deviceTimestamp
 
@@ -41,20 +45,23 @@ object EventLogReduction {
             else -> null
         }
 
-    private class Counted(
+    /** The counted terminal event that decides an occurrence as of `asOf`, with its outcome and effect time. */
+    internal class Counted(
         val outcome: Outcome,
         val at: Instant,
+        val event: Event,
     )
 
     /**
-     * The outcome of each occurrence as of [asOf]: the counted terminal event with the latest
+     * The event that decides each occurrence as of [asOf]: the counted terminal event with the latest
      * effect time wins, so a backfill entered after a miss turns missed into completed from its
-     * own effect time onward. Ties prefer completion, then skip, then miss.
+     * own effect time onward. Ties prefer completion, then skip, then miss. This is the one outcome rule:
+     * adherence reads the outcome of it and the nutrition reduction reads the event too, for its tags.
      */
-    private fun outcomes(
+    internal fun deciding(
         events: List<Event>,
         asOf: Instant,
-    ): Map<String, Outcome> {
+    ): Map<String, Counted> {
         val best = HashMap<String, Counted>()
         for (event in events) {
             val occurrenceId = event.occurrenceId ?: continue
@@ -62,10 +69,15 @@ object EventLogReduction {
             val at = event.effectTime()
             if (at > asOf) continue
             val current = best[occurrenceId]
-            if (current == null || supersedes(at, outcome, current)) best[occurrenceId] = Counted(outcome, at)
+            if (current == null || supersedes(at, outcome, current)) best[occurrenceId] = Counted(outcome, at, event)
         }
-        return best.mapValues { it.value.outcome }
+        return best
     }
+
+    private fun outcomes(
+        events: List<Event>,
+        asOf: Instant,
+    ): Map<String, Outcome> = deciding(events, asOf).mapValues { it.value.outcome }
 
     private fun supersedes(
         at: Instant,

@@ -6,6 +6,13 @@ import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.MissionResultType
 import com.momtime.shared.domain.NutritionTag
+import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 
 interface EventRepository {
     fun insert(event: Event)
@@ -26,7 +33,22 @@ interface EventRepository {
         occurrenceId: String,
         type: EventType,
     ): Long
+
+    /**
+     * Every `WATER_LOGGED` event that can belong to a local date from [from] to [to], both inclusive, in the order of
+     * their instants. A glass belongs to the date it had in the zone it was logged in (ADR 0086), and a query by
+     * dates cannot know that zone, so the range is the days of the two dates in UTC widened by [WATER_ZONE_MARGIN]
+     * on each side. It can return a glass of the day before or after; the reduction attributes each by its own zone
+     * and the caller reads the dates it asked for.
+     */
+    fun findWaterInRange(
+        from: LocalDate,
+        to: LocalDate,
+    ): List<Event>
 }
+
+/** The widest offset from UTC either way is 14 hours (UTC+14), so a local date lies within 14 hours of its UTC day. */
+internal val WATER_ZONE_MARGIN: Duration = 14.hours
 
 class SqlDelightEventRepository(
     private val database: MomTimeDatabase,
@@ -81,6 +103,19 @@ class SqlDelightEventRepository(
         occurrenceId: String,
         type: EventType,
     ): Long = database.eventQueries.countEventsByOccurrenceAndType(occurrenceId, type.name).executeAsOne()
+
+    override fun findWaterInRange(
+        from: LocalDate,
+        to: LocalDate,
+    ): List<Event> {
+        val start = from.atStartOfDayIn(TimeZone.UTC) - WATER_ZONE_MARGIN
+        val end = to.plus(1, DateTimeUnit.DAY).atStartOfDayIn(TimeZone.UTC) + WATER_ZONE_MARGIN
+        return database.eventQueries
+            .selectWaterEventsInRange(start.toDb(), end.toDb())
+            .executeAsList()
+            .map { it.toDomain() }
+            .sortedWith(compareBy({ it.deviceTimestamp }, { it.id }))
+    }
 
     private data class PayloadColumns(
         val snoozeNumber: Long?,
