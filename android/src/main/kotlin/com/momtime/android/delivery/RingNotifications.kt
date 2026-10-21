@@ -41,14 +41,16 @@ internal object RingNotifications {
     /**
      * The notification for a ring session: ongoing, an alarm, on [channelId]. With [fullScreenIntent] the ring
      * screen is launched over the lock screen; without it this is a heads up, or nothing visible at all if
-     * notifications are denied.
+     * notifications are denied. With [alertOnce] it replaces the one already showing without alerting again: a
+     * change of her text under a ring that is already sounding (ADR 0079 item 4).
      */
     fun ring(
         context: Context,
         items: List<RingItem>,
         channelId: String,
         fullScreenIntent: Boolean,
-    ): Notification = session(context, items, channelId, sounding = true, fullScreenIntent = fullScreenIntent)
+        alertOnce: Boolean = false,
+    ): Notification = session(context, items, channelId, sounding = true, fullScreenIntent, alertOnce)
 
     /**
      * The same session's notification once its sound has stopped, by the cap or by "Stop the sound" (ADR 0090
@@ -60,14 +62,16 @@ internal object RingNotifications {
         context: Context,
         items: List<RingItem>,
         channelId: String,
-    ): Notification = session(context, items, channelId, sounding = false, fullScreenIntent = false)
+    ): Notification = session(context, items, channelId, sounding = false, fullScreenIntent = false, alertOnce = true)
 
+    @Suppress("LongParameterList")
     private fun session(
         context: Context,
         items: List<RingItem>,
         channelId: String,
         sounding: Boolean,
         fullScreenIntent: Boolean,
+        alertOnce: Boolean,
     ): Notification {
         val screen = ringScreen(context)
         val builder =
@@ -76,7 +80,7 @@ internal object RingNotifications {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setCategory(Notification.CATEGORY_ALARM)
                 .setOngoing(sounding)
-                .setOnlyAlertOnce(!sounding)
+                .setOnlyAlertOnce(alertOnce)
                 .setAutoCancel(false)
                 .setContentIntent(screen)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)

@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.momtime.android.R
 import com.momtime.android.arming.FireOutcome
 import com.momtime.android.arming.t0
@@ -30,6 +31,7 @@ import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
+import com.momtime.shared.engine.OccurrenceAction
 import com.momtime.shared.engine.RungDelivery
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -200,8 +202,29 @@ class EditPassTest {
         return tags
     }
 
+    /** Every line of text the screen shows under its list, in order; the buttons are left out. */
+    private fun itemTexts(activity: android.app.Activity): List<String> {
+        val texts = mutableListOf<String>()
+
+        fun walk(view: View) {
+            if (view is TextView && view !is Button) texts += view.text.toString()
+            if (view is ViewGroup) (0 until view.childCount).forEach { walk(view.getChildAt(it)) }
+        }
+        walk(activity.findViewById<LinearLayout>(R.id.ring_items))
+        return texts
+    }
+
     private fun labels(notification: Notification): List<String> =
         notification.actions.orEmpty().map { it.title.toString() }
+
+    private fun screen(): android.app.Activity =
+        Robolectric
+            .buildActivity(RingActivity::class.java)
+            .create()
+            .start()
+            .resume()
+            .visible()
+            .get()
 
     // ---------------------------------------------------------------- a time move re arms
 
@@ -349,14 +372,7 @@ class EditPassTest {
     fun `deactivating a reminder whose sound the cap ended drops it and cancels its kept notification`() {
         val a = f.due("a", Criticality.CRITICAL, slot = 31)
         f.fire(a)
-        val screen =
-            Robolectric
-                .buildActivity(RingActivity::class.java)
-                .create()
-                .start()
-                .resume()
-                .visible()
-                .get()
+        val screen = screen()
         f.scheduler.advance(RingPolicy.MAX_RING)
         shadowOf(android.os.Looper.getMainLooper()).idle()
         assertFalse("the cap ended the sound", sessions.isActive)
@@ -379,6 +395,169 @@ class EditPassTest {
 
         assertEquals("no MISSED", 0, f.arming.count(EventType.MISSED, "a"))
         assertTrue("no silent notice", shadowOf(f.notifications).allNotifications.isEmpty())
+    }
+
+    // ---------------------------------------------------------------- a snoozed reminder deactivated
+
+    // ADR 0079 rule 3: a snoozed occurrence is open, so a deactivation withdraws it, and the pass's ensureArmed
+    // then arms the other occurrence's rung and cancels the snooze's alarm by its slot. The old snooze alarm's
+    // broadcast after its end is the step that would write SNOOZE_ENDED, and the watchdog pass after it the step
+    // that would repair, if the occurrence were still open.
+    @Test
+    fun `deactivating a snoozed reminder cancels its snooze alarm`() {
+        val a = f.due("a", Criticality.CRITICAL, slot = 31)
+        val b = f.due("b", Criticality.CRITICAL, scheduled = t0 + 2.hours, slot = 32)
+        f.fire(a)
+        f.arming.clock.now = a.scheduledInstant + 1.minutes
+        f.arming.graph
+            .get<RingController>()
+            .act("a", OccurrenceAction.SNOOZE)
+        val end = a.scheduledInstant + 11.minutes
+        assertEquals(OccurrenceState.SNOOZED, state("a"))
+        assertEquals(
+            "the snooze's end is the one alarm armed, in a's slot",
+            listOf(end.toEpochMilliseconds() to 31),
+            f.arming.shapes().map { it.triggerAtMs to it.requestCode },
+        )
+        val starts = f.ringer.starts.size
+
+        val result = deactivate("tmpl-a")
+
+        assertEquals(OccurrenceState.WITHDRAWN, state("a"))
+        assertEquals(1, (result as EditResult.Edited).withdrawn.size)
+        assertEquals(
+            "exactly one alarm: b's rung, in b's slot",
+            listOf(b.scheduledInstant.toEpochMilliseconds() to 32),
+            f.arming.shapes().map { it.triggerAtMs to it.requestCode },
+        )
+        assertEquals(
+            32,
+            f.arming.armed
+                .current()
+                ?.alarmSlot,
+        )
+        assertTrue("nothing is listed", sessions.items().isEmpty())
+        assertTrue("no notification is posted", shadowOf(f.notifications).allNotifications.isEmpty())
+
+        // The snooze's old end has passed: the old alarm's broadcast arrives anyway, then the watchdog pass runs.
+        f.arming.clock.now = end + 1.minutes
+        val outcome = f.fire(a, now = end + 1.minutes, rung = end)
+        assertEquals(FireOutcome.Terminal, outcome)
+        assertEquals("no SNOOZE_ENDED", 0, f.arming.count(EventType.SNOOZE_ENDED, "a"))
+        val watchdog = f.arming.watchdog.run()
+
+        assertEquals("no WATCHDOG_REPAIR", 0, f.arming.count(EventType.WATCHDOG_REPAIR, "a", "b"))
+        assertTrue("no evidence: ${watchdog.evidence}", watchdog.evidence.isEmpty())
+        assertEquals("still no SNOOZE_ENDED", 0, f.arming.count(EventType.SNOOZE_ENDED, "a"))
+        assertEquals("nothing rang again", starts, f.ringer.starts.size)
+        assertEquals(
+            "b's rung is still the one alarm",
+            listOf(b.scheduledInstant.toEpochMilliseconds() to 32),
+            f.arming.shapes().map { it.triggerAtMs to it.requestCode },
+        )
+        assertEquals(OccurrenceState.WITHDRAWN, state("a"))
+    }
+
+    // ---------------------------------------------------------------- the text of a ringing reminder
+
+    // ARCHITECTURE.md 3.2 and ADR 0079 item 4: title, dosage and the doctor's instructions are display and change at
+    // once. An edit of them while the occurrence rings, or is still listed after the cap ended the sound, reaches
+    // the ring screen and the session's notification inside the pass: the notification is replaced under its id
+    // with the same actions and only alert once; the ring itself is untouched, nothing is written, no sound starts.
+    @Test
+    fun `an edit of the dosage while ringing reaches the ring screen and the notification at once`() =
+        textFollowsTheEdit(capped = false)
+
+    @Test
+    fun `an edit of the dosage after the cap ended the sound reaches the ring screen and the notification at once`() =
+        textFollowsTheEdit(capped = true)
+
+    @Suppress("LongMethod")
+    private fun textFollowsTheEdit(capped: Boolean) {
+        val r = Real()
+        val a = r.f.arming.seed("a", Criticality.CRITICAL, t0, slot = 31, dosage = "1 tablet")
+        r.f.arming.clock.now = t0 - 1.hours
+        r.f.arming.coordinator
+            .ensureArmed()
+        r.f.fire(a)
+        val screen = screen()
+        if (capped) {
+            r.scheduler.advance(RingPolicy.MAX_RING)
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertFalse("the cap ended the sound", r.sessions.isActive)
+            assertNull(r.playing())
+        } else {
+            assertTrue("it is ringing", r.sessions.isActive)
+            assertNotNull(r.playing())
+        }
+        val before = checkNotNull(r.f.posted(RingNotifications.RING_ID)) { "the session's notification is posted" }
+        assertEquals("Iron tablet", before.extras.getCharSequence(Notification.EXTRA_TITLE))
+        assertEquals("1 tablet", before.extras.getCharSequence(Notification.EXTRA_TEXT))
+        assertEquals(
+            listOf("Iron tablet", context.getString(R.string.ring_dosage_label), "1 tablet"),
+            itemTexts(screen),
+        )
+        val sounding = r.sessions.isActive
+        val player = r.playing()
+        val players = r.players.created.size
+        val stops = r.ringer.stops
+        val log = r.f.arming.eventLog("a")
+        val alarms = r.f.arming.shapes()
+
+        val result =
+            r.pass.run(
+                checkNotNull(r.templates("tmpl-a")).copy(title = "Iron, with food", dosage = "2 tablets"),
+            )
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        assertEquals("nothing withdrawn, nothing moved", EditResult.Edited(emptyList(), 0), result)
+        val item = r.sessions.items().single()
+        assertEquals("the session item carries the new title", "Iron, with food", item.title)
+        assertEquals("and the new dosage", "2 tablets", item.dosage)
+        assertEquals(
+            "with its actions as they were",
+            setOf(OccurrenceAction.ACKNOWLEDGE, OccurrenceAction.SNOOZE, OccurrenceAction.SKIP),
+            item.actions,
+        )
+        assertEquals(
+            "the ring screen shows the new text",
+            listOf("Iron, with food", context.getString(R.string.ring_dosage_label), "2 tablets"),
+            itemTexts(screen),
+        )
+        assertEquals("with its buttons", listOf("ack:a", "snooze:a", "skip:a"), buttonTags(screen))
+        val after = checkNotNull(r.f.posted(RingNotifications.RING_ID)) { "the notification is still posted" }
+        assertEquals(
+            "the notification carries the new title",
+            "Iron, with food",
+            after.extras.getCharSequence(Notification.EXTRA_TITLE),
+        )
+        assertEquals("and the new dosage", "2 tablets", after.extras.getCharSequence(Notification.EXTRA_TEXT))
+        assertEquals("the same actions", labels(before), labels(after))
+        assertEquals(
+            "only alert once",
+            Notification.FLAG_ONLY_ALERT_ONCE,
+            after.flags and Notification.FLAG_ONLY_ALERT_ONCE,
+        )
+        assertEquals(
+            "ongoing as before",
+            before.flags and Notification.FLAG_ONGOING_EVENT,
+            after.flags and Notification.FLAG_ONGOING_EVENT,
+        )
+        assertEquals("on the same channel", before.channelId, after.channelId)
+        assertEquals("one notification, under the session's id", 1, shadowOf(r.f.notifications).allNotifications.size)
+        assertEquals("the ringer state is unchanged", sounding, r.sessions.isActive)
+        assertEquals("the same sound, or none", player, r.playing())
+        assertEquals("no new player", players, r.players.created.size)
+        assertEquals("no second ringer start", 1, r.ringer.starts.size)
+        assertEquals("the ringer was not stopped by the edit", stops, r.ringer.stops)
+        assertEquals("no event is written", log, r.f.arming.eventLog("a"))
+        assertEquals("the alarm is as it was", alarms, r.f.arming.shapes())
+        assertEquals(
+            OccurrenceState.PENDING,
+            r.f.arming.occurrences
+                .findById("a")
+                ?.state,
+        )
     }
 
     // ---------------------------------------------------------------- notifications outside any session

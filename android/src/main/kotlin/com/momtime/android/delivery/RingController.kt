@@ -69,16 +69,8 @@ internal class RingController(
     private val notifications: NotificationManager get() = context.getSystemService(NotificationManager::class.java)
     private val actions = RingActionDispatcher(context, sessions, ringer, cap, domain)
 
-    override fun stopSound() = dismiss()
-
-    /** The cap ran out for the fire [eventId]: the same dismissal, and the fire's row is marked (ADR 0090 item 8). */
-    internal fun capExpired(eventId: String) {
-        if (!sessions.isActive) return
-        dismiss()
-        telemetry.recordRingEndedByCap(eventId)
-    }
-
-    private fun dismiss() {
+    /** The one dismissal path (ADR 0090 item 3): "Stop the sound", and the cap through [capExpired]. */
+    override fun stopSound() {
         cap.cancel()
         val wasSounding = sessions.isActive
         sessions.end()
@@ -86,6 +78,13 @@ internal class RingController(
         // The ring notification was the service's; it is reposted as an ordinary one with her actions, or left as it
         // was when nothing was sounding (the screen's button is not shown then).
         if (wasSounding) SessionNotifications.refresh(context, sessions)
+    }
+
+    /** The cap ran out for the fire [eventId]: the same dismissal, and the fire's row is marked (ADR 0090 item 8). */
+    internal fun capExpired(eventId: String) {
+        if (!sessions.isActive) return
+        stopSound()
+        telemetry.recordRingEndedByCap(eventId)
     }
 
     override fun dropClosed() {
@@ -116,6 +115,25 @@ internal class RingController(
     override fun withdrawn(occurrences: List<Occurrence>) {
         occurrences.forEach { notifications.cancel(it.alarmSlot) }
         dropClosed()
+    }
+
+    /**
+     * A template edit changed what is shown (ADR 0079 item 4): every listed occurrence of [templateId] takes the
+     * template's title, dosage and instructions as they are now, which the screen renders at once, and the
+     * session's notification is replaced under its id with the same actions and without alerting again. The ring
+     * is not touched: the sound, the cap and the service are as they were, and nothing is written.
+     */
+    override fun edited(templateId: String) {
+        val template = domain.templates.findById(templateId) ?: return
+        val shown =
+            sessions.items().filter { item ->
+                domain.occurrences.findById(item.occurrenceId)?.templateId == templateId
+            }
+        if (shown.isEmpty()) return
+        shown.forEach {
+            sessions.describe(it.occurrenceId, template.title, template.dosage, template.doctorInstructions)
+        }
+        SessionNotifications.refresh(context, sessions, alertOnce = true)
     }
 
     override fun items(): List<RingItem> = sessions.items()

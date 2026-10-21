@@ -134,6 +134,26 @@ class RingSessions {
         changed()
     }
 
+    /**
+     * Replaces what is shown of [occurrenceId] where it is listed, if it is: its template's title, dosage and
+     * instructions as they are now. They are display and change at once (ADR 0079 item 4); the actions stay.
+     */
+    fun describe(
+        occurrenceId: String,
+        title: String,
+        dosage: String?,
+        doctorInstructions: String?,
+    ) {
+        synchronized(lock) {
+            val index = listed.indexOfFirst { it.occurrenceId == occurrenceId }
+            if (index >= 0) {
+                listed[index] =
+                    listed[index].copy(title = title, dosage = dosage, doctorInstructions = doctorInstructions)
+            }
+        }
+        changed()
+    }
+
     /** Ends the ring: the sound is off. What is due stays listed until it is acted on or dropped. */
     fun end() {
         synchronized(lock) { sounding = false }
