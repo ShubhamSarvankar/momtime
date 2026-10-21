@@ -137,6 +137,8 @@ class NutritionReductionTest {
     // Not in the plan; for review. The outcome decides, not the payload: a skip or a miss that carried a completion
     // payload (no writer produces one, and the repository's column guard refuses it) counts nothing. The completion
     // beside them is the positive control, and the two others are the step that would count them if the code were wrong.
+    // Unreachable log, guards the reduction's rule: the column guard refuses a skip or a miss carrying a completion
+    // payload, so the app cannot write this log.
     @Test
     fun `the outcome decides what counts, not the payload of the event that decided it`() {
         val skipped = occ(base)
