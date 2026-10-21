@@ -85,7 +85,7 @@ internal class SpreadRefreshTest : SpreadSupport() {
         r.f.fire(b, now = t0 + 5.minutes, rung = t0 + 5.minutes)
 
         assertEquals("a new ring", 2, r.ringer.starts.size)
-        val again = checkNotNull(r.f.posted(32)) { "its own notification is posted again at its next ring" }
+        val again = postedUnder(r.f, 32, "its own notification is posted again at its next ring")
         assertOwn(again, NotificationChannels.CRITICAL, threeActions, "b, again")
         assertEquals("two notifications: the session's and b's", 2, count(r.f))
         assertInvariant("after the next ring", r.f, resolved = setOf(31))

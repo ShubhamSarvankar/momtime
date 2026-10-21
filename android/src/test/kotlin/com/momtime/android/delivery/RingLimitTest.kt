@@ -332,7 +332,9 @@ class RingLimitTest {
         assertOrdinary(two)
         assertTrue("none after the cap with two", labels(two).isEmpty())
         for ((slot, name) in listOf(32 to "b", 33 to "c")) {
-            val own = checkNotNull(f.posted(slot)) { "$name's own notification is still posted after the cap" }
+            val own = f.posted(slot)
+            assertNotNull("$name's own notification is still posted after the cap", own)
+            own!!
             assertEquals("$name: exactly its offered actions", threeActions, labels(own))
             assertEquals("$name: not ongoing", 0, own.flags and Notification.FLAG_ONGOING_EVENT)
             assertNull("$name: no full screen intent", own.fullScreenIntent)
@@ -373,7 +375,9 @@ class RingLimitTest {
         message: String,
         expected: Notification,
     ) {
-        val own = checkNotNull(f.posted(c.alarmSlot)) { "c's own notification is gone, $message" }
+        val own = f.posted(c.alarmSlot)
+        assertNotNull("c's own notification is still posted, $message", own)
+        own!!
         assertEquals("c's own: actions $message", labels(expected), labels(own))
         assertEquals("c's own: flags $message", expected.flags, own.flags)
         assertEquals("c's own: channel $message", expected.channelId, own.channelId)

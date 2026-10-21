@@ -105,8 +105,8 @@ internal class SpreadTest : SpreadSupport() {
         assertNotNull("it keeps the full screen intent in Tier 3", session.fullScreenIntent)
         val twoDue = context.resources.getQuantityString(R.plurals.notification_due_title, 2, 2)
         assertEquals("it says two are due", twoDue, title(session))
-        val own = checkNotNull(r.f.posted(31)) { "a's own notification" }
-        val other = checkNotNull(r.f.posted(32)) { "b's own notification" }
+        val own = postedUnder(r.f, 31, "a's own notification is posted at the spread")
+        val other = postedUnder(r.f, 32, "b's own notification is posted at the spread")
         assertOwn(own, NotificationChannels.CRITICAL, threeActions, "a")
         assertOwn(other, NotificationChannels.STANDARD, threeActions, "b")
         assertEquals("a's own names a", "Iron tablet", title(own))

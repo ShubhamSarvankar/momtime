@@ -23,6 +23,7 @@ import com.momtime.shared.engine.OccurrenceAction
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.robolectric.Robolectric
@@ -162,6 +163,17 @@ internal abstract class SpreadSupport {
     protected fun count(fixture: DeliveryFixture): Int = shadowOf(fixture.notifications).allNotifications.size
 
     protected fun ids(fixture: DeliveryFixture): List<Int> = fixture.notifications.activeNotifications.map { it.id }
+
+    /** The notification under [slot], asserted to be posted (an assertion, so a mutation fails on it by name). */
+    protected fun postedUnder(
+        fixture: DeliveryFixture,
+        slot: Int,
+        message: String,
+    ): Notification {
+        val notification = fixture.posted(slot)
+        assertNotNull(message, notification)
+        return notification!!
+    }
 
     /** The session's notification, asserted to be posted. */
     protected fun session(
