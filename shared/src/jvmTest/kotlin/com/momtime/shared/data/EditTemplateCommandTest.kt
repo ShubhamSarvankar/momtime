@@ -5,6 +5,7 @@ import com.momtime.shared.domain.Occurrence
 import com.momtime.shared.domain.OccurrenceState
 import com.momtime.shared.domain.Recurrence
 import com.momtime.shared.domain.TaskType
+import com.momtime.shared.engine.OccurrenceAction
 import com.momtime.shared.engine.TemplateRefusal
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
@@ -191,5 +192,45 @@ class EditTemplateCommandTest {
             }
             assertTrue(steps.edits > 0)
         }
+    }
+
+    // A rung that fired is not an instant: with the device clock set back, an occurrence that has rung can have an
+    // instant ahead of now, and the edit must still leave it alone (ADR 0079 item 2, golden scenario 14's idea).
+    @Test
+    fun `an occurrence that has fired is untouched even when its instant is ahead of now`() {
+        seedThree()
+        val fired = f.occurrences.findForTemplate("t").single { it.localDate == day }
+        f.fire(fired.id, f.at(day, 8))
+        val rowBefore = checkNotNull(f.occurrences.findById(fired.id))
+        // The clock reads 07:00 on D again: the 08:00 rung has fired, and the instant is ahead of now.
+        val result =
+            f.edit.dispatch(
+                checkNotNull(f.templates.findById("t")).copy(timeOfDay = LocalTime(14, 30)),
+                f.at(day, 7),
+            )
+
+        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 2), result)
+        assertEquals(rowBefore, f.occurrences.findById(fired.id), "the fired occurrence is as it was")
+    }
+
+    // Only open occurrences are ever read, so a terminal one whose instant is ahead is never written (the schema would
+    // abort the whole edit if it were): she completed tomorrow's early, and the edit moves the rest.
+    @Test
+    fun `a terminal occurrence is never rewritten, even one whose instant is ahead`() {
+        seedThree()
+        val early = f.occurrences.findForTemplate("t").single { it.localDate == day.plus(DatePeriod(days = 1)) }
+        assertEquals(ActionResult.Done, f.actions.dispatch(early.id, OccurrenceAction.ACKNOWLEDGE, f.at(day, 7)))
+        val rowBefore = checkNotNull(f.occurrences.findById(early.id))
+        val eventsBefore = f.events.findForOccurrence(early.id)
+
+        val result =
+            f.edit.dispatch(
+                checkNotNull(f.templates.findById("t")).copy(timeOfDay = LocalTime(14, 30)),
+                f.at(day, 7),
+            )
+
+        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 2), result)
+        assertEquals(rowBefore, f.occurrences.findById(early.id), "the completed occurrence is as it was")
+        assertEquals(eventsBefore, f.events.findForOccurrence(early.id))
     }
 }
