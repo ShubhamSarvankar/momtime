@@ -28,7 +28,9 @@ import kotlin.time.Instant
  * **A never fired rung** is an occurrence's first device rung that was armed ahead of time, whose instant plus
  * [neverFiredAfter] had passed by [asOf], with no `ALARM_FIRED` for the occurrence at or before [asOf]. An occurrence
  * that she completed or skipped before its first rung is not a failure and is not counted: nothing was left to ring
- * for. A completion after the rung does not excuse it. The first rung only, because it is the one that depends on
+ * for; the same holds for a withdrawal before the rung (ADR 0079 item 10: an edit that withdrew the occurrence, or
+ * moved it, is not a failure to deliver, because the first rung is the occurrence's current one and a withdrawn
+ * occurrence has none to ring). A completion after the rung does not excuse it. The first rung only, because it is the one that depends on
  * nothing she did. The caller may excuse a rung through [unfiredExclusion], which is given the rung and the instant its
  * occurrence's grace ends: the one excuse is a phone that was off past the end of grace (ADR 0070). A phone that was
  * running at any point within grace after the rung gets its rungs armed for now and delivered late, so a rung that
@@ -173,5 +175,6 @@ object FireTiming {
         counts[reason] = (counts[reason] ?: 0) + 1
     }
 
-    private val USER_CLOSES_BEFORE_RUNG = setOf(EventType.COMPLETED, EventType.SKIPPED)
+    // A withdrawal closes an occurrence as a completion or a skip does (ADR 0079 item 10): nothing was left to ring for.
+    private val USER_CLOSES_BEFORE_RUNG = setOf(EventType.COMPLETED, EventType.SKIPPED, EventType.WITHDRAWN)
 }

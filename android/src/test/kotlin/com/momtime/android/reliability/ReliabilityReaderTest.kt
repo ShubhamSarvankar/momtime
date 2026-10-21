@@ -12,6 +12,9 @@ import com.momtime.android.store.BootInstantRepository
 import com.momtime.android.store.ClockChangeRepository
 import com.momtime.android.store.FireTelemetry
 import com.momtime.android.store.FireTelemetryRepository
+import com.momtime.android.work.TemplateEditPass
+import com.momtime.shared.data.EditResult
+import com.momtime.shared.data.ScheduleTemplateRepository
 import com.momtime.shared.domain.Criticality
 import com.momtime.shared.domain.DeliveryCapability
 import com.momtime.shared.domain.Event
@@ -20,6 +23,7 @@ import com.momtime.shared.domain.EventSource
 import com.momtime.shared.domain.EventType
 import com.momtime.shared.engine.FireTiming.Exclusion
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -53,6 +57,8 @@ class ReliabilityReaderTest {
     private val context: Context = RuntimeEnvironment.getApplication()
     private val fixture = ArmingFixture(context)
     private val reader: ReliabilityReader get() = fixture.graph.get()
+    private val pass: TemplateEditPass get() = fixture.graph.get()
+    private val templates: ScheduleTemplateRepository get() = fixture.graph.get()
     private val telemetry: FireTelemetryRepository get() = fixture.graph.get()
     private val clockChanges: ClockChangeRepository get() = fixture.graph.get()
     private val contexts: ArmingContextRepository get() = fixture.graph.get()
@@ -412,6 +418,57 @@ class ReliabilityReaderTest {
         val report = reader.read(t0 + 1.hours)
 
         assertEquals(0, report.neverFired)
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+    }
+
+    // ADR 0079 item 10: an edit is not a failure to deliver. The occurrence was armed ahead for 13:30 (its rung t0),
+    // the edit moves it to 20:00 (so its rung is the current one, 20:00), and the report is read twenty minutes after
+    // the old instant, beyond the fifteen minute tolerance: the old rung was never going to fire, and the moved one is
+    // not due. The first rung is the occurrence's current one, so no pairing rule changes (the section's STOP did not
+    // arise).
+    @Test
+    fun `an edit raises no never fired rung, for a time move`() {
+        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
+        fixture.clock.now = t0 - 1.hours
+        fixture.coordinator.ensureArmed()
+        fixture.clock.now = t0 - 30.minutes
+
+        val result = pass.run(checkNotNull(templates.findById("tmpl-a")).copy(timeOfDay = LocalTime(20, 0)))
+
+        assertEquals("the edit moved the occurrence", 1, (result as EditResult.Edited).moved)
+        assertEquals(
+            Instant.parse("2026-03-01T14:30:00Z"),
+            fixture.occurrences.findById("a")?.scheduledInstant,
+        )
+        val report = reader.read(t0 + 20.minutes)
+
+        assertEquals(
+            "the old instant passed twenty minutes ago and nothing is a never fired rung",
+            0,
+            report.neverFired,
+        )
+        assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
+    }
+
+    // The same with a withdrawal: the occurrence was armed ahead for t0 and then withdrawn, so no rung was left to
+    // ring for. A withdrawal closes the occurrence as a completion or a skip does.
+    @Test
+    fun `an edit raises no never fired rung, for a withdrawal`() {
+        fixture.seed("a", Criticality.STANDARD, t0, slot = 31)
+        fixture.clock.now = t0 - 1.hours
+        fixture.coordinator.ensureArmed()
+        fixture.clock.now = t0 - 30.minutes
+
+        val result = pass.run(checkNotNull(templates.findById("tmpl-a")).copy(active = false))
+
+        assertEquals("the edit withdrew the occurrence", 1, (result as EditResult.Edited).withdrawn.size)
+        val report = reader.read(t0 + 20.minutes)
+
+        assertEquals(
+            "the old instant passed twenty minutes ago and nothing is a never fired rung",
+            0,
+            report.neverFired,
+        )
         assertEquals(emptyMap<Exclusion, Int>(), report.neverFiredExcluded)
     }
 
