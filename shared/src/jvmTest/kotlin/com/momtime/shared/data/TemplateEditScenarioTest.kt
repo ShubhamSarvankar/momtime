@@ -162,6 +162,8 @@ class TemplateEditScenarioTest {
                 template.copy(recurrence = Recurrence.Weekly(setOf(DayOfWeek.WEDNESDAY, DayOfWeek.SATURDAY))),
                 f.at(day, 7),
             )
+        // Captured before the Reconcile, which makes this row MISSED: what the edit left of the wanted date.
+        val wantedAfterEdit = checkNotNull(f.occurrences.findById(wednesday.id))
 
         // The step that would miss a withdrawn date: after the grace of all three. It comes first, so that a mutation
         // which leaves an unwanted date open fails here, on the miss it produces.
@@ -178,6 +180,10 @@ class TemplateEditScenarioTest {
                 .map { it.state }
                 .toSet(),
         )
+        // Restored in the close out of #32: the wanted date's row was open after the edit, and is the row rule 5 leaves
+        // it as (the time and the criticality are the template's own, so nothing about it changes).
+        assertEquals(OccurrenceState.PENDING, wantedAfterEdit.state, "the wanted date is open after the edit")
+        assertEquals(wednesday, wantedAfterEdit, "and is the row it was")
     }
 
     @Test
