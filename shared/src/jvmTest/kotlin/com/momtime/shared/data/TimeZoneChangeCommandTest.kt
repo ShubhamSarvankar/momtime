@@ -298,7 +298,7 @@ class TimeZoneChangeCommandTest {
         assertEquals(ZoneChangeResult(templatesMoved = 1, occurrencesMoved = 1), result)
         assertEquals(tokyo, checkNotNull(templates.findById("off")).timeZoneId)
         assertEquals(changedAt, scheduled("o"))
-        templates.setActive("off", true)
+        templates.update(checkNotNull(templates.findById("off")).copy(active = true))
         withMessage(
             "reactivated, it is already in her zone",
             tokyo,

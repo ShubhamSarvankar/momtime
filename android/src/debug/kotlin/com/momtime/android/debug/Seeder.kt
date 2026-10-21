@@ -34,8 +34,9 @@ sealed interface SeedResult {
  * The debug only seed (ADR 0072). Phase 3's schedule builder does not exist yet, so a real device has no way to get a
  * reminder in front of a real alarm. This seeds, through the domain's own repositories and commands and nothing else:
  *
- * - one **CRITICAL** test reminder, three to four minutes from now: a template that is inactive from the start (so the
- *   daily materialisation never adds a second day), materialised once for its one occurrence;
+ * - one **CRITICAL** test reminder, three to four minutes from now: an active template that recurs every 3650 days from
+ *   the date it is due on, so materialisation gives it its one occurrence and never a second one
+ *   (no `Recurrence` expresses a one off, ADR 0079 item 11);
  * - three **daily STANDARD** reminders, at 08:00, 13:00 and 20:00 in the device's zone, which the daily job keeps
  *   materialising.
  *
@@ -63,11 +64,18 @@ class Seeder(
 
         // The test reminder: due at the next whole minute at least three minutes from now, so three to four minutes out.
         val due = (now + 4.minutes).toLocalDateTime(zone)
-        val test = template(TEST_ID, "Test reminder", Criticality.CRITICAL, LocalTime(due.hour, due.minute), zone)
+        // Anchored on the date it is due on, which is not today when the seed runs just before midnight.
+        val test =
+            template(
+                TEST_ID,
+                "Test reminder",
+                Criticality.CRITICAL,
+                LocalTime(due.hour, due.minute),
+                zone,
+                Recurrence.EveryNDays(n = 3650, anchorDate = due.date),
+            )
         templates.insert(test)
         occurrences.materialiseWindow(test, now, now + 5.minutes, newId)
-        // Inactive from here on: the daily materialisation skips it, so it is a one off. Its open occurrence still rings.
-        templates.setActive(TEST_ID, false)
 
         DAILY.forEachIndexed { index, time ->
             templates.insert(
@@ -85,6 +93,7 @@ class Seeder(
         criticality: Criticality,
         at: LocalTime,
         zone: TimeZone,
+        recurrence: Recurrence = Recurrence.Daily,
     ) = ScheduleTemplate(
         id = id,
         pregnancyId = PREGNANCY_ID,
@@ -94,7 +103,7 @@ class Seeder(
         criticality = criticality,
         timeOfDay = at,
         timeZoneId = zone,
-        recurrence = Recurrence.Daily,
+        recurrence = recurrence,
         mission = MissionConfig.None,
         nutritionTags = emptySet<NutritionTag>(),
         dosage = null,

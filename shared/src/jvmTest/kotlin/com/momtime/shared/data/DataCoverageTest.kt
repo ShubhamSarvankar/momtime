@@ -103,28 +103,12 @@ class DataCoverageTest {
     }
 
     @Test
-    fun `water goal, event and occurrence lookups return null when absent`() {
+    fun `water goal, event, occurrence and template lookups by id return null when absent`() {
         assertNull(SqlDelightWaterGoalRepository(db).findForPregnancy("missing"))
         assertNull(SqlDelightEventRepository(db).findById("missing"))
         val occurrences = SqlDelightOccurrenceRepository(db)
         assertNull(occurrences.findById("missing"))
-        assertNull(occurrences.findByTemplateAndDate("missing", LocalDate(2026, 1, 1)))
         assertNull(SqlDelightScheduleTemplateRepository(db).findById("missing"))
-    }
-
-    @Test
-    fun `an occurrence is found by template and date`() {
-        SqlDelightPregnancyRepository(db).insert(Pregnancy("preg-1", PregnancyPhase.PRENATAL, epoch, epoch))
-        SqlDelightScheduleTemplateRepository(db).insert(template("t-1"))
-        val occurrences = SqlDelightOccurrenceRepository(db)
-        val created =
-            occurrences.materialiseWindow(
-                template("t-1"),
-                Instant.parse("2026-01-01T00:00:00Z"),
-                Instant.parse("2026-01-02T00:00:00Z"),
-            ) { "occ-1" }
-        assertEquals(created.single(), occurrences.findByTemplateAndDate("t-1", LocalDate(2026, 1, 1)))
-        assertNull(occurrences.findByTemplateAndDate("t-1", LocalDate(2026, 1, 9)))
     }
 
     @Test

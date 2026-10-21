@@ -23,10 +23,12 @@ interface ScheduleTemplateRepository {
     /** Every template, active or not. What a time zone change reads: every template follows the device zone. */
     fun findAll(): List<ScheduleTemplate>
 
-    fun setActive(
-        id: String,
-        active: Boolean,
-    )
+    /**
+     * Writes every editable column of [template] and replaces its nutrition tag rows (ADR 0079). Not its id, its
+     * pregnancy or its zone: `updateTimeZone` alone moves the zone. It joins the caller's transaction; the one caller
+     * is `EditTemplateCommand`, which is how a template changes after it is created, deactivation included.
+     */
+    fun update(template: ScheduleTemplate)
 
     /**
      * Gives a template a new zone: the one thing a time zone change does to a template (ADR 0068). Templates follow the
@@ -94,11 +96,33 @@ class SqlDelightScheduleTemplateRepository(
             .executeAsList()
             .map(::toDomain)
 
-    override fun setActive(
-        id: String,
-        active: Boolean,
-    ) {
-        database.scheduleTemplateQueries.updateScheduleTemplateActive(active.toDb(), id)
+    override fun update(template: ScheduleTemplate) {
+        val recurrenceColumns = template.recurrence.toColumns()
+        val missionColumns = template.mission.toColumns()
+        database.scheduleTemplateQueries.updateScheduleTemplate(
+            title = template.title,
+            notes = template.notes,
+            task_type = template.taskType.name,
+            criticality = template.criticality.name,
+            time_of_day = template.timeOfDay.toString(),
+            recurrence_type = recurrenceColumns.type,
+            recurrence_days_of_week = recurrenceColumns.daysOfWeek,
+            recurrence_n = recurrenceColumns.n,
+            recurrence_anchor_date = recurrenceColumns.anchorDate,
+            mission_type = missionColumns.type,
+            mission_barcode_payload = missionColumns.barcodePayload,
+            mission_photo_reference_hash = missionColumns.photoReferenceHash,
+            dosage = template.dosage,
+            doctor_instructions = template.doctorInstructions,
+            inventory_count = template.inventoryCount?.toLong(),
+            refill_threshold_days = template.refillThresholdDays?.toLong(),
+            active = template.active.toDb(),
+            id = template.id,
+        )
+        database.scheduleTemplateQueries.deleteNutritionTagsForTemplate(template.id)
+        template.nutritionTags.forEach { tag ->
+            database.scheduleTemplateQueries.insertScheduleTemplateNutritionTag(template.id, tag.name)
+        }
     }
 
     override fun updateTimeZone(

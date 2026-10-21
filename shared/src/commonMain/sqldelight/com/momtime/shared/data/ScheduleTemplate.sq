@@ -54,8 +54,17 @@ INSERT INTO schedule_template(
     dosage, doctor_instructions, inventory_count, refill_threshold_days, active
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
-updateScheduleTemplateActive:
-UPDATE schedule_template SET active = ? WHERE id = ?;
+-- Every editable column (ADR 0079): not id, pregnancy_id or time_zone_id, which a zone change alone moves.
+updateScheduleTemplate:
+UPDATE schedule_template SET
+    title = ?, notes = ?, task_type = ?, criticality = ?, time_of_day = ?,
+    recurrence_type = ?, recurrence_days_of_week = ?, recurrence_n = ?, recurrence_anchor_date = ?,
+    mission_type = ?, mission_barcode_payload = ?, mission_photo_reference_hash = ?,
+    dosage = ?, doctor_instructions = ?, inventory_count = ?, refill_threshold_days = ?, active = ?
+WHERE id = ?;
+
+deleteNutritionTagsForTemplate:
+DELETE FROM schedule_template_nutrition_tag WHERE template_id = ?;
 
 updateScheduleTemplateTimeZone:
 UPDATE schedule_template SET time_zone_id = ? WHERE id = ?;
