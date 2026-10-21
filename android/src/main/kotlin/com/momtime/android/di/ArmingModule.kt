@@ -57,9 +57,12 @@ import com.momtime.android.store.ReliabilityCheckRepository
 import com.momtime.android.store.StoreFailures
 import com.momtime.android.work.MaterialisationPass
 import com.momtime.android.work.Pass
+import com.momtime.android.work.TemplateEditPass
 import com.momtime.android.work.TimeZonePass
 import com.momtime.android.work.WorkPasses
+import com.momtime.shared.data.CreateTemplateCommand
 import com.momtime.shared.data.DeliveryPolicyCommand
+import com.momtime.shared.data.EditTemplateCommand
 import com.momtime.shared.data.MaterialiseCommand
 import com.momtime.shared.data.OccurrenceActionCommand
 import com.momtime.shared.data.ReconcileCommand
@@ -228,6 +231,10 @@ internal fun armingModule(
         single<DeviceZone> { DeviceZone(delivery.zone) }
         single { TimeZoneChangeCommand(get(), get(), get()) }
         single { TimeZonePass(get(), get(), get(), get(), get(), get(), get()) }
+        // The template edit commands, beside the zone change command, on the same id source `ReconcileCommand` uses.
+        single { EditTemplateCommand(get(), get(), get(), get(), newId) }
+        single { CreateTemplateCommand(get()) }
+        single { TemplateEditPass(get(), get(), get(), get(), get(), get()) }
         single {
             WorkPasses(
                 get(),

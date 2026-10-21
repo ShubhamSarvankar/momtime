@@ -20,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -140,6 +141,43 @@ class SeederTest {
                 .toSet(),
         )
         assertEquals(1, fixture.alarms().size)
+    }
+
+    // ADR 0079 item 11: the test reminder is an ordinary active template, one off in effect because it recurs every
+    // 3650 days. The daily materialisation, run for each of the next three days (the step that would give a Daily
+    // template a second occurrence), adds none for it; it is the one alarm armed; and no inactive template holds an
+    // open occurrence.
+    @Test
+    fun `the test reminder is active, one off in effect, and rings`() {
+        seeder().seed()
+        val test = checkNotNull(templates.findById(Seeder.TEST_ID))
+        assertTrue("active", test.active)
+        val materialise = fixture.graph.get<MaterialiseCommand>()
+
+        for (day in 1..3) {
+            fixture.clock.now = now + day.days
+            materialise.dispatch(fixture.clock.now)
+        }
+
+        val ofTest = fixture.occurrences.findForTemplate(Seeder.TEST_ID)
+        assertEquals("one occurrence for the test template after three days of the daily job", 1, ofTest.size)
+        val armedFor = ofTest.single()
+        val alarm = fixture.alarms().single()
+        assertEquals("it is armed", armedFor.alarmSlot, fixture.requestCode(alarm))
+        val inactive =
+            templates
+                .findAll()
+                .filter { !it.active }
+                .map { it.id }
+                .toSet()
+        assertEquals(
+            "no inactive template has an open occurrence",
+            emptyList<String>(),
+            fixture.occurrences
+                .findOpen()
+                .filter { it.templateId in inactive }
+                .map { it.id },
+        )
     }
 
     @Test
