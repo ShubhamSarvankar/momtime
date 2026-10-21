@@ -331,15 +331,8 @@ class RingLimitTest {
         val two = stillPosted("the notification is gone after the cap, with two")
         assertOrdinary(two)
         assertTrue("none after the cap with two", labels(two).isEmpty())
-        for ((slot, name) in listOf(32 to "b", 33 to "c")) {
-            val own = f.posted(slot)
-            assertNotNull("$name's own notification is still posted after the cap", own)
-            own!!
-            assertEquals("$name: exactly its offered actions", threeActions, labels(own))
-            assertEquals("$name: not ongoing", 0, own.flags and Notification.FLAG_ONGOING_EVENT)
-            assertNull("$name: no full screen intent", own.fullScreenIntent)
-            assertTrue("$name: only alert once", own.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
-        }
+        assertOwnAfterCap(32, "b")
+        assertOwnAfterCap(33, "c")
         assertSame(c, "as it was before the cap", ownOfC)
         val screen =
             Robolectric
@@ -367,6 +360,20 @@ class RingLimitTest {
         val left = stillPosted("c is still waiting")
         assertOrdinary(left)
         assertTrue("the session stays spread: the session's notification carries none", labels(left).isEmpty())
+    }
+
+    /** [name]'s own notification is still posted after the cap, in the per occurrence shape (ADR 0090 item 3). */
+    private fun assertOwnAfterCap(
+        slot: Int,
+        name: String,
+    ) {
+        val own = f.posted(slot)
+        assertNotNull("$name's own notification is still posted after the cap", own)
+        own!!
+        assertEquals("$name: exactly its offered actions", threeActions, labels(own))
+        assertEquals("$name: not ongoing", 0, own.flags and Notification.FLAG_ONGOING_EVENT)
+        assertNull("$name: no full screen intent", own.fullScreenIntent)
+        assertTrue("$name: only alert once", own.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
     }
 
     /** c's own notification is still posted and is what [expected] was: the same actions, flags, channel and title. */
