@@ -274,4 +274,28 @@ class TemplateEditScenarioTest {
         assertEquals(eventsBefore, f.events.findForOccurrence(snoozed.id))
         assertNotEquals(Criticality.GENTLE, f.occurrences.findById(snoozed.id)?.criticality)
     }
+
+    // A snooze is not an instant either: with the device clock set back, a snoozed occurrence can have an instant
+    // ahead of now, and the edit must still leave it alone (ADR 0079 item 2: "or its state is `SNOOZED`").
+    @Test
+    fun `a snoozed occurrence is untouched even when its instant is ahead of now`() {
+        val template = f.template("t", criticality = Criticality.CRITICAL)
+        f.insertAndMaterialise(template, f.at(day, 0), f.at(after, 0))
+        val snoozed = row("t", day)
+        f.actions.dispatch(snoozed.id, OccurrenceAction.SNOOZE, f.at(day, 9, 50))
+        val rowBefore = checkNotNull(f.occurrences.findById(snoozed.id))
+        val eventsBefore = f.events.findForOccurrence(snoozed.id)
+        assertEquals(OccurrenceState.SNOOZED, rowBefore.state)
+
+        // The clock reads 07:00 on D again: 08:00 is ahead of now, and nothing but the state says it has come due.
+        val result =
+            f.edit.dispatch(
+                template.copy(timeOfDay = LocalTime(20, 0), criticality = Criticality.GENTLE),
+                f.at(day, 7),
+            )
+
+        assertEquals(rowBefore, f.occurrences.findById(snoozed.id))
+        assertEquals(eventsBefore, f.events.findForOccurrence(snoozed.id))
+        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 0), result)
+    }
 }
