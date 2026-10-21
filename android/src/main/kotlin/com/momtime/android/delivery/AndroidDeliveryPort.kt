@@ -31,10 +31,11 @@ import kotlin.time.Instant
  *
  * - **RING**, **HEADS_UP**, **AUDIO_ONLY**: the rung joins the ring session. The first occurrence starts the
  *   ringer service, which plays the sound and holds the ring notification; another occurrence joins the session
- *   and only refreshes the notification; the same occurrence again continues it and changes nothing. If the
- *   platform refuses the ringer, the same notification is posted instead and the session ends, so the next rung
- *   tries again, and the refusal is recorded. Never a crash. Without a full screen intent, and with the overlay
- *   permission, the ring screen is opened through the overlay route.
+ *   and only refreshes the notification; the same occurrence again continues it and changes nothing. Every one of
+ *   the three restarts the cap (ADR 0090 item 5): the session sounds for up to `MAX_RING` from this fire. If the
+ *   platform refuses the ringer, the same notification is posted instead, the cap is cancelled and the session
+ *   ends, so the next rung tries again, and the refusal is recorded. Never a crash. Without a full screen intent,
+ *   and with the overlay permission, the ring screen is opened through the overlay route.
  * - **PLAIN**: Tier 1, or a Gentle occurrence on any tier (ADR 0089). A notification on the criticality channel,
  *   replacing the one for the same occurrence. No ringer, no full screen intent, no ring session.
  * - **SILENT_NOTICE**, **SILENT**: a silent notification on the Quiet notices channel (ADR 0064).
@@ -109,7 +110,10 @@ internal class AndroidDeliveryPort(
         val channel = NotificationChannels.idFor(occurrence.criticality)
         val fullScreen = path == DeliveryPath.RING
         sessions.style = RingStyle(channel, fullScreen)
-        when (sessions.join(item)) {
+        val joined = sessions.join(item)
+        // One site for a start, a continuation and a join: each is a fire that rings, and each starts a fresh cap.
+        services.cap.restart(eventId)
+        when (joined) {
             RingJoin.CONTINUED -> Unit
             RingJoin.JOINED ->
                 context.getSystemService(NotificationManager::class.java).notify(
@@ -140,6 +144,7 @@ internal class AndroidDeliveryPort(
                 RingNotifications.RING_ID,
                 RingNotifications.ring(context, sessions.items(), request.channelId, request.fullScreenIntent),
             )
+            services.cap.cancel()
             sessions.end()
         }
         // The overlay route opens the ring screen when a full screen intent will not, and never otherwise.
@@ -191,5 +196,6 @@ internal class DeliveryServices(
     val actions: OccurrenceActionCommand,
     val settings: AndroidSettings,
     val clockChanges: com.momtime.android.store.ClockChangeRepository,
+    val cap: RingCap,
     val now: () -> Instant,
 )

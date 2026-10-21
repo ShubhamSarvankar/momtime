@@ -57,6 +57,10 @@ object RingEntryPoint {
  *
  * It is also what the alarm clock's show intent opens, so with no session it says that nothing is ringing.
  * Phase 3 replaces that with the app's own screen.
+ *
+ * When the sound stops without her (the cap, ADR 0090 item 4) the screen is not closed: it keeps listing what was
+ * due, each with its actions, with the line that says the sound is off, and it releases keep screen on so that the
+ * display can sleep.
  */
 class RingActivity : Activity() {
     private var host: RingHost? = null
@@ -66,7 +70,6 @@ class RingActivity : Activity() {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.ring)
         findViewById<Button>(R.id.ring_stop_sound).setOnClickListener { host?.stopSound() }
         findViewById<Button>(R.id.ring_open_check).setOnClickListener {
@@ -90,6 +93,12 @@ class RingActivity : Activity() {
         val sessions = host?.sessions
         val items = sessions?.items().orEmpty()
         val sounding = sessions?.isActive == true
+        // The display stays on only while the sound is on; after the cap, or "Stop the sound", it may sleep.
+        if (sounding) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         findViewById<TextView>(R.id.ring_count).text =
             if (items.isEmpty()) {
                 getString(R.string.ring_nothing_due)

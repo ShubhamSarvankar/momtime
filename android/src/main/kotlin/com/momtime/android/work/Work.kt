@@ -13,6 +13,7 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import com.momtime.android.arming.AlarmLog
 import com.momtime.android.arming.ArmingCoordinator
+import com.momtime.android.arming.SessionSweep
 import com.momtime.android.arming.Watchdog
 import com.momtime.android.di.DeviceZone
 import com.momtime.android.system.SystemEvent
@@ -116,10 +117,12 @@ class MaterialisationWorker(
 /**
  * The pass a time zone change is answered with (ADR 0068): the zone change command first, so open occurrences and
  * templates are in the new zone before anything is armed, then the window is materialised (the next dates are
- * created in the new zone), `Reconcile` runs (an occurrence that moved is judged against its new instant), and
+ * created in the new zone), `Reconcile` runs (an occurrence that moved is judged against its new instant), the ring
+ * session drops what is no longer open (ADR 0090 item 7), and
  * `ensureArmed`. All inside the coordinator's exclusion, so a fire or a watchdog pass never reads the half moved
  * state. The zone is read only through the [DeviceZone] seam and the time only through the log's clock.
  */
+@Suppress("LongParameterList")
 class TimeZonePass internal constructor(
     private val change: TimeZoneChangeCommand,
     private val materialise: MaterialiseCommand,
@@ -127,12 +130,14 @@ class TimeZonePass internal constructor(
     private val coordinator: ArmingCoordinator,
     private val log: AlarmLog,
     private val zone: DeviceZone,
+    private val sweep: SessionSweep,
 ) : Pass {
     override fun run() {
         coordinator.exclusive {
             change.dispatch(zone.current(), log.now())
             materialise.dispatch(log.now())
             reconcile.dispatch(log.now())
+            sweep.dropClosed()
             coordinator.ensureArmed()
         }
     }

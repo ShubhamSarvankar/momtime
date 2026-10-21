@@ -12,7 +12,9 @@ import com.momtime.shared.data.ReconcileCommand
  *
  * It dispatches `Reconcile` and then calls `ensureArmed`: the same two steps the watchdog begins and ends
  * with, without the evidence, because a process start is not evidence that anything was lost and writes no
- * `WATCHDOG_REPAIR`. On a correct state it re arms with identical parameters and writes nothing.
+ * `WATCHDOG_REPAIR`. On a correct state it re arms with identical parameters and writes nothing. After the
+ * `Reconcile` the ring session drops what is no longer open (ADR 0090 item 7), as after every `Reconcile`; the
+ * system pass is this same run.
  */
 class AppStart internal constructor(
     private val reconcile: ReconcileCommand,
@@ -20,11 +22,13 @@ class AppStart internal constructor(
     private val log: AlarmLog,
     private val probes: PlatformProbes,
     private val boots: BootInstantRepository,
+    private val sweep: SessionSweep,
 ) {
     fun run(): EnsureResult =
         coordinator.exclusive {
             recordBoot()
             reconcile.dispatch(log.now())
+            sweep.dropClosed()
             coordinator.ensureArmed()
         }
 

@@ -26,6 +26,11 @@ data class FireTelemetry(
     val alarmStreamMuted: Boolean? = null,
     /** How many times the clock had been set when the alarm fired (ADR 0070). Null for a row from before. */
     val clockChanges: Long? = null,
+    /**
+     * Whether the ring this fire started or restarted ran its whole length unanswered (ADR 0090 item 8). False on
+     * every row this version writes until the cap marks it; null for a row from before the column existed.
+     */
+    val ringEndedByCap: Boolean? = false,
 )
 
 /**
@@ -45,6 +50,9 @@ interface FireTelemetryRepository {
         started: Boolean,
         audioFocus: Boolean?,
     ): Boolean
+
+    /** Marks the fire whose ring ran out unanswered, at the cap's dismissal (ADR 0090 item 8). True if updated. */
+    fun recordRingEndedByCap(eventId: String): Boolean
 
     /** The row, or null if there is none or the store failed. */
     fun findForEvent(eventId: String): FireTelemetry?
@@ -73,6 +81,7 @@ class SqlDelightFireTelemetryRepository(
                 ringer_started = telemetry.ringerStarted?.toLong(),
                 alarm_stream_muted = telemetry.alarmStreamMuted?.toLong(),
                 clock_changes = telemetry.clockChanges,
+                ring_ended_by_cap = telemetry.ringEndedByCap?.toLong(),
             )
             true
         }
@@ -84,6 +93,12 @@ class SqlDelightFireTelemetryRepository(
     ): Boolean =
         nonFatal(failures, "fire_telemetry.ringer", false) {
             database().fireTelemetryQueries.updateRinger(started.toLong(), audioFocus?.toLong(), eventId)
+            true
+        }
+
+    override fun recordRingEndedByCap(eventId: String): Boolean =
+        nonFatal(failures, "fire_telemetry.cap", false) {
+            database().fireTelemetryQueries.updateRingEndedByCap(eventId)
             true
         }
 
@@ -103,6 +118,7 @@ class SqlDelightFireTelemetryRepository(
                     ringerStarted = it.ringer_started?.let { value -> value != 0L },
                     alarmStreamMuted = it.alarm_stream_muted?.let { value -> value != 0L },
                     clockChanges = it.clock_changes,
+                    ringEndedByCap = it.ring_ended_by_cap?.let { value -> value != 0L },
                 )
             }
         }

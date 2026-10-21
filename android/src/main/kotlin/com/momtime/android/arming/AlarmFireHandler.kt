@@ -97,11 +97,13 @@ sealed interface FireOutcome {
  *   and leave it to this.
  *
  * `Reconcile` is dispatched first, so an alarm that fires after the end of grace finds the occurrence `MISSED`
- * and delivers nothing, and does not arm itself again (ADR 0030).
+ * and delivers nothing, and does not arm itself again (ADR 0030). The ring session then drops what is no longer
+ * open (ADR 0090 item 7), so a ring for an occurrence whose grace has just ended stops here.
  *
  * In every case, and also if something above throws, the next alarm is armed: a chain that stops at one
  * stale fire would be silently dead until the watchdog found it.
  */
+@Suppress("LongParameterList")
 class AlarmFireHandler internal constructor(
     private val candidates: ArmCandidates,
     private val log: AlarmLog,
@@ -109,6 +111,7 @@ class AlarmFireHandler internal constructor(
     private val coordinator: ArmingCoordinator,
     private val reconcile: ReconcileCommand,
     private val decider: DeliveryDecider,
+    private val sweep: SessionSweep,
 ) {
     fun onFire(
         slot: Int,
@@ -129,6 +132,7 @@ class AlarmFireHandler internal constructor(
         rungInstant: Instant,
     ): FireOutcome {
         reconcile.dispatch(log.now())
+        sweep.dropClosed()
         val occurrence = candidates.owning(slot)
         return when {
             occurrence == null -> FireOutcome.UnknownSlot

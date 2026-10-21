@@ -3,6 +3,7 @@ package com.momtime.android.delivery
 import android.app.NotificationManager
 import android.content.Context
 import com.momtime.android.arming.ArmingCoordinator
+import com.momtime.android.arming.SessionSweep
 import com.momtime.android.ring.RingHost
 import com.momtime.android.ring.RingItem
 import com.momtime.android.ring.RingSessions
@@ -39,9 +40,16 @@ internal class RingDomain(
  * stop. An action the domain refuses is refused visibly: the offered actions are refreshed, on the screen and on
  * the notification, so a button that no longer works is gone, never silently ignored.
  *
- * **Stopping the sound** ends the session and stops the service, and writes nothing: dismissing the alert is not
- * completion (ARCHITECTURE.md section 4.6), so the occurrence keeps its state and the next rung still fires.
- * Nothing the screen or a notification does on dismissal writes an event.
+ * **Dismissal** (ADR 0090): "Stop the sound" and the cap are one path. The session ends and the service stops, so
+ * the sound and the vibration stop and the service leaves the foreground; the session's notification is reposted as
+ * an ordinary one that keeps her actions (not ongoing, no full screen intent, only alert once); and nothing is
+ * written: dismissing the alert is not completion (ARCHITECTURE.md section 4.6), so the occurrence keeps its state
+ * and the next rung still fires, and rings again as a ring of its own. The cap's dismissal also marks the fire it
+ * ran from as a ring that ran out unanswered (ADR 0090 item 8); "Stop the sound" marks nothing.
+ *
+ * **The end of grace ends a ring** (ADR 0090 item 7): [dropClosed], called after every `Reconcile` android
+ * dispatches, drops every listed occurrence that is no longer open, cancels its notification, and ends the ring if
+ * none is left.
  */
 @Suppress("LongParameterList")
 internal class RingController(
@@ -52,16 +60,49 @@ internal class RingController(
     private val ringer: RingerLauncher,
     private val telemetry: FireTelemetryRepository,
     private val domain: RingDomain,
+    private val cap: RingCap,
 ) : RingHost,
     RingerHost,
-    NotificationActionHandler {
+    NotificationActionHandler,
+    SessionSweep {
     private val notifications: NotificationManager get() = context.getSystemService(NotificationManager::class.java)
-    private val actions = RingActionDispatcher(context, sessions, ringer, domain)
+    private val actions = RingActionDispatcher(context, sessions, ringer, cap, domain)
 
-    override fun stopSound() {
+    override fun stopSound() = dismiss()
+
+    /** The cap ran out for the fire [eventId]: the same dismissal, and the fire's row is marked (ADR 0090 item 8). */
+    internal fun capExpired(eventId: String) {
+        if (!sessions.isActive) return
+        dismiss()
+        telemetry.recordRingEndedByCap(eventId)
+    }
+
+    private fun dismiss() {
+        cap.cancel()
+        val wasSounding = sessions.isActive
         sessions.end()
         ringer.stop()
-        notifications.cancel(RingNotifications.RING_ID)
+        // The ring notification was the service's; it is reposted as an ordinary one with her actions, or left as it
+        // was when nothing was sounding (the screen's button is not shown then).
+        if (wasSounding) SessionNotifications.refresh(context, sessions)
+    }
+
+    override fun dropClosed() {
+        val closed =
+            sessions.items().filter { item ->
+                domain.occurrences.findById(item.occurrenceId)?.isTerminal != false
+            }
+        if (closed.isEmpty()) return
+        var ended = false
+        closed.forEach { item ->
+            notifications.cancel(item.alarmSlot)
+            if (sessions.resolve(item.occurrenceId).ended) ended = true
+        }
+        if (ended) {
+            cap.cancel()
+            ringer.stop()
+        }
+        SessionNotifications.refresh(context, sessions)
     }
 
     override fun items(): List<RingItem> = sessions.items()
@@ -95,6 +136,7 @@ internal class RingController(
         fullScreenIntent: Boolean,
     ) {
         telemetry.recordRinger(eventId, started = false, audioFocus = null)
+        cap.cancel()
         sessions.end()
         notifications.notify(
             RingNotifications.RING_ID,

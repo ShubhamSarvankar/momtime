@@ -1,0 +1,5 @@
+-- Version 5 to 6 (Phase 3, PR 2b, ADR 0090 item 8): whether the ring this fire started or restarted ran its whole
+-- length (`MAX_RING`) unanswered, which is evidence she may not have heard it. 1 on the row of the fire the cap was
+-- last restarted by when it expired; 0 on every other row this version writes; null for a row written before this
+-- version. A count in the reliability report and the export, with no banner until a device has judged the cap.
+ALTER TABLE fire_telemetry ADD COLUMN ring_ended_by_cap INTEGER;

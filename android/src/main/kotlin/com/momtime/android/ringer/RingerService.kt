@@ -50,6 +50,10 @@ object RingerEntryPoint {
  *
  * If the platform refuses the foreground start, or anything else goes wrong, the service stops itself and tells
  * the host, which degrades to the notification path. It never crashes the process over a refusal.
+ *
+ * When the ring is dismissed (the cap, "Stop the sound", ADR 0090) the launcher first [detach]es the notification
+ * from the service and then stops the service: stopping a foreground service cancels its notification, and the
+ * notification must stay, reposted as an ordinary one with her actions. [running] is the instance to detach.
  */
 class RingerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -81,17 +85,28 @@ class RingerService : Service() {
                 ),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
             )
+            running = this
             host.onSoundStarted(eventId, host.sound.start())
             host.vibration.start(vibration)
         } catch (e: RuntimeException) {
             Log.e(TAG, "the ringer could not start: ${e.javaClass.simpleName}")
+            running = null
             host.onRingerRefused(eventId, channelId, fullScreen)
             stopSelf()
         }
         return START_NOT_STICKY
     }
 
+    /**
+     * Leaves the foreground and leaves the notification where it is (`STOP_FOREGROUND_DETACH`), so that stopping the
+     * service afterwards does not cancel it. The controller then reposts it as an ordinary one (ADR 0090 item 3).
+     */
+    fun detach() {
+        stopForeground(STOP_FOREGROUND_DETACH)
+    }
+
     override fun onDestroy() {
+        if (running === this) running = null
         val host = RingerEntryPoint.provider?.invoke()
         host?.sound?.stop()
         host?.vibration?.stop()
@@ -99,6 +114,11 @@ class RingerService : Service() {
     }
 
     companion object {
+        /** The instance in the foreground, or null: set when it goes foreground, cleared when it is destroyed. */
+        @Volatile
+        var running: RingerService? = null
+            private set
+
         const val ACTION_START = "com.momtime.android.action.RING_START"
         private const val EXTRA_CHANNEL = "com.momtime.android.extra.CHANNEL"
         private const val EXTRA_FULL_SCREEN = "com.momtime.android.extra.FULL_SCREEN"

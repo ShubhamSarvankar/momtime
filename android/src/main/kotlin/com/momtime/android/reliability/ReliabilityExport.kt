@@ -58,6 +58,7 @@ object ReliabilityExport {
             .put("missedOccurrences", report.missedOccurrences)
             .put("watchdogRepairs", report.watchdogRepairs)
             .put("mutedFires", report.mutedFires)
+            .put("capEndedRings", report.capEndedRings)
             .put("storeFailures", counts(report.storeFailures))
             .put("corruptionFound", report.corruption != null)
             .put("checks", JSONArray(report.checks.map(::check)))
@@ -86,6 +87,7 @@ object ReliabilityExport {
             .put("deliveryPath", t.deliveryPath ?: JSONObject.NULL)
             .put("ringerStarted", t.ringerStarted ?: JSONObject.NULL)
             .put("alarmStreamMuted", t.alarmStreamMuted ?: JSONObject.NULL)
+            .put("ringEndedByCap", t.ringEndedByCap ?: JSONObject.NULL)
     }
 
     private fun unfired(rung: UnfiredRow) = JSONObject().put("day", rung.localDay).put("hour", rung.hour)
