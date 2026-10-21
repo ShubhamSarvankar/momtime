@@ -125,6 +125,26 @@ class NutritionReductionTest {
         )
     }
 
+    // Not in the plan; for review. The outcome decides, not the payload: a skip or a miss that carried a completion
+    // payload (no writer produces one, and the repository's column guard refuses it) counts nothing. The completion
+    // beside them is the positive control, and the two others are the step that would count them if the code were wrong.
+    @Test
+    fun `the outcome decides what counts, not the payload of the event that decided it`() {
+        val skipped = occ(base)
+        val missed = occ(base)
+        val completed = occ(base)
+        val events =
+            listOf(
+                event(skipped, EventType.SKIPPED, base, EventPayload.Completion(setOf(NutritionTag.IRON))),
+                event(missed, EventType.MISSED, base, EventPayload.Completion(setOf(NutritionTag.CALCIUM)), base),
+                completed(completed, base, NutritionTag.FRUIT),
+            )
+        assertEquals(
+            mapOf(day1 to mapOf(NutritionTag.FRUIT to 1)),
+            NutritionReduction.servings(listOf(skipped, missed, completed), events, farFuture),
+        )
+    }
+
     // Not in the plan; for review. ADR 0086 item 1: a completion with no tags, or with no completion payload at all,
     // counts under no tag. The completion with tags beside it is the positive control.
     @Test

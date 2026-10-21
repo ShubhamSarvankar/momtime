@@ -35,8 +35,8 @@ interface EventRepository {
     ): Long
 
     /**
-     * Every `WATER_LOGGED` event that can belong to a local date from [from] to [to], both inclusive, in the order of
-     * their instants. A glass belongs to the date it had in the zone it was logged in (ADR 0086), and a query by
+     * Every `WATER_LOGGED` event that can belong to a local date from [from] to [to], both inclusive, in no particular
+     * order. A glass belongs to the date it had in the zone it was logged in (ADR 0086), and a query by
      * dates cannot know that zone, so the range is the days of the two dates in UTC widened by [WATER_ZONE_MARGIN]
      * on each side. It can return a glass of the day before or after; the reduction attributes each by its own zone
      * and the caller reads the dates it asked for.
@@ -114,7 +114,6 @@ class SqlDelightEventRepository(
             .selectWaterEventsInRange(start.toDb(), end.toDb())
             .executeAsList()
             .map { it.toDomain() }
-            .sortedWith(compareBy({ it.deviceTimestamp }, { it.id }))
     }
 
     private data class PayloadColumns(
