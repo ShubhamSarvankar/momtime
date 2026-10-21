@@ -66,7 +66,6 @@ class TemplateEditScenarioTest {
 
         val result = f.edit.dispatch(template.copy(timeOfDay = LocalTime(14, 30)), now)
 
-        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 1), result)
         val rowsAfter = f.allOccurrences().associateBy { it.id }
         // 1 and 2: D-1 (terminal) and D (come due) are equal in every column.
         assertEquals(rowsBefore.getValue(d1.id), rowsAfter.getValue(d1.id), "D-1 is unchanged")
@@ -103,6 +102,8 @@ class TemplateEditScenarioTest {
         assertEquals(emptyList(), f.events.findForOccurrence(d2.id).filter { it.eventType == EventType.MISSED })
         assertEquals(OccurrenceState.COMPLETED, missed.getValue(before).state)
         assertEquals(AdherenceFigures(completed = 1, missed = 1, skipped = 0), f.figures(f.at(after, 13)))
+        // Last, so that a failure above names the assertion of the plan that failed rather than this count.
+        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 1), result)
     }
 
     @Test
