@@ -199,8 +199,17 @@ class GoldenScenariosDbTest {
         steps: EditSteps,
         seed: Int,
     ) {
+        f.occurrences.materialiseWindow(
+            checkNotNull(f.templates.findById("t")),
+            EditSteps.START,
+            EditSteps.END,
+            f.newId,
+        )
+        // One last edit of the time, after the span is full of rows: the last thing that happened to the template is a
+        // change of time, so a row left at an earlier time (or at the time of the edit before) cannot be hidden by a
+        // later edit that moved it.
+        steps.finalTimeEdit()
         val template = checkNotNull(f.templates.findById("t"))
-        f.occurrences.materialiseWindow(template, EditSteps.START, EditSteps.END, f.newId)
         // Convergence over the dates after the current date in the template's zone: an edit to a time already past
         // keeps today's time (ADR 0079 item 5), so today is not part of it.
         val today = steps.now.toLocalDateTime(f.zone).date

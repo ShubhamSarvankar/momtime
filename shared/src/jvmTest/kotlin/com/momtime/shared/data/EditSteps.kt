@@ -69,6 +69,11 @@ internal class EditSteps(
         }
     }
 
+    /** An edit of the time of day, to a random quarter hour, whatever the template is doing. */
+    fun finalTimeEdit() {
+        edit(current().copy(timeOfDay = LocalTime(random.nextInt(0, 24), 15 * random.nextInt(0, 4))))
+    }
+
     private fun materialiseWindow() {
         val start = START + random.nextLong(0, SPAN_DAYS * 24L).hours
         val end = minOf(start + random.nextLong(1, 10 * 24L).hours, END)

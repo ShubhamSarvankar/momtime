@@ -55,9 +55,9 @@ class EditTemplateCommandTest {
                 f.at(day, 7),
             )
 
-        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 0), result)
         assertEquals(rowsBefore, f.allOccurrences(), "no occurrence row changed")
         assertEquals(eventsBefore, f.allEvents(), "no event changed")
+        assertEquals(EditResult.Edited(withdrawn = emptyList(), moved = 0), result)
         val stored = checkNotNull(f.templates.findById("t"))
         assertEquals("Folic acid", stored.title)
         assertEquals(setOf(NutritionTag.IRON, NutritionTag.CALCIUM), stored.nutritionTags)
