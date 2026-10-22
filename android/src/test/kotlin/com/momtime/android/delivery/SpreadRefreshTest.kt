@@ -3,6 +3,7 @@ package com.momtime.android.delivery
 import android.app.Notification
 import android.content.ComponentName
 import android.os.Build
+import android.widget.Button
 import com.momtime.android.R
 import com.momtime.android.arming.t0
 import com.momtime.android.ring.RingActivity
@@ -89,6 +90,64 @@ internal class SpreadRefreshTest : SpreadSupport() {
         assertOwn(again, NotificationChannels.CRITICAL, threeActions, "b, again")
         assertEquals("two notifications: the session's and b's", 2, count(r.f))
         assertInvariant("after the next ring", r.f, resolved = setOf(31))
+    }
+
+    // Accepted by Claude (technical review) in the close out on this condition: after a swipe her actions stay
+    // reachable. At Tier 3 the ring screen, which the session's full screen intent opens, lists the occurrence with
+    // its actions; at Tier 2 tapping the session's notification (ongoing while it sounds, so it cannot be swiped)
+    // opens the ring screen with it listed; Taken there writes ADR 0066's delta. The screen is built from the very
+    // intent the session's notification carries at that tier.
+    @Test
+    fun `after she swipes away an occurrence's notification its actions are still reachable`() {
+        for (fullScreen in listOf(true, false)) {
+            val label = if (fullScreen) "Tier 3" else "Tier 2"
+            val r = Real()
+            r.f.fullScreenIntent(fullScreen)
+            r.f.fire(r.f.due("a", Criticality.CRITICAL, slot = 31))
+            val b = r.f.due("b", Criticality.CRITICAL, slot = 32)
+            r.f.fire(b)
+            assertEquals("$label: the tier", if (fullScreen) "RING" else "HEADS_UP", r.f.telemetryOf("b").deliveryPath)
+            val own = checkNotNull(r.f.posted(32)) { "$label: b's own notification" }
+            own.deleteIntent?.let { pending ->
+                assertTrue(finished(deliverToActionReceiver(context, shadowOf(pending).savedIntent)))
+            }
+            r.f.notifications.cancel(32)
+            assertNull("$label: b's own notification is gone", r.f.posted(32))
+            val session = session(r.f, "$label: the session's notification is posted")
+            val route = if (fullScreen) session.fullScreenIntent else session.contentIntent
+            assertNotNull("$label: the session's notification carries the route to the screen", route)
+            val opening = shadowOf(route!!).savedIntent
+            assertEquals(
+                "$label: it opens the ring screen",
+                RingActivity::class.java.name,
+                opening.component?.className,
+            )
+
+            val screen =
+                Robolectric
+                    .buildActivity(RingActivity::class.java, opening)
+                    .create()
+                    .start()
+                    .resume()
+                    .visible()
+                    .get()
+
+            assertEquals("$label: the screen lists both with their buttons", sixButtons, buttonTags(screen))
+            val before = r.f.arming.eventLog("a", "b")
+            screen.window.decorView
+                .findViewWithTag<Button>("ack:b")
+                .performClick()
+            assertEquals(
+                "$label: Taken on the screen writes ADR 0066's delta",
+                listOf(EventType.COMPLETED to "b"),
+                r.f.arming
+                    .eventDelta("a", "b", before = before)
+                    .filter { it.first != EventType.ALARM_SCHEDULED },
+            )
+            assertEquals(OccurrenceState.COMPLETED, r.state("b"))
+            assertEquals("$label: a stays listed", listOf("a"), r.sessions.items().map { it.occurrenceId })
+            r.ringer.destroyAll()
+        }
     }
 
     // ---------------------------------------------------------------- process death
