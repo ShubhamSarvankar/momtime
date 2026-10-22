@@ -1,6 +1,5 @@
 package com.momtime.android.delivery
 
-import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import com.momtime.android.ring.RingItem
@@ -54,7 +53,10 @@ internal class RingActionDispatcher(
         }
     }
 
-    /** She acted on [occurrence]: it is no longer due, so it leaves the session and its notification goes. */
+    /**
+     * She acted on [occurrence]: it is no longer due, so it leaves the session and its notification goes. Only its
+     * own: in a session that has spread the others keep theirs (ADR 0080 item 4).
+     */
     private fun taken(occurrence: Occurrence) {
         notifications.cancel(occurrence.alarmSlot)
         val resolved = sessions.resolve(occurrence.id)
@@ -76,31 +78,21 @@ internal class RingActionDispatcher(
             // It is terminal now (acted on elsewhere, or its grace ended): nothing is due for it.
             taken(occurrence)
         } else {
+            // The buttons are refreshed where they are (ADR 0080 item 4): on the session's notification while it
+            // carries them, and on the occurrence's own notification (a reminder, or its per occurrence one) if that
+            // is showing.
             SessionNotifications.refresh(context, sessions)
-            repostReminder(occurrence, offered)
+            val template = domain.templates.findById(occurrence.templateId) ?: return
+            val item =
+                RingItem(
+                    occurrence.id,
+                    template.title,
+                    template.dosage,
+                    template.doctorInstructions,
+                    occurrence.alarmSlot,
+                    offered,
+                )
+            SlotNotifications.refresh(context, sessions, occurrence, item)
         }
-    }
-
-    /** Posts the reminder notification of [occurrence] again with [offered], if one is posted for it. */
-    private fun repostReminder(
-        occurrence: Occurrence,
-        offered: Set<OccurrenceAction>,
-    ) {
-        val template = domain.templates.findById(occurrence.templateId) ?: return
-        val posted = notifications.activeNotifications.firstOrNull { it.id == occurrence.alarmSlot } ?: return
-        val item =
-            RingItem(
-                occurrence.id,
-                template.title,
-                template.dosage,
-                template.doctorInstructions,
-                occurrence.alarmSlot,
-                offered,
-            )
-        val late = posted.notification.extras.getCharSequence(Notification.EXTRA_SUB_TEXT) != null
-        notifications.notify(
-            occurrence.alarmSlot,
-            RingNotifications.reminder(context, item, posted.notification.channelId, late),
-        )
     }
 }

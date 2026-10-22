@@ -10,7 +10,9 @@ import com.momtime.android.ring.RingSessions
  * sound") it is reposted as an ordinary one that keeps her actions in front of her: not ongoing, no full screen
  * intent, only alert once. When nothing is listed any more it is cancelled. Posted under one id either way, so a
  * change replaces what was there and never adds a second. With [alertOnce] the ring notification too is replaced
- * without alerting again: her text changed under a ring that is already sounding, and nothing new is due.
+ * without alerting again: her text changed under a ring that is already sounding, and nothing new is due. In a
+ * session that has spread (ADR 0080) it carries no occurrence buttons either way; the per occurrence notifications
+ * are not touched here.
  */
 internal object SessionNotifications {
     fun refresh(
@@ -21,17 +23,18 @@ internal object SessionNotifications {
         val manager = context.getSystemService(NotificationManager::class.java)
         val items = sessions.items()
         val style = sessions.style
+        val spread = sessions.isSpread
         when {
             items.isEmpty() || style == null -> manager.cancel(RingNotifications.RING_ID)
             sessions.isActive ->
                 manager.notify(
                     RingNotifications.RING_ID,
-                    RingNotifications.ring(context, items, style.channelId, style.fullScreenIntent, alertOnce),
+                    RingNotifications.ring(context, items, style.channelId, style.fullScreenIntent, alertOnce, spread),
                 )
             else ->
                 manager.notify(
                     RingNotifications.RING_ID,
-                    RingNotifications.dismissed(context, items, style.channelId),
+                    RingNotifications.dismissed(context, items, style.channelId, spread),
                 )
         }
     }

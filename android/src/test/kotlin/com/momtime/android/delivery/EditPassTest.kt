@@ -348,11 +348,18 @@ class EditPassTest {
         assertEquals(listOf("b"), r.sessions.items().map { it.occurrenceId })
         assertEquals("the ringer was not stopped", 0, r.ringer.stops)
         val notification = checkNotNull(r.f.posted(RingNotifications.RING_ID)) { "the session's notification is gone" }
+        // Changed in PR 6 (ADR 0080, authorised by Claude (technical review)): the session had spread and stays
+        // spread, so b's actions stay on b's own notification and the session's carries none; before PR 6 this
+        // asserted ADR 0066's rule that they move back to the session's notification when one remains.
+        assertTrue(
+            "the session stays spread: its notification carries no actions, found ${labels(notification)}",
+            labels(notification).isEmpty(),
+        )
         assertEquals(
-            "with its actions, as one occurrence in the session has them",
+            "b's own notification carries its actions",
             listOf(R.string.ring_action_acknowledge, R.string.ring_action_snooze, R.string.ring_action_skip)
                 .map(context::getString),
-            labels(notification),
+            labels(checkNotNull(r.f.posted(32)) { "b's own notification is gone" }),
         )
         assertNull("a's slot notification is gone", r.f.posted(31))
         assertEquals(

@@ -20,6 +20,12 @@ interface RingerHost {
     /** The occurrences the ring session covers now. */
     fun items(): List<RingItem>
 
+    /**
+     * True once the session has spread (ADR 0080): each occurrence's actions are on a notification of its own, so
+     * the ring notification carries none and does not alert again when it is rebuilt.
+     */
+    val spread: Boolean
+
     /** The sound started for the fire [eventId]; [focusObtained] is what audio focus said. */
     fun onSoundStarted(
         eventId: String,
@@ -82,6 +88,7 @@ class RingerService : Service() {
                     host.items(),
                     channelId,
                     fullScreen,
+                    spread = host.spread,
                 ),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
             )
